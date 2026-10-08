@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">ims</string>
+    <string name="accessibility_desc">تسمح لـ IMS بكتابة الأرقام تلقائياً في أي حقل مفتوح، والتقاط أزرار الصوت لتبديل الأرقام.</string>
+</resources>
