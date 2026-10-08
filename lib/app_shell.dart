@@ -64,6 +64,10 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   bool _accessibilityOn = false;
   bool _overlayOn = false;
 
+  // ⭐ الجديد
+  bool _running = false; // ON/OFF الرئيسي
+  Timer? _statsTimer;
+
   @override
   void initState() {
     super.initState();
@@ -71,7 +75,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
 
     AutoFillBridge.setListener(
       onVolume: (action) async {
-        if (!_volumeEnabled) return;
+        if (!_running || !_volumeEnabled) return;
         if (action == 'vol_up') {
           await _advanceNumber(forward: true, source: 'Volume Up');
         } else if (action == 'vol_down') {
@@ -79,16 +83,25 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
         }
       },
       onFloatingClick: () async {
-        if (!_floatingEnabled) return;
+        if (!_running || !_floatingEnabled) return;
         await _advanceNumber(forward: true, source: 'أيقونة عائمة');
       },
     );
 
     Future.delayed(const Duration(milliseconds: 600), _refreshPermissions);
+
+    // ⭐ تحديث تلقائي كل ثانية للداشبورد
+    _statsTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) return;
+      if (_stage == Stage.dashboard && !_busy) {
+        _refresh(silent: true);
+      }
+    });
   }
 
   @override
   void dispose() {
+    _statsTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     _userCtrl.dispose();
     _passCtrl.dispose();
@@ -197,15 +210,20 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     }
   }
 
-  Future<void> _refresh() async {
-    if (_web == null || _busy) return;
-    setState(() => _busy = true);
+  Future<void> _refresh({bool silent = false}) async {
+    if (_web == null) return;
+    if (!silent && _busy) return;
+    if (!silent) setState(() => _busy = true);
     final st = await _readStats();
     if (st != null && mounted) {
-      setState(() { _today = st.$1; _week = st.$2; _busy = false; });
+      setState(() {
+        _today = st.$1;
+        _week = st.$2;
+        if (!silent) _busy = false;
+      });
       return;
     }
-    if (mounted) setState(() => _busy = false);
+    if (!silent && mounted) setState(() => _busy = false);
   }
 
   Future<void> _logout() async {
@@ -440,7 +458,6 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       final safe = name.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_').trim();
       final file = File('${dir.path}/$safe.csv');
 
-      // استبدال لو موجود
       if (await file.exists()) {
         try { await file.delete(); } catch (_) {}
       }
@@ -495,6 +512,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
 
   Future<void> _advanceNumber({required bool forward, required String source}) async {
     if (_currentNumbers.isEmpty) return;
+    if (!_running) return;
 
     int next = _currentIndex + (forward ? 1 : -1);
 
@@ -516,7 +534,6 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     final num = _currentNumbers[next];
     _log('$source → $num', LogLevel.ok);
 
-    // اكتب في الحقل المفتوح
     if (_autoTypeEnabled) {
       final ok = await AutoFillBridge.typeText(num);
       if (ok) {
@@ -526,7 +543,6 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       }
     }
 
-    // حدّث الأيقونة العائمة
     if (_floatingEnabled) {
       await AutoFillBridge.updateFloatingText(num);
     }
@@ -548,6 +564,26 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     final num = _currentNumbers[_currentIndex];
     final ok = await AutoFillBridge.typeText(num);
     _log(ok ? '✅ اكتب: $num' : '⚠️ فشل الكتابة', ok ? LogLevel.ok : LogLevel.error);
+  }
+
+  // ⭐ ON/OFF الرئيسي
+  Future<void> _toggleRunning() async {
+    final newVal = !_running;
+    setState(() => _running = newVal);
+    _log(newVal ? '🟢 التشغيل اتفعّل' : '🔴 التشغيل اتوقف',
+        newVal ? LogLevel.ok : LogLevel.info);
+  }
+
+  // ⭐ Reset
+  Future<void> _resetCounter() async {
+    setState(() {
+      _currentIndex = 0;
+      _completedRounds = 0;
+    });
+    _log('🔄 تم إعادة التعيين - نبدأ من الأول', LogLevel.ok);
+    if (_floatingEnabled) {
+      await AutoFillBridge.updateFloatingText(_currentDisplay);
+    }
   }
 
   Future<void> _toggleAutoType(bool v) async {
@@ -601,7 +637,6 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   }
 
   Future<void> _backToDashboard() async {
-    // اقفل الأتمتة لو شغالة
     if (_volumeEnabled) await AutoFillBridge.stopVolumeListener();
     if (_floatingEnabled) await AutoFillBridge.hideFloating();
 
@@ -612,6 +647,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       _selectedRange = null;
       _volumeEnabled = false;
       _floatingEnabled = false;
+      _running = false;
     });
     try {
       await _web?.loadUrl(urlRequest: URLRequest(url: WebUri('https://imssms.org/')));
@@ -682,7 +718,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
               child: Container(
                 color: theme.scaffoldBackgroundColor,
                 child: AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 400),
+                  duration: const Duration(milliseconds: 350),
                   switchInCurve: Curves.easeOutCubic,
                   switchOutCurve: Curves.easeInCubic,
                   transitionBuilder: (child, anim) => FadeTransition(
@@ -731,6 +767,9 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
           floatingEnabled: _floatingEnabled,
           accessibilityOn: _accessibilityOn,
           overlayOn: _overlayOn,
+          running: _running,
+          onToggleRunning: _toggleRunning,
+          onReset: _resetCounter,
           onRefreshFiles: _refreshFiles,
           onSelectCsv: (name) async {
             setState(() => _selectedCsvName = name);
