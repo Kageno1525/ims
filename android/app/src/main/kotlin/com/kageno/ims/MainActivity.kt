@@ -16,44 +16,25 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
-
         methodChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL)
 
         methodChannel?.setMethodCallHandler { call, result ->
             when (call.method) {
-                "isAccessibilityEnabled" -> {
-                    result.success(isAccessibilityEnabled())
-                }
+                "isAccessibilityEnabled" -> result.success(isAccessibilityEnabled())
                 "openAccessibilitySettings" -> {
-                    try {
-                        startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
-                    } catch (_: Exception) {}
+                    try { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) } catch (_: Exception) {}
                     result.success(null)
                 }
-                "hasOverlayPermission" -> {
-                    result.success(Settings.canDrawOverlays(this))
-                }
+                "hasOverlayPermission" -> result.success(Settings.canDrawOverlays(this))
                 "openOverlaySettings" -> {
                     try {
-                        val i = Intent(
-                            Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                            Uri.parse("package:$packageName")
-                        )
-                        startActivity(i)
+                        startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
                     } catch (_: Exception) {}
                     result.success(null)
                 }
                 "typeText" -> {
                     val text = call.argument<String>("text") ?: ""
-                    // ⭐ شغل في thread منفصل عشان ميجمدش الـ UI
-                    Thread {
-                        val ok = try {
-                            ImsAccessibilityService.typeTextStatic(text)
-                        } catch (_: Exception) { false }
-                        Handler(Looper.getMainLooper()).post {
-                            result.success(ok)
-                        }
-                    }.start()
+                    runAsync(result) { ImsAccessibilityService.typeTextStatic(text) }
                 }
                 "startVolume" -> {
                     ImsAccessibilityService.volumeEnabled = true
@@ -68,22 +49,14 @@ class MainActivity : FlutterActivity() {
                         result.success(false)
                     } else {
                         try {
-                            val i = Intent(this, FloatingService::class.java).apply {
-                                action = "SHOW"
-                            }
-                            startService(i)
+                            startService(Intent(this, FloatingService::class.java).apply { action = "SHOW" })
                             result.success(true)
-                        } catch (_: Exception) {
-                            result.success(false)
-                        }
+                        } catch (_: Exception) { result.success(false) }
                     }
                 }
                 "hideFloating" -> {
                     try {
-                        val i = Intent(this, FloatingService::class.java).apply {
-                            action = "HIDE"
-                        }
-                        startService(i)
+                        startService(Intent(this, FloatingService::class.java).apply { action = "HIDE" })
                     } catch (_: Exception) {}
                     result.success(null)
                 }
@@ -92,20 +65,66 @@ class MainActivity : FlutterActivity() {
                     FloatingService.updateText(text)
                     result.success(null)
                 }
+                // ═══════ الجديد: التحكم في التطبيقات ═══════
+                "openApp" -> {
+                    val pkg = call.argument<String>("package") ?: ""
+                    runAsync(result) { ImsAccessibilityService.openAppStatic(pkg) }
+                }
+                "clickByText" -> {
+                    val t = call.argument<String>("text") ?: ""
+                    runAsync(result) { ImsAccessibilityService.clickByTextStatic(t) }
+                }
+                "clickByDesc" -> {
+                    val d = call.argument<String>("desc") ?: ""
+                    runAsync(result) { ImsAccessibilityService.clickByDescStatic(d) }
+                }
+                "clickById" -> {
+                    val v = call.argument<String>("viewId") ?: ""
+                    runAsync(result) { ImsAccessibilityService.clickByIdStatic(v) }
+                }
+                "clickAt" -> {
+                    val x = call.argument<Int>("x") ?: 0
+                    val y = call.argument<Int>("y") ?: 0
+                    runAsync(result) { ImsAccessibilityService.clickAtStatic(x, y) }
+                }
+                "swipe" -> {
+                    val x1 = call.argument<Int>("x1") ?: 0
+                    val y1 = call.argument<Int>("y1") ?: 0
+                    val x2 = call.argument<Int>("x2") ?: 0
+                    val y2 = call.argument<Int>("y2") ?: 0
+                    val d = call.argument<Int>("duration") ?: 300
+                    runAsync(result) { ImsAccessibilityService.swipeStatic(x1, y1, x2, y2, d) }
+                }
+                "globalBack" -> {
+                    runAsync(result) { ImsAccessibilityService.globalBackStatic() }
+                }
+                "globalHome" -> {
+                    runAsync(result) { ImsAccessibilityService.globalHomeStatic() }
+                }
+                "globalRecents" -> {
+                    runAsync(result) { ImsAccessibilityService.globalRecentsStatic() }
+                }
+                "currentPackage" -> {
+                    result.success(ImsAccessibilityService.currentPackageStatic())
+                }
                 else -> result.notImplemented()
             }
         }
 
         ImsAccessibilityService.onVolumeKey = { action ->
-            runOnUiThread {
-                methodChannel?.invokeMethod("onVolume", action)
-            }
+            runOnUiThread { methodChannel?.invokeMethod("onVolume", action) }
         }
         FloatingService.onClick = {
-            runOnUiThread {
-                methodChannel?.invokeMethod("onFloatingClick", null)
-            }
+            runOnUiThread { methodChannel?.invokeMethod("onFloatingClick", null) }
         }
+    }
+
+    /// يشغل العملية في thread منفصل عشان ميجمدش الـ UI
+    private fun runAsync(result: MethodChannel.Result, block: () -> Boolean) {
+        Thread {
+            val ok = try { block() } catch (_: Exception) { false }
+            Handler(Looper.getMainLooper()).post { result.success(ok) }
+        }.start()
     }
 
     private fun isAccessibilityEnabled(): Boolean {
