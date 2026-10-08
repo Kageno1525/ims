@@ -9,6 +9,7 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.Path
 import android.graphics.Rect
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -223,6 +224,22 @@ class ImsAccessibilityService : AccessibilityService() {
         return try { node.refresh() } catch (_: Exception) { false }
     }
 
+    // ⭐ بيستخدم global paste بس للـ API 26+، وإلا يعتمد على node paste
+    private fun pasteGlobalOrNode(node: AccessibilityNodeInfo?): Boolean {
+        var ok = false
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            try {
+                ok = performGlobalAction(GLOBAL_ACTION_PASTE)
+            } catch (_: Exception) {}
+        }
+        if (!ok && node != null) {
+            try {
+                ok = node.performAction(AccessibilityNodeInfo.ACTION_PASTE)
+            } catch (_: Exception) {}
+        }
+        return ok
+    }
+
     private fun gestureTapAndPaste(node: AccessibilityNodeInfo, text: String): Boolean {
         try {
             copyToClipboard(text)
@@ -252,7 +269,9 @@ class ImsAccessibilityService : AccessibilityService() {
             if (!completed.get()) return false
 
             try { Thread.sleep(100) } catch (_: InterruptedException) {}
-            val ok = performGlobalAction(GLOBAL_ACTION_PASTE)
+
+            val ok = pasteGlobalOrNode(node)
+
             try { Thread.sleep(80) } catch (_: InterruptedException) {}
 
             if (safeRefresh(node)) {
@@ -320,9 +339,7 @@ class ImsAccessibilityService : AccessibilityService() {
         if (node == null) return null
         try {
             if (safeRefresh(node) && pred(node)) {
-                // لو قابل للضغط، ارجعه
                 if (node.isClickable) return node
-                // طلع للأب القابل للضغط
                 var p = node.parent
                 var depth = 0
                 while (p != null && depth < 6) {
@@ -344,12 +361,10 @@ class ImsAccessibilityService : AccessibilityService() {
     }
 
     private fun performClickOnNode(node: AccessibilityNodeInfo): Boolean {
-        // 1) ACTION_CLICK
         try {
             if (node.performAction(AccessibilityNodeInfo.ACTION_CLICK)) return true
         } catch (_: Exception) {}
 
-        // 2) على الأب
         try {
             var p = node.parent
             var depth = 0
@@ -362,7 +377,6 @@ class ImsAccessibilityService : AccessibilityService() {
             }
         } catch (_: Exception) {}
 
-        // 3) gesture tap
         return clickAtNodeCenter(node)
     }
 
