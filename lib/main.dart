@@ -17,9 +17,7 @@ class _ImsAppState extends State<ImsApp> {
   ThemeMode _mode = ThemeMode.dark;
 
   void _toggle() => setState(
-        () => _mode =
-            _mode == ThemeMode.dark ? ThemeMode.light : ThemeMode.dark,
-      );
+      () => _mode = _mode == ThemeMode.dark ? ThemeMode.light : ThemeMode.dark);
 
   @override
   Widget build(BuildContext context) {
@@ -38,12 +36,8 @@ class _ImsAppState extends State<ImsApp> {
 }
 
 ThemeData _theme(Brightness b) {
-  final scheme = ColorScheme.fromSeed(
-    seedColor: const Color(0xFF6C5CE7),
-    brightness: b,
-  );
-  final base =
-      ThemeData(useMaterial3: true, colorScheme: scheme, brightness: b);
+  final scheme = ColorScheme.fromSeed(seedColor: const Color(0xFF6C5CE7), brightness: b);
+  final base = ThemeData(useMaterial3: true, colorScheme: scheme, brightness: b);
   return base.copyWith(
     scaffoldBackgroundColor:
         b == Brightness.dark ? const Color(0xFF0B0B14) : const Color(0xFFF5F6FB),
@@ -53,12 +47,8 @@ ThemeData _theme(Brightness b) {
       fillColor: b == Brightness.dark
           ? Colors.white.withOpacity(0.04)
           : Colors.black.withOpacity(0.02),
-      contentPadding:
-          const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(16),
-        borderSide: BorderSide.none,
-      ),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(16),
         borderSide: BorderSide(color: scheme.primary.withOpacity(0.15)),
