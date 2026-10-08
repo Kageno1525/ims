@@ -1,147 +1,118 @@
 import 'dart:async';
 import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
-import 'package:google_fonts/google_fonts.dart';
-
-void main() {
-  WidgetsFlutterBinding.ensureInitialized();
-  runApp(const ImsApp());
-}
-
-// ═══════════════════════════════════════════════════════════
-//                           APP
-// ═══════════════════════════════════════════════════════════
-
-class ImsApp extends StatefulWidget {
-  const ImsApp({super.key});
-  @override
-  State<ImsApp> createState() => _ImsAppState();
-}
-
-class _ImsAppState extends State<ImsApp> {
-  ThemeMode _mode = ThemeMode.dark;
-
-  void _toggle() => setState(
-        () => _mode =
-            _mode == ThemeMode.dark ? ThemeMode.light : ThemeMode.dark,
-      );
-
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'IMS',
-      debugShowCheckedModeBanner: false,
-      themeMode: _mode,
-      theme: _theme(Brightness.light),
-      darkTheme: _theme(Brightness.dark),
-      home: AppShell(
-        isDark: _mode == ThemeMode.dark,
-        onToggleTheme: _toggle,
-      ),
-    );
-  }
-}
-
-ThemeData _theme(Brightness b) {
-  final scheme = ColorScheme.fromSeed(
-    seedColor: const Color(0xFF6C5CE7),
-    brightness: b,
-  );
-  final base =
-      ThemeData(useMaterial3: true, colorScheme: scheme, brightness: b);
-  return base.copyWith(
-    scaffoldBackgroundColor:
-        b == Brightness.dark ? const Color(0xFF0B0B14) : const Color(0xFFF5F6FB),
-    textTheme: GoogleFonts.cairoTextTheme(base.textTheme),
-    inputDecorationTheme: InputDecorationTheme(
-      filled: true,
-      fillColor: b == Brightness.dark
-          ? Colors.white.withOpacity(0.04)
-          : Colors.black.withOpacity(0.02),
-      contentPadding:
-          const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(16),
-        borderSide: BorderSide.none,
-      ),
-      enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(16),
-        borderSide: BorderSide(color: scheme.primary.withOpacity(0.15)),
-      ),
-      focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(16),
-        borderSide: BorderSide(color: scheme.primary, width: 1.5),
-      ),
-      labelStyle: TextStyle(color: scheme.onSurface.withOpacity(0.6)),
-    ),
-  );
-}
-
-// ═══════════════════════════════════════════════════════════
-//                        CONSTANTS / JS
-// ═══════════════════════════════════════════════════════════
 
 const String _kLoginUrl = 'https://imssms.org/login';
 
-/// يملّي اليوزر والباسورد ويضغط زرار الدخول (متوافق مع Vue)
+/// ملء الفورم + الضغط على الدخول بشكل متوافق مع Vue 3
 const String _kFillJs = r'''
 (function(){
   try {
     var U = %USER%, P = %PASS%;
-    var u = document.querySelector('#app > div > form > div.login-body.classic-body > div:nth-child(3) > input[type=text]')
-         || document.querySelector('form input[type=text]')
-         || document.querySelector('input[type=text]');
-    var p = document.querySelector('#app > div > form > div.login-body.classic-body > div.pill-input.has-reveal > input[type=password]')
-         || document.querySelector('form input[type=password]')
-         || document.querySelector('input[type=password]');
-    var b = document.querySelector('#app > div > form > div.login-body.classic-body > button')
-         || document.querySelector('form button[type=submit]')
-         || document.querySelector('form button');
-    if (!u || !p || !b) return 'not-ready';
-    var setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
-    setter.call(u, U);
-    u.dispatchEvent(new Event('input', {bubbles:true}));
-    u.dispatchEvent(new Event('change', {bubbles:true}));
-    setter.call(p, P);
-    p.dispatchEvent(new Event('input', {bubbles:true}));
-    p.dispatchEvent(new Event('change', {bubbles:true}));
-    setTimeout(function(){ try { b.click(); } catch(e){} }, 60);
+    var root = document.querySelector('#app') || document;
+
+    var u = root.querySelector('input[type=text]')
+         || root.querySelector('input[type=email]')
+         || root.querySelector('input[name=username]')
+         || root.querySelector('input[name=email]');
+    var p = root.querySelector('input[type=password]')
+         || root.querySelector('input[name=password]');
+    var b = root.querySelector('button[type=submit]')
+         || root.querySelector('form button')
+         || root.querySelector('button');
+
+    if (!u || !p || !b) {
+      return 'not-ready|' + (u?'u':'-') + (p?'p':'-') + (b?'b':'-');
+    }
+
+    var proto = Object.getPrototypeOf(u);
+    var setter = Object.getOwnPropertyDescriptor(proto, 'value').set;
+    if (!setter) {
+      setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+    }
+
+    function fire(el, val){
+      el.focus();
+      el.dispatchEvent(new Event('focus', {bubbles:true}));
+      try { setter.call(el, val); } catch(e){ el.value = val; }
+      ['input','change','keyup','keydown','blur'].forEach(function(ev){
+        el.dispatchEvent(new Event(ev, {bubbles:true}));
+      });
+      el.dispatchEvent(new Event('focusout', {bubbles:true}));
+    }
+
+    fire(u, U);
+    fire(p, P);
+
+    setTimeout(function(){
+      try { b.focus(); } catch(e){}
+      var rect = b.getBoundingClientRect();
+      var cx = rect.left + rect.width/2;
+      var cy = rect.top + rect.height/2;
+      var opts = {bubbles:true, cancelable:true, view:window, clientX:cx, clientY:cy};
+      try { b.dispatchEvent(new PointerEvent('pointerdown', opts)); } catch(e){}
+      try { b.dispatchEvent(new MouseEvent('mousedown', opts)); } catch(e){}
+      try { b.dispatchEvent(new PointerEvent('pointerup', opts)); } catch(e){}
+      try { b.dispatchEvent(new MouseEvent('mouseup', opts)); } catch(e){}
+      try { b.dispatchEvent(new MouseEvent('click', opts)); } catch(e){}
+      try { b.click(); } catch(e){}
+    }, 120);
+
     return 'ok';
-  } catch(e) { return 'err'; }
+  } catch(e) {
+    return 'err:' + (e && e.message ? e.message : 'unknown');
+  }
 })()
 ''';
 
-/// يقرأ عناصر .cstat-value ويرجّع نص مفصول بـ |
+/// تشخيص: يرجع معلومات عن الصفحة الحالية
+const String _kDiagJs = r'''
+(function(){
+  try {
+    var url = location.href;
+    var inputs = document.querySelectorAll('input').length;
+    var buttons = document.querySelectorAll('button').length;
+    var stats = document.querySelectorAll('.cstat-value').length;
+    var bodyLen = (document.body && document.body.innerText) ? document.body.innerText.length : 0;
+    var hasLoginForm = !!document.querySelector('input[type=password]');
+    return [url, inputs, buttons, stats, bodyLen, hasLoginForm?1:0].join('|');
+  } catch(e){ return 'err:' + e.message; }
+})()
+''';
+
+/// قراءة الإحصائيات — يدعم أكثر من صيغة
 const String _kReadStatsJs = r'''
 (function(){
   try {
+    // المحاولة 1: class .cstat-value
     var els = document.querySelectorAll('.cstat-value');
     if (els.length >= 2) {
-      var a = String(els[0].innerText || els[0].textContent || '').trim();
-      var b = String(els[1].innerText || els[1].textContent || '').trim();
-      return 'ok|' + a + '|' + b;
+      var t = (els[0].innerText || els[0].textContent || '').trim();
+      var w = (els[1].innerText || els[1].textContent || '').trim();
+      return 'ok|' + t + '|' + w;
+    }
+    // المحاولة 2: ابحث عن أي h4 بأرقام
+    var h4 = document.querySelectorAll('h4');
+    if (h4.length >= 2) {
+      var nums = [];
+      h4.forEach(function(x){
+        var v = (x.innerText || '').trim();
+        if (/^\d+$/.test(v)) nums.push(v);
+      });
+      if (nums.length >= 2) return 'ok|' + nums[0] + '|' + nums[1];
     }
     return 'no';
-  } catch(e) { return 'err'; }
+  } catch(e){ return 'err:' + e.message; }
 })()
 ''';
 
 enum _Stage { login, dashboard }
 
-// ═══════════════════════════════════════════════════════════
-//                       APP SHELL
-// ═══════════════════════════════════════════════════════════
-
 class AppShell extends StatefulWidget {
   final bool isDark;
   final VoidCallback onToggleTheme;
-  const AppShell({
-    super.key,
-    required this.isDark,
-    required this.onToggleTheme,
-  });
+  const AppShell({super.key, required this.isDark, required this.onToggleTheme});
   @override
   State<AppShell> createState() => _AppShellState();
 }
@@ -154,6 +125,11 @@ class _AppShellState extends State<AppShell> {
 
   _Stage _stage = _Stage.login;
   bool _busy = false;
+  bool _showWeb = false;
+  bool _pageLoaded = false;
+  bool _webReady = false;
+  String _diag = '—';
+  String _lastJs = '—';
   String? _error;
   int _today = 0;
   int _week = 0;
@@ -176,6 +152,32 @@ class _AppShellState extends State<AppShell> {
     return s;
   }
 
+  Future<String> _eval(String js) async {
+    if (_web == null) return 'no-web';
+    try {
+      final raw = await _web!.evaluateJavascript(source: js);
+      return _unwrap(raw);
+    } catch (e) {
+      return 'err:$e';
+    }
+  }
+
+  Future<(int, int)?> _readStats() async {
+    final s = await _eval(_kReadStatsJs);
+    _lastJs = 'READ: $s';
+    if (!s.startsWith('ok|')) return null;
+    final parts = s.split('|');
+    if (parts.length < 3) return null;
+    final t = int.tryParse(parts[1].replaceAll(RegExp(r'[^0-9]'), '')) ?? 0;
+    final w = int.tryParse(parts[2].replaceAll(RegExp(r'[^0-9]'), '')) ?? 0;
+    return (t, w);
+  }
+
+  Future<void> _updateDiag() async {
+    final d = await _eval(_kDiagJs);
+    if (mounted) setState(() => _diag = d);
+  }
+
   String _jsonStr(String s) {
     final esc = s
         .replaceAll(r'\', r'\\')
@@ -185,18 +187,6 @@ class _AppShellState extends State<AppShell> {
     return '"$esc"';
   }
 
-  Future<(int, int)?> _readStats() async {
-    if (_web == null) return null;
-    final raw = await _web!.evaluateJavascript(source: _kReadStatsJs);
-    final s = _unwrap(raw);
-    if (!s.startsWith('ok|')) return null;
-    final parts = s.split('|');
-    if (parts.length < 3) return null;
-    final t = int.tryParse(parts[1].replaceAll(RegExp(r'[^0-9]'), '')) ?? 0;
-    final w = int.tryParse(parts[2].replaceAll(RegExp(r'[^0-9]'), '')) ?? 0;
-    return (t, w);
-  }
-
   Future<void> _submit() async {
     if (_busy) return;
     if (!_formKey.currentState!.validate()) return;
@@ -204,28 +194,46 @@ class _AppShellState extends State<AppShell> {
     setState(() {
       _busy = true;
       _error = null;
+      _lastJs = 'بدء…';
     });
 
     try {
-      // 1) استنى الـ webview يجهز
+      // 1) انتظار WebView
       final sw = Stopwatch()..start();
-      while (_web == null && sw.elapsed < const Duration(seconds: 8)) {
+      while (_web == null && sw.elapsed < const Duration(seconds: 10)) {
         await Future.delayed(const Duration(milliseconds: 200));
       }
-      if (_web == null) throw Exception('webview not ready');
+      if (_web == null) {
+        setState(() {
+          _busy = false;
+          _error = 'الـ WebView مش جاهز';
+          _lastJs = 'webview==null';
+        });
+        return;
+      }
 
-      // 2) جرّب تملّي الفورم لحد ما ينجح
+      // 2) انتظار تحميل الصفحة (كحد أقصى 12 ثانية إضافية)
+      while (!_pageLoaded && sw.elapsed < const Duration(seconds: 22)) {
+        await Future.delayed(const Duration(milliseconds: 300));
+      }
+      setState(() => _lastJs = 'الصفحة اتحمّلت: $_pageLoaded');
+      await _updateDiag();
+
+      // 3) محاولات ملء الفورم
       final js = _kFillJs
           .replaceAll('%USER%', _jsonStr(_userCtrl.text.trim()))
           .replaceAll('%PASS%', _jsonStr(_passCtrl.text));
-      for (int i = 0; i < 15; i++) {
+      String fillRes = '';
+      for (int i = 0; i < 20; i++) {
         await Future.delayed(const Duration(milliseconds: 400));
-        final res = _unwrap(await _web!.evaluateJavascript(source: js));
-        if (res == 'ok') break;
+        fillRes = await _eval(js);
+        setState(() => _lastJs = 'FILL[$i]: $fillRes');
+        if (fillRes == 'ok') break;
+        if (fillRes.startsWith('err:')) break;
       }
 
-      // 3) استنى لحد ما القيم تظهر
-      final deadline = DateTime.now().add(const Duration(seconds: 25));
+      // 4) انتظار ظهور الإحصائيات
+      final deadline = DateTime.now().add(const Duration(seconds: 30));
       while (DateTime.now().isBefore(deadline)) {
         await Future.delayed(const Duration(milliseconds: 700));
         if (!mounted) return;
@@ -236,16 +244,25 @@ class _AppShellState extends State<AppShell> {
             _week = stats.$2;
             _busy = false;
             _stage = _Stage.dashboard;
+            _showWeb = false;
           });
           return;
         }
       }
-      throw Exception('timeout');
-    } catch (_) {
+
+      // 5) فشل — أظهر الـ WebView عشان المستخدم يسجل يدوي
       if (!mounted) return;
       setState(() {
         _busy = false;
-        _error = 'مقدرناش نكمل تسجيل الدخول. تأكد من البيانات وجرب تاني.';
+        _showWeb = true;
+        _error = 'الأوتو فشل. سجّل يدوي من الشاشة وبياناتك محفوظة.';
+        _lastJs = 'TIMEOUT. FILL=$fillRes';
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _busy = false;
+        _error = 'خطأ: $e';
       });
     }
   }
@@ -253,14 +270,29 @@ class _AppShellState extends State<AppShell> {
   Future<void> _refresh() async {
     if (_web == null || _busy) return;
     setState(() => _busy = true);
+    // لو إحنا في الداشبورد، حدّث القيم
     final stats = await _readStats();
     if (stats != null && mounted) {
       setState(() {
         _today = stats.$1;
         _week = stats.$2;
+        _busy = false;
       });
+      return;
     }
-    if (mounted) setState(() => _busy = false);
+    // لو مفيش قيم لكن موجود .cstat-value في الصفحة الرئيسية => انتقل
+    if (mounted) {
+      final hasStats = _diag.split('|').length >= 4 && _diag.split('|')[3] != '0';
+      if (hasStats) {
+        setState(() {
+          _stage = _Stage.dashboard;
+          _showWeb = false;
+          _busy = false;
+        });
+      } else {
+        setState(() => _busy = false);
+      }
+    }
   }
 
   Future<void> _logout() async {
@@ -274,6 +306,10 @@ class _AppShellState extends State<AppShell> {
       _week = 0;
       _error = null;
       _passCtrl.clear();
+      _pageLoaded = false;
+      _showWeb = false;
+      _diag = '—';
+      _lastJs = '—';
     });
   }
 
@@ -283,7 +319,7 @@ class _AppShellState extends State<AppShell> {
     return Scaffold(
       body: Stack(
         children: [
-          // WebView شغال في الخلفية
+          // WebView شغال في الخلفية دايماً
           Positioned.fill(
             child: InAppWebView(
               initialUrlRequest: URLRequest(url: WebUri(_kLoginUrl)),
@@ -294,62 +330,120 @@ class _AppShellState extends State<AppShell> {
                 cacheEnabled: true,
                 thirdPartyCookiesEnabled: true,
                 sharedCookiesEnabled: true,
+                useHybridComposition: true,
+                transparentBackground: false,
               ),
-              onWebViewCreated: (c) => _web = c,
+              onWebViewCreated: (c) {
+                _web = c;
+                _webReady = true;
+              },
+              onLoadStart: (c, url) {
+                _pageLoaded = false;
+              },
+              onLoadStop: (c, url) async {
+                _pageLoaded = true;
+                await Future.delayed(const Duration(milliseconds: 500));
+                await _updateDiag();
+              },
+              onReceivedError: (c, req, err) {
+                _lastJs = 'webview error: ${err.description}';
+              },
             ),
           ),
-          // الواجهة القدامية (معتمة فوق الـ webview)
-          Positioned.fill(
-            child: Container(
-              color: theme.scaffoldBackgroundColor,
-              child: AnimatedSwitcher(
-                duration: const Duration(milliseconds: 450),
-                switchInCurve: Curves.easeOutCubic,
-                switchOutCurve: Curves.easeInCubic,
-                transitionBuilder: (child, anim) => FadeTransition(
-                  opacity: anim,
-                  child: SlideTransition(
-                    position: Tween(
-                      begin: const Offset(0, 0.05),
-                      end: Offset.zero,
-                    ).animate(anim),
-                    child: child,
+
+          // لو الويب فيو ظاهر، حطله طبقة شفافة + زر إغلاق
+          if (_showWeb)
+            Positioned(
+              top: 40,
+              right: 16,
+              child: SafeArea(
+                child: Material(
+                  color: Colors.red,
+                  borderRadius: BorderRadius.circular(30),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(30),
+                    onTap: () => setState(() => _showWeb = false),
+                    child: const Padding(
+                      padding:
+                          EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.visibility_off_rounded,
+                              color: Colors.white, size: 18),
+                          SizedBox(width: 6),
+                          Text('إخفاء',
+                              style: TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold)),
+                        ],
+                      ),
+                    ),
                   ),
                 ),
-                child: _stage == _Stage.dashboard
-                    ? _DashboardView(
-                        key: const ValueKey('dash'),
-                        isDark: widget.isDark,
-                        onToggleTheme: widget.onToggleTheme,
-                        today: _today,
-                        week: _week,
-                        busy: _busy,
-                        onRefresh: _refresh,
-                        onLogout: _logout,
-                      )
-                    : _LoginView(
-                        key: const ValueKey('login'),
-                        isDark: widget.isDark,
-                        onToggleTheme: widget.onToggleTheme,
-                        userCtrl: _userCtrl,
-                        passCtrl: _passCtrl,
-                        formKey: _formKey,
-                        busy: _busy,
-                        error: _error,
-                        onSubmit: _submit,
-                      ),
               ),
             ),
-          ),
+
+          // الواجهة الأمامية (معتمة إلا لو الويب فيو مطلوب يظهر)
+          if (!_showWeb)
+            Positioned.fill(
+              child: Container(
+                color: theme.scaffoldBackgroundColor,
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 450),
+                  switchInCurve: Curves.easeOutCubic,
+                  switchOutCurve: Curves.easeInCubic,
+                  transitionBuilder: (child, anim) => FadeTransition(
+                    opacity: anim,
+                    child: SlideTransition(
+                      position: Tween(
+                              begin: const Offset(0, 0.05), end: Offset.zero)
+                          .animate(anim),
+                      child: child,
+                    ),
+                  ),
+                  child: _stage == _Stage.dashboard
+                      ? _DashboardView(
+                          key: const ValueKey('dash'),
+                          isDark: widget.isDark,
+                          onToggleTheme: widget.onToggleTheme,
+                          today: _today,
+                          week: _week,
+                          busy: _busy,
+                          onRefresh: _refresh,
+                          onLogout: _logout,
+                        )
+                      : _LoginView(
+                          key: const ValueKey('login'),
+                          isDark: widget.isDark,
+                          onToggleTheme: widget.onToggleTheme,
+                          userCtrl: _userCtrl,
+                          passCtrl: _passCtrl,
+                          formKey: _formKey,
+                          busy: _busy,
+                          error: _error,
+                          diag: _diag,
+                          lastJs: _lastJs,
+                          pageLoaded: _pageLoaded,
+                          webReady: _webReady,
+                          onSubmit: _submit,
+                          onToggleWeb: () =>
+                              setState(() => _showWeb = !_showWeb),
+                          onRetryDiag: () async {
+                            await _updateDiag();
+                            await _refresh();
+                          },
+                        ),
+                ),
+              ),
+            ),
         ],
       ),
     );
   }
 }
 
-// ═══════════════════════════════════════════════════════════
-//                       LOGIN VIEW
-// ═══════════════════════════════════════════════════════════
+// ─────────────────────────── Login View ───────────────────────────
 
 class _LoginView extends StatelessWidget {
   final bool isDark;
@@ -359,7 +453,13 @@ class _LoginView extends StatelessWidget {
   final GlobalKey<FormState> formKey;
   final bool busy;
   final String? error;
+  final String diag;
+  final String lastJs;
+  final bool pageLoaded;
+  final bool webReady;
   final Future<void> Function() onSubmit;
+  final VoidCallback onToggleWeb;
+  final Future<void> Function() onRetryDiag;
 
   const _LoginView({
     super.key,
@@ -370,7 +470,13 @@ class _LoginView extends StatelessWidget {
     required this.formKey,
     required this.busy,
     required this.error,
+    required this.diag,
+    required this.lastJs,
+    required this.pageLoaded,
+    required this.webReady,
     required this.onSubmit,
+    required this.onToggleWeb,
+    required this.onRetryDiag,
   });
 
   @override
@@ -382,22 +488,29 @@ class _LoginView extends StatelessWidget {
           child: SingleChildScrollView(
             padding: const EdgeInsets.all(24),
             child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 440),
+              constraints: const BoxConstraints(maxWidth: 460),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: _IconBtn(
-                      icon: isDark
-                          ? Icons.dark_mode_rounded
-                          : Icons.light_mode_rounded,
-                      onTap: onToggleTheme,
-                    ),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      _IconBtn(
+                        icon: Icons.visibility_rounded,
+                        onTap: onToggleWeb,
+                      ),
+                      const SizedBox(width: 8),
+                      _IconBtn(
+                        icon: isDark
+                            ? Icons.dark_mode_rounded
+                            : Icons.light_mode_rounded,
+                        onTap: onToggleTheme,
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 8),
                   _buildLogo(theme),
-                  const SizedBox(height: 32),
+                  const SizedBox(height: 24),
                   Container(
                     padding: const EdgeInsets.all(24),
                     decoration: BoxDecoration(
@@ -458,6 +571,17 @@ class _LoginView extends StatelessWidget {
                                 : null,
                             onFieldSubmitted: (_) => onSubmit(),
                           ),
+                          const SizedBox(height: 14),
+                          _StatusChip(
+                            webReady: webReady,
+                            pageLoaded: pageLoaded,
+                          ),
+                          const SizedBox(height: 10),
+                          _DiagBox(
+                            diag: diag,
+                            lastJs: lastJs,
+                            onRetry: onRetryDiag,
+                          ),
                           AnimatedSize(
                             duration: const Duration(milliseconds: 250),
                             child: error == null
@@ -508,7 +632,7 @@ class _LoginView extends StatelessWidget {
                       ),
                     ),
                   ),
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 16),
                   Text(
                     'IMS SMS',
                     style: TextStyle(
@@ -535,15 +659,15 @@ class _LoginView extends StatelessWidget {
           curve: Curves.elasticOut,
           builder: (_, s, child) => Transform.scale(scale: s, child: child),
           child: Container(
-            width: 96,
-            height: 96,
+            width: 88,
+            height: 88,
             decoration: BoxDecoration(
               gradient: const LinearGradient(
                 colors: [Color(0xFF6C5CE7), Color(0xFF00D2FF)],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               ),
-              borderRadius: BorderRadius.circular(28),
+              borderRadius: BorderRadius.circular(26),
               boxShadow: [
                 BoxShadow(
                   color: const Color(0xFF6C5CE7).withOpacity(0.5),
@@ -552,31 +676,116 @@ class _LoginView extends StatelessWidget {
                 ),
               ],
             ),
-            child: const Icon(Icons.sms_rounded,
-                color: Colors.white, size: 48),
+            child:
+                const Icon(Icons.sms_rounded, color: Colors.white, size: 44),
           ),
         ),
-        const SizedBox(height: 18),
+        const SizedBox(height: 14),
         Text(
           'لوحة تحكم الرسائل',
           style:
               theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          'تابع إحصائياتك بسهولة',
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: theme.colorScheme.onSurface.withOpacity(0.6),
-          ),
         ),
       ],
     );
   }
 }
 
-// ═══════════════════════════════════════════════════════════
-//                     SUBMIT BUTTON
-// ═══════════════════════════════════════════════════════════
+// ─────────────────────────── Status + Diag ───────────────────────────
+
+class _StatusChip extends StatelessWidget {
+  final bool webReady;
+  final bool pageLoaded;
+  const _StatusChip({required this.webReady, required this.pageLoaded});
+
+  @override
+  Widget build(BuildContext context) {
+    Widget dot(bool ok, String label) => Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 8,
+              height: 8,
+              decoration: BoxDecoration(
+                color: ok ? Colors.green : Colors.orange,
+                shape: BoxShape.circle,
+              ),
+            ),
+            const SizedBox(width: 6),
+            Text(label,
+                style: const TextStyle(fontSize: 11, color: Colors.grey)),
+          ],
+        );
+    return Wrap(
+      spacing: 14,
+      children: [
+        dot(webReady, 'WebView'),
+        dot(pageLoaded, 'تحميل الصفحة'),
+      ],
+    );
+  }
+}
+
+class _DiagBox extends StatelessWidget {
+  final String diag;
+  final String lastJs;
+  final Future<void> Function() onRetry;
+  const _DiagBox({
+    required this.diag,
+    required this.lastJs,
+    required this.onRetry,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.onSurface.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: theme.colorScheme.primary.withOpacity(0.15),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.bug_report_rounded,
+                  size: 14, color: Colors.grey),
+              const SizedBox(width: 6),
+              const Text('تشخيص',
+                  style: TextStyle(fontSize: 11, color: Colors.grey)),
+              const Spacer(),
+              GestureDetector(
+                onTap: () => onRetry(),
+                child: const Text('تحديث',
+                    style: TextStyle(
+                        fontSize: 11,
+                        color: Colors.blueAccent,
+                        decoration: TextDecoration.underline)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          SelectableText(
+            diag,
+            style: const TextStyle(fontSize: 10, fontFamily: 'monospace'),
+          ),
+          const SizedBox(height: 4),
+          SelectableText(
+            lastJs,
+            style: const TextStyle(fontSize: 10, fontFamily: 'monospace'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─────────────────────────── Submit button ───────────────────────────
 
 class _SubmitButton extends StatelessWidget {
   final bool busy;
@@ -644,9 +853,7 @@ class _SubmitButton extends StatelessWidget {
   }
 }
 
-// ═══════════════════════════════════════════════════════════
-//                     DASHBOARD VIEW
-// ═══════════════════════════════════════════════════════════
+// ─────────────────────────── Dashboard View ───────────────────────────
 
 class _DashboardView extends StatelessWidget {
   final bool isDark;
@@ -733,10 +940,7 @@ class _DashboardView extends StatelessWidget {
                         title: 'رسائل اليوم',
                         value: today,
                         icon: Icons.today_rounded,
-                        colors: const [
-                          Color(0xFF6C5CE7),
-                          Color(0xFF8E7CFF)
-                        ],
+                        colors: const [Color(0xFF6C5CE7), Color(0xFF8E7CFF)],
                         delay: 0,
                       ),
                       const SizedBox(height: 18),
@@ -744,10 +948,7 @@ class _DashboardView extends StatelessWidget {
                         title: 'رسائل هذا الأسبوع',
                         value: week,
                         icon: Icons.calendar_view_week_rounded,
-                        colors: const [
-                          Color(0xFF00D2FF),
-                          Color(0xFF3A7BD5)
-                        ],
+                        colors: const [Color(0xFF00D2FF), Color(0xFF3A7BD5)],
                         delay: 120,
                       ),
                       const SizedBox(height: 24),
@@ -878,10 +1079,6 @@ class _AnimatedCounter extends StatelessWidget {
   }
 }
 
-// ═══════════════════════════════════════════════════════════
-//                       ICON BUTTON
-// ═══════════════════════════════════════════════════════════
-
 class _IconBtn extends StatelessWidget {
   final IconData icon;
   final VoidCallback? onTap;
@@ -915,9 +1112,7 @@ class _IconBtn extends StatelessWidget {
   }
 }
 
-// ═══════════════════════════════════════════════════════════
-//                   ANIMATED BACKGROUND
-// ═══════════════════════════════════════════════════════════
+// ─────────────────────────── Animated Background ───────────────────────────
 
 class _AnimatedBackground extends StatefulWidget {
   final Widget child;
