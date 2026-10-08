@@ -221,26 +221,21 @@ class _AppShellState extends State<AppShell> {
     _log('تم تحميل ${found.length} رنج ✅', LogLevel.ok);
   }
 
-  /// يضمن اختيار الرنج المطلوب ويتحقق إنه اتسجل
   Future<bool> _ensureRangeSelected(String name) async {
-    // تحقق من الزر الحالي
     final current = await _eval(WebScripts.readRangeButton);
     if (current.contains(name)) return true;
 
     for (int attempt = 1; attempt <= 4; attempt++) {
-      // افتح القائمة لو مش مفتوحة
       final isOpen = await _eval(WebScripts.isRangeDropdownOpen);
       if (!isOpen.contains('yes')) {
         await _eval(WebScripts.openRanges);
         await Future.delayed(const Duration(milliseconds: 700));
       }
 
-      // اضغط على العنصر
       final sel = await _eval(WebScripts.selectRange.replaceAll('%NAME%', _js(name)));
       _log('محاولة $attempt: "$name" → $sel', sel == 'ok' ? LogLevel.info : LogLevel.wait);
       await Future.delayed(const Duration(milliseconds: 900));
 
-      // تحقق
       final after = await _eval(WebScripts.readRangeButton);
       if (after.contains(name)) {
         _log('الرنج "$name" اتحدد ✅', LogLevel.ok);
@@ -250,16 +245,16 @@ class _AppShellState extends State<AppShell> {
     return false;
   }
 
+  // ═══════ تطبيق الفلتر (الرنج بس) ═══════
   Future<void> _applyFilter() async {
     if (_selectedRange == null) {
       _log('اختار رنج الأول', LogLevel.error);
       return;
     }
     setState(() => _busy = true);
-    _log('جاري تطبيق الفلتر…', LogLevel.wait);
+    _log('جاري تطبيق فلتر الرنج…', LogLevel.wait);
 
     try {
-      // 1) الرنج
       final ok = await _ensureRangeSelected(_selectedRange!);
       if (!ok) {
         _log('فشل اختيار الرنج 😕', LogLevel.error);
@@ -268,40 +263,54 @@ class _AppShellState extends State<AppShell> {
       }
       await Future.delayed(const Duration(milliseconds: 500));
 
-      // 2) العدد والنوع
-      final setJs = WebScripts.setFilters
-          .replaceAll('%COUNT%', _selectedCount.toString())
-          .replaceAll('%TYPE%', _selectedType);
-      final r2 = await _eval(setJs);
-      _log('الخيارات: $r2', r2.contains('c=1') && r2.contains('t=1') ? LogLevel.ok : LogLevel.error);
-      await Future.delayed(const Duration(milliseconds: 400));
-
-      // 3) اضغط Filter
-      final r3 = await _eval(WebScripts.clickFilter);
-      _log('Filter: $r3', r3 == 'ok' ? LogLevel.ok : LogLevel.error);
+      final r = await _eval(WebScripts.clickFilter);
+      _log('Filter: $r', r == 'ok' ? LogLevel.ok : LogLevel.error);
       await Future.delayed(const Duration(milliseconds: 2500));
 
-      _log('الفلتر اتطبق ✅', LogLevel.ok);
+      _log('الفلتر اتطبق ✅ دلوقتي حدد العدد والنوع واضغط تحميل', LogLevel.ok);
     } catch (e) {
       _log('خطأ: $e', LogLevel.error);
     }
     if (mounted) setState(() => _busy = false);
   }
 
+  // ═══════ تحميل CSV (العدد + النوع + CSV) ═══════
   Future<void> _downloadCsv() async {
     if (_selectedRange == null) {
       _log('اختار رنج الأول', LogLevel.error);
       return;
     }
     setState(() => _busy = true);
-    _log('جاري توليد CSV…', LogLevel.wait);
+    _log('جاري تجهيز التحميل…', LogLevel.wait);
 
     try {
+      // 1) اضبط العدد والنوع
+      final setJs = WebScripts.setFilters
+          .replaceAll('%COUNT%', _selectedCount.toString())
+          .replaceAll('%TYPE%', _selectedType);
+      final rOpt = await _eval(setJs);
+      final okOpt = rOpt.contains('c=1') && rOpt.contains('t=1');
+      _log('الخيارات: $rOpt', okOpt ? LogLevel.ok : LogLevel.error);
+
+      if (!okOpt) {
+        _log('مقدرناش نظبط العدد/النوع 😕', LogLevel.error);
+        setState(() => _busy = false);
+        return;
+      }
+      await Future.delayed(const Duration(milliseconds: 900));
+
+      // 2) صفّر الـ blob القديم
       await _eval(WebScripts.clearBlob);
+
+      // 3) اضغط CSV
       final r = await _eval(WebScripts.clickCsv);
       _log('ضغط CSV: $r', r == 'ok' ? LogLevel.ok : LogLevel.error);
-      if (r != 'ok') { setState(() => _busy = false); return; }
+      if (r != 'ok') {
+        setState(() => _busy = false);
+        return;
+      }
 
+      // 4) استنى المحتوى
       String? content;
       final dl = DateTime.now().add(const Duration(seconds: 25));
       while (DateTime.now().isBefore(dl)) {
@@ -322,7 +331,7 @@ class _AppShellState extends State<AppShell> {
       }
       _log('تم التقاط المحتوى (${content.length} حرف)', LogLevel.ok);
 
-      // اسم الملف = اسم الرنج
+      // 5) احفظ باسم الرنج
       final saved = await _saveCsv(_selectedRange!, content);
       if (saved == null) {
         _log('فشل حفظ الملف 😕', LogLevel.error);
