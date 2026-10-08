@@ -7,7 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:path_provider/path_provider.dart';
 import 'login_page.dart';
-import 'dashboard_page.dart';
+import 'home_page.dart';
 import 'numbers_page.dart';
 import 'models.dart';
 import 'web_scripts.dart';
@@ -17,8 +17,9 @@ import 'tasks/tasks_page.dart';
 
 const String _kLoginUrl = 'https://imssms.org/login';
 const String _kNumbersUrl = 'https://imssms.org/numbers';
+const String _kHomeUrl = 'https://imssms.org/';
 
-enum Stage { login, dashboard, numbers, tasks }
+enum Stage { home, login, numbers, tasks }
 
 class AppShell extends StatefulWidget {
   final bool isDark;
@@ -34,12 +35,15 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   final _passCtrl = TextEditingController();
   final _formKey = GlobalKey<FormState>();
 
-  late final Widget _webViewWidget;
+  // ⭐ الـ WebView widget - بيتخزن لإنه بيتعمل مرة واحدة
+  Widget? _webViewWidget;
 
-  Stage _stage = Stage.login;
+  Stage _stage = Stage.home;
+  Stage _beforeLogin = Stage.home; // عشان نعرف نرجع فين بعد login
   bool _busy = false;
-  bool _showWeb = false;
   bool _pageLoaded = false;
+  bool _isLoggedIn = false;
+  bool _webViewInitialized = false;
 
   String? _error;
   int _today = 0;
@@ -75,32 +79,6 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
 
-    _webViewWidget = InAppWebView(
-      initialUrlRequest: URLRequest(url: WebUri(_kLoginUrl)),
-      initialSettings: InAppWebViewSettings(
-        javaScriptEnabled: true,
-        domStorageEnabled: true,
-        databaseEnabled: true,
-        cacheEnabled: true,
-        thirdPartyCookiesEnabled: true,
-        sharedCookiesEnabled: true,
-        mediaPlaybackRequiresUserGesture: false,
-      ),
-      initialUserScripts: UnmodifiableListView<UserScript>([
-        UserScript(
-          source: WebScripts.blobCapture,
-          injectionTime: UserScriptInjectionTime.AT_DOCUMENT_START,
-        ),
-      ]),
-      onWebViewCreated: (c) => _web = c,
-      onLoadStart: (c, url) {
-        if (mounted) setState(() => _pageLoaded = false);
-      },
-      onLoadStop: (c, url) async {
-        if (mounted) setState(() => _pageLoaded = true);
-      },
-    );
-
     AutoFillBridge.setListener(
       onVolume: (action) async {
         if (!_running || !_volumeEnabled) return;
@@ -118,9 +96,10 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
 
     Future.microtask(_bootstrap);
 
+    // تحديث الإحصائيات كل 10 ثواني - بس لو في صفحة الأرقام
     _statsTimer = Timer.periodic(const Duration(seconds: 10), (_) {
       if (!mounted) return;
-      if (_stage == Stage.dashboard && !_busy) {
+      if (_stage == Stage.numbers && _isLoggedIn && !_busy) {
         _refresh(silent: true);
       }
     });
@@ -146,6 +125,37 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     if (state == AppLifecycleState.resumed) {
       _refreshPermissions();
     }
+  }
+
+  // ⭐ الـ WebView بيتعمل مرة واحدة بس
+  void _initWebViewIfNeeded() {
+    if (_webViewInitialized) return;
+    _webViewInitialized = true;
+    _webViewWidget = InAppWebView(
+      initialUrlRequest: URLRequest(url: WebUri(_kLoginUrl)),
+      initialSettings: InAppWebViewSettings(
+        javaScriptEnabled: true,
+        domStorageEnabled: true,
+        databaseEnabled: true,
+        cacheEnabled: true,
+        thirdPartyCookiesEnabled: true,
+        sharedCookiesEnabled: true,
+        mediaPlaybackRequiresUserGesture: false,
+      ),
+      initialUserScripts: UnmodifiableListView<UserScript>([
+        UserScript(
+          source: WebScripts.blobCapture,
+          injectionTime: UserScriptInjectionTime.AT_DOCUMENT_START,
+        ),
+      ]),
+      onWebViewCreated: (c) => _web = c,
+      onLoadStart: (c, url) {
+        if (mounted) setState(() => _pageLoaded = false);
+      },
+      onLoadStop: (c, url) async {
+        if (mounted) setState(() => _pageLoaded = true);
+      },
+    );
   }
 
   Future<void> _refreshPermissions() async {
@@ -196,21 +206,43 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     return (t, w);
   }
 
+  // ⭐ لما المستخدم يدوس على الأرقام
+  Future<void> _onOpenNumbers() async {
+    if (_isLoggedIn) {
+      // مسجل دخول - يروح مباشر
+      await _goToNumbers();
+    } else {
+      // مش مسجل - يروح للـ login
+      _beforeLogin = Stage.numbers;
+      setState(() {
+        _stage = Stage.login;
+        _error = null;
+      });
+    }
+  }
+
+  // ⭐ الـ login
   Future<void> _submit() async {
     if (_busy) return;
     if (!_formKey.currentState!.validate()) return;
     FocusScope.of(context).unfocus();
     setState(() { _busy = true; _error = null; });
+
+    // ⭐ فعّل الـ WebView الأول لو مش متعمل
+    _initWebViewIfNeeded();
+    setState(() {});
+
     try {
       final sw = Stopwatch()..start();
-      while (_web == null && sw.elapsed < const Duration(seconds: 20)) {
+      // استنى الـ WebView يشتغل
+      while (_web == null && sw.elapsed < const Duration(seconds: 15)) {
         await Future.delayed(const Duration(milliseconds: 200));
       }
       if (_web == null) {
         setState(() { _busy = false; _error = 'الـ WebView مش جاهز'; });
         return;
       }
-      while (!_pageLoaded && sw.elapsed < const Duration(seconds: 22)) {
+      while (!_pageLoaded && sw.elapsed < const Duration(seconds: 20)) {
         await Future.delayed(const Duration(milliseconds: 300));
       }
       final js = WebScripts.fillLogin
@@ -228,14 +260,25 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
         final st = await _readStats();
         if (st != null) {
           setState(() {
-            _today = st.$1; _week = st.$2; _busy = false;
-            _stage = Stage.dashboard; _showWeb = false;
+            _today = st.$1;
+            _week = st.$2;
+            _busy = false;
+            _isLoggedIn = true;
           });
+          // نروح للمكان اللي كان بيدور عليه
+          if (_beforeLogin == Stage.numbers) {
+            await _goToNumbers();
+          } else {
+            setState(() => _stage = Stage.home);
+          }
           return;
         }
       }
       if (!mounted) return;
-      setState(() { _busy = false; _showWeb = true; _error = 'الأوتو فشل. سجّل يدوي.'; });
+      setState(() {
+        _busy = false;
+        _error = 'البيانات غلط أو الموقع بطيء. حاول تاني.';
+      });
     } catch (e) {
       if (!mounted) return;
       setState(() { _busy = false; _error = 'خطأ: $e'; });
@@ -243,7 +286,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   }
 
   Future<void> _refresh({bool silent = false}) async {
-    if (_web == null) return;
+    if (_web == null || !_isLoggedIn) return;
     if (!silent && _busy) return;
     if (!silent) setState(() => _busy = true);
     final st = await _readStats();
@@ -258,11 +301,26 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   }
 
   Future<void> _logout() async {
-    try { await _web?.loadUrl(urlRequest: URLRequest(url: WebUri(_kLoginUrl))); } catch (_) {}
-    if (!mounted) return;
     setState(() {
-      _stage = Stage.login; _today = 0; _week = 0; _error = null;
-      _passCtrl.clear(); _pageLoaded = false; _showWeb = false;
+      _isLoggedIn = false;
+      _today = 0;
+      _week = 0;
+      _error = null;
+      _passCtrl.clear();
+      _stage = Stage.home;
+      _ranges.clear();
+      _selectedRange = null;
+    });
+    try {
+      await _web?.loadUrl(urlRequest: URLRequest(url: WebUri(_kLoginUrl)));
+    } catch (_) {}
+  }
+
+  Future<void> _backFromLogin() async {
+    setState(() {
+      _stage = Stage.home;
+      _error = null;
+      _busy = false;
     });
   }
 
@@ -275,7 +333,9 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       _loadingRanges = true;
     });
     _log('جاري فتح صفحة الأرقام…', LogLevel.wait);
+
     await _refreshFiles();
+
     try {
       await _web?.loadUrl(urlRequest: URLRequest(url: WebUri(_kNumbersUrl)));
       final dl = DateTime.now().add(const Duration(seconds: 15));
@@ -287,6 +347,8 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       _log('اتفتحت صفحة الأرقام ✅', LogLevel.ok);
       await Future.delayed(const Duration(milliseconds: 1200));
       await _loadRanges();
+      // حدّث الإحصائيات بعد ما دخلنا
+      await _refresh(silent: true);
     } catch (e) {
       _log('فشل فتح الصفحة: $e', LogLevel.error);
       setState(() => _loadingRanges = false);
@@ -338,7 +400,8 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
         await Future.delayed(const Duration(milliseconds: 700));
       }
 
-      final sel = await _eval(WebScripts.selectRange.replaceAll('%NAME%', _js(name)));
+      final sel = await _eval(
+          WebScripts.selectRange.replaceAll('%NAME%', _js(name)));
       _log('محاولة $attempt: "$name" → $sel',
           sel == 'ok' ? LogLevel.info : LogLevel.wait);
       await Future.delayed(const Duration(milliseconds: 900));
@@ -546,7 +609,8 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     return _currentNumbers[_currentIndex];
   }
 
-  Future<void> _advanceNumber({required bool forward, required String source}) async {
+  Future<void> _advanceNumber(
+      {required bool forward, required String source}) async {
     if (_currentNumbers.isEmpty) return;
     if (!_running) return;
 
@@ -584,8 +648,10 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     }
   }
 
-  Future<void> _prevNumber() => _advanceNumber(forward: false, source: 'السابق');
-  Future<void> _nextNumber() => _advanceNumber(forward: true, source: 'التالي');
+  Future<void> _prevNumber() =>
+      _advanceNumber(forward: false, source: 'السابق');
+  Future<void> _nextNumber() =>
+      _advanceNumber(forward: true, source: 'التالي');
 
   Future<void> _copyCurrent() async {
     if (_currentNumbers.isEmpty) return;
@@ -598,7 +664,8 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     if (_currentNumbers.isEmpty) return;
     final num = _currentNumbers[_currentIndex];
     final ok = await AutoFillBridge.typeText(num);
-    _log(ok ? '✅ اكتب: $num' : '⚠️ فشل الكتابة', ok ? LogLevel.ok : LogLevel.error);
+    _log(ok ? '✅ اكتب: $num' : '⚠️ فشل الكتابة',
+        ok ? LogLevel.ok : LogLevel.error);
   }
 
   Future<void> _toggleRunning() async {
@@ -669,12 +736,12 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     await AutoFillBridge.openOverlaySettings();
   }
 
-  Future<void> _backToDashboard() async {
+  Future<void> _backToHome() async {
     if (_volumeEnabled) await AutoFillBridge.stopVolumeListener();
     if (_floatingEnabled) await AutoFillBridge.hideFloating();
 
     setState(() {
-      _stage = Stage.dashboard;
+      _stage = Stage.home;
       _ranges.clear();
       _selectedRange = null;
       _volumeEnabled = false;
@@ -682,11 +749,6 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       _running = false;
     });
     _logs.value = <LogEntry>[];
-    try {
-      await _web?.loadUrl(urlRequest: URLRequest(url: WebUri('https://imssms.org/')));
-      await Future.delayed(const Duration(seconds: 2));
-      await _refresh();
-    } catch (_) {}
   }
 
   void _openTasks() {
@@ -694,7 +756,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   }
 
   void _closeTasks() {
-    setState(() => _stage = Stage.dashboard);
+    setState(() => _stage = Stage.home);
   }
 
   @override
@@ -703,39 +765,15 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     return Scaffold(
       body: Stack(
         children: [
-          Positioned.fill(child: _webViewWidget),
-          if (_showWeb)
-            Positioned(
-              top: 40, right: 16,
-              child: SafeArea(
-                child: Material(
-                  color: Colors.red,
-                  borderRadius: BorderRadius.circular(30),
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(30),
-                    onTap: () => setState(() => _showWeb = false),
-                    child: const Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.visibility_off_rounded, color: Colors.white, size: 18),
-                          SizedBox(width: 6),
-                          Text('إخفاء', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ),
+          // ⭐ الـ WebView بيتعمل بس لما نحتاجه (بعد login أو في الأرقام)
+          if (_webViewInitialized && _webViewWidget != null)
+            Positioned.fill(child: _webViewWidget!),
+          Positioned.fill(
+            child: Container(
+              color: theme.scaffoldBackgroundColor,
+              child: _buildStage(),
             ),
-          if (!_showWeb)
-            Positioned.fill(
-              child: Container(
-                color: theme.scaffoldBackgroundColor,
-                child: _buildStage(),
-              ),
-            ),
+          ),
         ],
       ),
     );
@@ -756,6 +794,8 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
           key: const ValueKey('numbers'),
           isDark: widget.isDark,
           onToggleTheme: widget.onToggleTheme,
+          today: _today,
+          week: _week,
           ranges: _ranges,
           selectedRange: _selectedRange,
           selectedCount: _selectedCount,
@@ -799,20 +839,8 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
           onOpenAccessibility: _openAccessibility,
           onOpenOverlay: _openOverlay,
           logs: _logs,
-          onBack: _backToDashboard,
-        );
-      case Stage.dashboard:
-        return DashboardPage(
-          key: const ValueKey('dash'),
-          isDark: widget.isDark,
-          onToggleTheme: widget.onToggleTheme,
-          today: _today,
-          week: _week,
-          busy: _busy,
-          onRefresh: _refresh,
+          onBack: _backToHome,
           onLogout: _logout,
-          onOpenNumbers: _goToNumbers,
-          onOpenTasks: _openTasks,
         );
       case Stage.login:
         return LoginPage(
@@ -825,7 +853,15 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
           busy: _busy,
           error: _error,
           onSubmit: _submit,
-          onToggleWeb: () => setState(() => _showWeb = !_showWeb),
+          onBack: _backFromLogin,
+        );
+      case Stage.home:
+        return HomePage(
+          key: const ValueKey('home'),
+          isDark: widget.isDark,
+          onToggleTheme: widget.onToggleTheme,
+          onOpenNumbers: _onOpenNumbers,
+          onOpenTasks: _openTasks,
         );
     }
   }
