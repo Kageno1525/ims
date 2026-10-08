@@ -33,6 +33,9 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   final _passCtrl = TextEditingController();
   final _formKey = GlobalKey<FormState>();
 
+  // ⭐ WebView متخزن - مش بيتعمل rebuild
+  late final Widget _webViewWidget;
+
   Stage _stage = Stage.login;
   bool _busy = false;
   bool _showWeb = false;
@@ -42,15 +45,16 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   int _today = 0;
   int _week = 0;
 
-  // أرقام
   List<String> _ranges = [];
   String? _selectedRange;
   int _selectedCount = 10;
   String _selectedType = 'full';
   bool _loadingRanges = false;
-  final List<LogEntry> _logs = [];
 
-  // AutoFill
+  // ⭐ logs بـ ValueNotifier — صفر setState
+  final ValueNotifier<List<LogEntry>> _logs =
+      ValueNotifier<List<LogEntry>>(<LogEntry>[]);
+
   List<CsvFile> _csvFiles = [];
   String? _selectedCsvName;
   List<String> _currentNumbers = [];
@@ -72,6 +76,33 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
 
+    // ⭐ WebView widget بيتبني مرة واحدة بس
+    _webViewWidget = InAppWebView(
+      initialUrlRequest: URLRequest(url: WebUri(_kLoginUrl)),
+      initialSettings: InAppWebViewSettings(
+        javaScriptEnabled: true,
+        domStorageEnabled: true,
+        databaseEnabled: true,
+        cacheEnabled: true,
+        thirdPartyCookiesEnabled: true,
+        sharedCookiesEnabled: true,
+        mediaPlaybackRequiresUserGesture: false,
+      ),
+      initialUserScripts: UnmodifiableListView<UserScript>([
+        UserScript(
+          source: WebScripts.blobCapture,
+          injectionTime: UserScriptInjectionTime.AT_DOCUMENT_START,
+        ),
+      ]),
+      onWebViewCreated: (c) => _web = c,
+      onLoadStart: (c, url) {
+        if (mounted) setState(() => _pageLoaded = false);
+      },
+      onLoadStop: (c, url) async {
+        if (mounted) setState(() => _pageLoaded = true);
+      },
+    );
+
     AutoFillBridge.setListener(
       onVolume: (action) async {
         if (!_running || !_volumeEnabled) return;
@@ -87,11 +118,11 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       },
     );
 
-    // ⭐ تحميل الملفات تلقائياً عند فتح التطبيق
+    // تحميل الملفات + الصلاحيات بعد ما التطبيق يفتح
     Future.microtask(_bootstrap);
 
-    // تحديث الإحصائيات كل 5 ثواني بدل ثانية (أسرع بكتير)
-    _statsTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+    // تحديث الإحصائيات كل 10 ثواني (كان 5)
+    _statsTimer = Timer.periodic(const Duration(seconds: 10), (_) {
       if (!mounted) return;
       if (_stage == Stage.dashboard && !_busy) {
         _refresh(silent: true);
@@ -110,6 +141,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     WidgetsBinding.instance.removeObserver(this);
     _userCtrl.dispose();
     _passCtrl.dispose();
+    _logs.dispose();
     super.dispose();
   }
 
@@ -124,18 +156,22 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     final a = await AutoFillBridge.isAccessibilityEnabled();
     final o = await AutoFillBridge.hasOverlayPermission();
     if (!mounted) return;
+    if (a == _accessibilityOn && o == _overlayOn) return;
     setState(() {
       _accessibilityOn = a;
       _overlayOn = o;
     });
   }
 
+  // ⭐ بدون setState
   void _log(String msg, [LogLevel level = LogLevel.info]) {
-    if (!mounted) return;
-    setState(() {
-      _logs.insert(0, LogEntry(msg, DateTime.now(), level));
-      if (_logs.length > 100) _logs.removeLast();
-    });
+    final cur = _logs.value;
+    final updated = <LogEntry>[
+      LogEntry(msg, DateTime.now(), level),
+      ...cur,
+    ];
+    if (updated.length > 100) updated.removeRange(100, updated.length);
+    _logs.value = updated;
   }
 
   String _unwrap(dynamic raw) {
@@ -221,11 +257,13 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     if (!silent) setState(() => _busy = true);
     final st = await _readStats();
     if (st != null && mounted) {
-      setState(() {
-        _today = st.$1;
-        _week = st.$2;
-        if (!silent) _busy = false;
-      });
+      if (_today != st.$1 || _week != st.$2) {
+        setState(() {
+          _today = st.$1;
+          _week = st.$2;
+        });
+      }
+      if (!silent) setState(() => _busy = false);
       return;
     }
     if (!silent && mounted) setState(() => _busy = false);
@@ -242,16 +280,15 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
 
   // ═══════ Numbers ═══════
   Future<void> _goToNumbers() async {
+    _logs.value = <LogEntry>[];
     setState(() {
       _stage = Stage.numbers;
-      _logs.clear();
       _ranges.clear();
       _selectedRange = null;
       _loadingRanges = true;
     });
     _log('جاري فتح صفحة الأرقام…', LogLevel.wait);
 
-    // تحميل الملفات فوراً
     await _refreshFiles();
 
     try {
@@ -317,7 +354,8 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       }
 
       final sel = await _eval(WebScripts.selectRange.replaceAll('%NAME%', _js(name)));
-      _log('محاولة $attempt: "$name" → $sel', sel == 'ok' ? LogLevel.info : LogLevel.wait);
+      _log('محاولة $attempt: "$name" → $sel',
+          sel == 'ok' ? LogLevel.info : LogLevel.wait);
       await Future.delayed(const Duration(milliseconds: 900));
 
       final after = await _eval(WebScripts.readRangeButton);
@@ -387,8 +425,10 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
           final wt = (m['wantT'] ?? '').toString();
           cOk = c == wc;
           tOk = t == wt;
-          _log('العدد: $c (مطلوب $wc) ${cOk ? "✅" : "❌"} | النوع: $t (مطلوب $wt) ${tOk ? "✅" : "❌"}',
-              cOk && tOk ? LogLevel.ok : LogLevel.error);
+          _log(
+            'العدد: $c (مطلوب $wc) ${cOk ? "✅" : "❌"} | النوع: $t (مطلوب $wt) ${tOk ? "✅" : "❌"}',
+            cOk && tOk ? LogLevel.ok : LogLevel.error,
+          );
         } catch (_) {}
       }
 
@@ -430,7 +470,6 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
         _log('فشل حفظ الملف 😕', LogLevel.error);
       } else {
         _log('✅ اتحفظ: $saved', LogLevel.ok);
-        // ⭐ إعادة تحميل الملفات فوراً
         await _refreshFiles();
       }
     } catch (e) {
@@ -482,12 +521,15 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   Future<void> _refreshFiles() async {
     final list = await CsvReader.listFiles();
     if (!mounted) return;
+    if (_csvFiles.length == list.length &&
+        _csvFiles.every((f) => list.any((g) => g.name == f.name && g.count == f.count))) {
+      return; // مفيش تغيير
+    }
     setState(() {
       _csvFiles = list;
       if (_selectedCsvName == null && list.isNotEmpty) {
         _selectedCsvName = list.first.name;
       }
-      // لو الملف اللي كان مختار اتشال، اختر الأول
       if (_selectedCsvName != null &&
           !list.any((f) => f.name == _selectedCsvName)) {
         _selectedCsvName = list.isEmpty ? null : list.first.name;
@@ -552,7 +594,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       if (ok) {
         _log('✅ الكتابة نجحت', LogLevel.ok);
       } else {
-        _log('⚠️ الكتابة فشلت (جرب تاني - الحقل ممكن يكون لسه مش جاهز)', LogLevel.error);
+        _log('⚠️ الكتابة فشلت (جرب تاني)', LogLevel.error);
       }
     }
 
@@ -562,7 +604,6 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   }
 
   Future<void> _prevNumber() => _advanceNumber(forward: false, source: 'السابق');
-
   Future<void> _nextNumber() => _advanceNumber(forward: true, source: 'التالي');
 
   Future<void> _copyCurrent() async {
@@ -591,7 +632,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       _currentIndex = 0;
       _completedRounds = 0;
     });
-    _log('🔄 تم إعادة التعيين - نبدأ من الأول', LogLevel.ok);
+    _log('🔄 تم إعادة التعيين', LogLevel.ok);
     if (_floatingEnabled) {
       await AutoFillBridge.updateFloatingText(_currentDisplay);
     }
@@ -653,13 +694,13 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
 
     setState(() {
       _stage = Stage.dashboard;
-      _logs.clear();
       _ranges.clear();
       _selectedRange = null;
       _volumeEnabled = false;
       _floatingEnabled = false;
       _running = false;
     });
+    _logs.value = <LogEntry>[];
     try {
       await _web?.loadUrl(urlRequest: URLRequest(url: WebUri('https://imssms.org/')));
       await Future.delayed(const Duration(seconds: 2));
@@ -674,31 +715,8 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     return Scaffold(
       body: Stack(
         children: [
-          Positioned.fill(
-            child: InAppWebView(
-              initialUrlRequest: URLRequest(url: WebUri(_kLoginUrl)),
-              initialSettings: InAppWebViewSettings(
-                javaScriptEnabled: true,
-                domStorageEnabled: true,
-                databaseEnabled: true,
-                cacheEnabled: true,
-                thirdPartyCookiesEnabled: true,
-                sharedCookiesEnabled: true,
-                mediaPlaybackRequiresUserGesture: false,
-              ),
-              initialUserScripts: UnmodifiableListView<UserScript>([
-                UserScript(
-                  source: WebScripts.blobCapture,
-                  injectionTime: UserScriptInjectionTime.AT_DOCUMENT_START,
-                ),
-              ]),
-              onWebViewCreated: (c) => _web = c,
-              onLoadStart: (c, url) { if (mounted) setState(() => _pageLoaded = false); },
-              onLoadStop: (c, url) async {
-                if (mounted) setState(() => _pageLoaded = true);
-              },
-            ),
-          ),
+          // ⭐ WebView cached — never rebuilt
+          Positioned.fill(child: _webViewWidget),
           if (_showWeb)
             Positioned(
               top: 40, right: 16,
@@ -728,19 +746,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
             Positioned.fill(
               child: Container(
                 color: theme.scaffoldBackgroundColor,
-                child: AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 350),
-                  switchInCurve: Curves.easeOutCubic,
-                  switchOutCurve: Curves.easeInCubic,
-                  transitionBuilder: (child, anim) => FadeTransition(
-                    opacity: anim,
-                    child: SlideTransition(
-                      position: Tween(begin: const Offset(0, 0.05), end: Offset.zero).animate(anim),
-                      child: child,
-                    ),
-                  ),
-                  child: _buildStage(),
-                ),
+                child: _buildStage(),
               ),
             ),
         ],
