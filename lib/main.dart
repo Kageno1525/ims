@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -30,23 +31,21 @@ class _KagenoAppState extends State<KagenoApp> {
       debugShowCheckedModeBanner: false,
       title: 'IMSSMS Control Center',
       themeMode: _themeMode,
-      // الثيم الفاتح
       theme: ThemeData(
         brightness: Brightness.light,
-        scaffoldBackgroundColor: const Color(0xFFA5F8F6),
+        scaffoldBackgroundColor: const Color(0xFFF0F3F8),
         primaryColor: const Color(0xFF6C5CE7),
         cardColor: Colors.white,
         fontFamily: GoogleFonts.cairo().fontFamily,
       ),
-      // الثيم الغامق الفاجر (Dark Neon Glass)
       darkTheme: ThemeData(
         brightness: Brightness.dark,
-        scaffoldBackgroundColor: const Color(0xFF090A0F),
+        scaffoldBackgroundColor: const Color(0xFF07090E),
         primaryColor: const Color(0xFF00FFA3),
-        cardColor: const Color(0xFF12151E),
+        cardColor: const Color(0xFF111420),
         fontFamily: GoogleFonts.cairo().fontFamily,
       ),
-      home: DashboardScreen(
+      home: LoginScreen(
         onToggleTheme: _toggleTheme,
         isDark: _themeMode == ThemeMode.dark,
       ),
@@ -54,76 +53,52 @@ class _KagenoAppState extends State<KagenoApp> {
   }
 }
 
-class DashboardScreen extends StatefulWidget {
+// Global Controller للـ WebView ليعمل في خلفية التطبيق بين الصفحات
+InAppWebViewController? globalWebViewController;
+
+// -------------------------------------------------------------
+// 1️⃣ شاشة تسجيل الدخول (LOGIN SCREEN)
+// -------------------------------------------------------------
+class LoginScreen extends StatefulWidget {
   final VoidCallback onToggleTheme;
   final bool isDark;
 
-  const DashboardScreen({
+  const LoginScreen({
     Key? key,
-    required onToggleTheme,
-    required isDark,
-  })  : onToggleTheme = onToggleTheme,
-        isDark = isDark,
-        super(key: key);
+    required this.onToggleTheme,
+    required this.isDark,
+  }) : super(key: key);
 
   @override
-  State<DashboardScreen> createState() => _DashboardScreenState();
+  State<LoginScreen> createState() => _LoginScreenState();
 }
 
-class _DashboardScreenState extends State<DashboardScreen>
-    with SingleTickerProviderStateMixin {
-  InAppWebViewController? _webViewController;
-
-  // Controllers للتحكم في الإدخال
+class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController _userController = TextEditingController();
   final TextEditingController _passController = TextEditingController();
-
-  // القراءات المفتوحة
-  String _smsToday = "0";
-  String _smsThisWeek = "0";
   bool _isLoading = false;
-  String _statusMessage = "جاهز للبدء...";
+  bool _isWebViewReady = false;
 
-  late AnimationController _animController;
-  late Animation<double> _pulseAnimation;
-
-  @override
-  void initState() {
-    super.initState();
-    _animController = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 2),
-    )..repeat(reverse: true);
-
-    _pulseAnimation =
-        Tween<double>(begin: 1.0, end: 1.05).animate(_animController);
-  }
-
-  @override
-  void dispose() {
-    _animController.dispose();
-    _userController.dispose();
-    _passController.dispose();
-    super.dispose();
-  }
-
-  // 1️⃣ تسجيل الدخول التلقائي باستعمال الـ Selectors الدقيقة
-  Future<void> _executeAutoLogin() async {
+  Future<void> _executeLogin() async {
     if (_userController.text.isEmpty || _passController.text.isEmpty) {
       _showSnackBar("اكتب اسم المستخدم والباسورد الأول يا كاجينو!");
       return;
     }
 
+    if (!_isWebViewReady || globalWebViewController == null) {
+      _showSnackBar("جاري تجهيز الاتصال بالموقع، انتظر ثواني وجرب تاني...");
+      return;
+    }
+
     setState(() {
       _isLoading = true;
-      _statusMessage = "جاري تسجيل الدخول تلقائياً...";
     });
 
-    final String username = _userController.text.trim();
-    final String password = _passController.text.trim();
+    final username = _userController.text.trim();
+    final password = _passController.text.trim();
 
-    // كود السكريبت المحقون لتعبئة البيانات بالظبط في الحقول وضغط الزرار
-    await _webViewController?.evaluateJavascript(source: '''
+    // 1. حقن كود الدخول
+    await globalWebViewController?.evaluateJavascript(source: '''
       (function() {
         let userInput = document.querySelector('#app > div > form > div.login-body.classic-body > div:nth-child(3) > input[type=text]');
         let passInput = document.querySelector('#app > div > form > div.login-body.classic-body > div.pill-input.has-reveal > input[type=password]');
@@ -133,7 +108,6 @@ class _DashboardScreenState extends State<DashboardScreen>
           userInput.value = '$username';
           passInput.value = '$password';
 
-          // تحفيز الأحداث لـ Vue.js
           userInput.dispatchEvent(new Event('input', { bubbles: true }));
           passInput.dispatchEvent(new Event('input', { bubbles: true }));
 
@@ -144,46 +118,24 @@ class _DashboardScreenState extends State<DashboardScreen>
       })();
     ''');
 
-    // انتظار التحميل ثم قراءة البيانات أوتوماتيكياً
+    // 2. الانتظار للانتقال لصفحة الـ Dashboard
     await Future.delayed(const Duration(seconds: 4));
-    await _readSmsData();
-  }
 
-  // 2️⃣ قراءة البيانات (SMS Today & SMS This Week)
-  Future<void> _readSmsData() async {
-    setState(() {
-      _isLoading = true;
-      _statusMessage = "جاري سحب القراءات...";
-    });
-
-    var result = await _webViewController?.evaluateJavascript(source: '''
-      (function() {
-        let stats = document.querySelectorAll('.cstat-value');
-        if (stats.length >= 2) {
-          return {
-            today: stats[0].innerText.trim(),
-            week: stats[1].innerText.trim()
-          };
-        } else if (stats.length === 1) {
-          return {
-            today: stats[0].innerText.trim(),
-            week: "N/A"
-          };
-        }
-        return { today: "0", week: "0" };
-      })();
-    ''');
-
+    if (!mounted) return;
     setState(() {
       _isLoading = false;
-      if (result != null && result is Map) {
-        _smsToday = result['today']?.toString() ?? "0";
-        _smsThisWeek = result['week']?.toString() ?? "0";
-        _statusMessage = "تم تحديث البيانات بنجاح 🔥";
-      } else {
-        _statusMessage = "لم يتم العثور على القراءات، تأكد من تسجيل الدخول.";
-      }
     });
+
+    // 3. الانتقال لصفحة الـ SMS Dashboard
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(
+        builder: (context) => SmsDashboardScreen(
+          onToggleTheme: widget.onToggleTheme,
+          isDark: widget.isDark,
+        ),
+      ),
+    );
   }
 
   void _showSnackBar(String msg) {
@@ -199,13 +151,258 @@ class _DashboardScreenState extends State<DashboardScreen>
   @override
   Widget build(BuildContext context) {
     final isDark = widget.isDark;
-    final primaryColor = isDark ? const Color(0xFF00FFA3) : const Color(0xFF6C5CE7);
-    final cardBg = isDark ? const Color(0xFF121520) : Colors.white;
+    final primaryColor =
+        isDark ? const Color(0xFF00FFA3) : const Color(0xFF6C5CE7);
+
+    return Scaffold(
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        actions: [
+          IconButton(
+            icon: Icon(
+              isDark ? Icons.light_mode : Icons.dark_mode,
+              color: isDark ? const Color(0xFF80FFA3) : const Color(0xFF2D3436),
+            ),
+            onPressed: widget.onToggleTheme,
+          ),
+        ],
+      ),
+      body: Stack(
+        children: [
+          // WebView خفي ومستمر
+          SizedBox(
+            height: 1,
+            width: 1,
+            child: InAppWebView(
+              initialUrlRequest: URLRequest(
+                url: WebUri('https://imssms.org/login'),
+              ),
+              onWebViewCreated: (controller) {
+                globalWebViewController = controller;
+              },
+              onLoadStop: (controller, url) {
+                setState(() {
+                  _isWebViewReady = true;
+                });
+              },
+            ),
+          ),
+
+          Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  // شعار/عنوان التطبيق
+                  Icon(
+                    Icons.security_rounded,
+                    size: 70,
+                    color: primaryColor,
+                  ),
+                  const SizedBox(height: 15),
+                  Text(
+                    'IMSSMS CONTROL',
+                    style: GoogleFonts.orbitron(
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 2,
+                      color: primaryColor,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'سجل دخولك للتحكم والمتابعة اللحظية',
+                    style: TextStyle(
+                      color: isDark ? Colors.white60 : Colors.black54,
+                    ),
+                  ),
+                  const SizedBox(height: 40),
+
+                  // كارت تسجيل الدخول
+                  Container(
+                    padding: const EdgeInsets.all(24),
+                    decoration: BoxDecoration(
+                      color: isDark ? const Color(0xFF111420) : Colors.white,
+                      borderRadius: BorderRadius.circular(28),
+                      boxShadow: [
+                        BoxShadow(
+                          color: primaryColor.withOpacity(0.15),
+                          blurRadius: 25,
+                          spreadRadius: 2,
+                        )
+                      ],
+                      border: Border.all(
+                        color: primaryColor.withOpacity(0.2),
+                      ),
+                    ),
+                    child: Column(
+                      children: [
+                        TextField(
+                          controller: _userController,
+                          style: TextStyle(
+                              color: isDark ? Colors.white : Colors.black),
+                          decoration: InputDecoration(
+                            labelText: 'اسم المستخدم / الإيميل',
+                            labelStyle: TextStyle(
+                                color: isDark ? Colors.white60 : Colors.black54),
+                            prefixIcon:
+                                Icon(Icons.person_outline, color: primaryColor),
+                            filled: true,
+                            fillColor: isDark
+                                ? const Color(0xFF1A1D2B)
+                                : const Color(0xFFF1F2F6),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(16),
+                              borderSide: BorderSide.none,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 18),
+                        TextField(
+                          controller: _passController,
+                          obscureText: true,
+                          style: TextStyle(
+                              color: isDark ? Colors.white : Colors.black),
+                          decoration: InputDecoration(
+                            labelText: 'كلمة المرور',
+                            labelStyle: TextStyle(
+                                color: isDark ? Colors.white60 : Colors.black54),
+                            prefixIcon:
+                                Icon(Icons.lock_outline, color: primaryColor),
+                            filled: true,
+                            fillColor: isDark
+                                ? const Color(0xFF1A1D2B)
+                                : const Color(0xFFF1F2F6),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(16),
+                              borderSide: BorderSide.none,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 30),
+                        ElevatedButton(
+                          onPressed: _isLoading ? null : _executeLogin,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: primaryColor,
+                            foregroundColor: Colors.black,
+                            minimumSize: const Size(double.infinity, 55),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            elevation: 8,
+                          ),
+                          child: _isLoading
+                              ? const CircularProgressIndicator(
+                                  color: Colors.black)
+                              : const Text(
+                                  'تسجيل الدخول',
+                                  style: TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// -------------------------------------------------------------
+// 2️⃣ شاشة العرض والمتابعة التلقائية (SMS DASHBOARD SCREEN)
+// -------------------------------------------------------------
+class SmsDashboardScreen extends StatefulWidget {
+  final VoidCallback onToggleTheme;
+  final bool isDark;
+
+  const SmsDashboardScreen({
+    Key? key,
+    required this.onToggleTheme,
+    required this.isDark,
+  }) : super(key: key);
+
+  @override
+  State<SmsDashboardScreen> createState() => _SmsDashboardScreenState();
+}
+
+class _SmsDashboardScreenState extends State<SmsDashboardScreen>
+    with SingleTickerProviderStateMixin {
+  String _smsToday = "--";
+  String _smsThisWeek = "--";
+  Timer? _liveTimer;
+  late AnimationController _animController;
+
+  @override
+  void initState() {
+    super.initState();
+    _animController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 1),
+    )..repeat(reverse: true);
+
+    // ⏱️ بدء التحديث التلقائي اللحظي كل ثانية واحدة!
+    _startLiveSync();
+  }
+
+  void _startLiveSync() {
+    _liveTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      _fetchLiveSmsData();
+    });
+  }
+
+  Future<void> _fetchLiveSmsData() async {
+    if (globalWebViewController == null) return;
+
+    var result = await globalWebViewController?.evaluateJavascript(source: '''
+      (function() {
+        let stats = document.querySelectorAll('.cstat-value');
+        if (stats && stats.length >= 2) {
+          return {
+            today: stats[0].innerText.trim(),
+            week: stats[1].innerText.trim()
+          };
+        }
+        return null;
+      })();
+    ''');
+
+    if (result != null && result is Map) {
+      if (mounted) {
+        setState(() {
+          _smsToday = result['today']?.toString() ?? "--";
+          _smsThisWeek = result['week']?.toString() ?? "--";
+        });
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _liveTimer?.cancel();
+    _animController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = widget.isDark;
+    final primaryColor =
+        isDark ? const Color(0xFF00FFA3) : const Color(0xFF6C5CE7);
+    final cardBg = isDark ? const Color(0xFF111420) : Colors.white;
 
     return Scaffold(
       appBar: AppBar(
         title: Text(
-          'IMSSMS AUTOMATOR',
+          'SMS LIVE MONITOR',
           style: GoogleFonts.orbitron(
             fontWeight: FontWeight.bold,
             letterSpacing: 1.5,
@@ -216,215 +413,124 @@ class _DashboardScreenState extends State<DashboardScreen>
         backgroundColor: Colors.transparent,
         elevation: 0,
         actions: [
-          // 🌗 زرار الثيم الغامق والفاتح بأنيميشن
           IconButton(
-            icon: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 400),
-              transitionBuilder: (child, anim) => RotationTransition(
-                turns: anim,
-                child: ScaleTransition(scale: anim, child: child),
-              ),
-              child: Icon(
-                isDark ? Icons.light_mode : Icons.dark_mode,
-                key: ValueKey<bool>(isDark),
-                color: isDark ? const Color(0xFFFFD700) : const Color(0xFF2D3436),
-              ),
+            icon: Icon(
+              isDark ? Icons.light_mode : Icons.dark_mode,
+              color: isDark ? const Color(0xFFFFD700) : const Color(0xFF2D3436),
             ),
             onPressed: widget.onToggleTheme,
           ),
         ],
       ),
-      body: Stack(
-        children: [
-          // WebView شغال خفي خلف الكواليس
-          SizedBox(
-            height: 1,
-            width: 1,
-            child: InAppWebView(
-              initialUrlRequest: URLRequest(
-                url: WebUri('https://imssms.org/login'),
+      body: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          children: [
+            // مؤشر التحديث اللحظي المباشر
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              decoration: BoxDecoration(
+                color: primaryColor.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(30),
+                border: Border.all(color: primaryColor.withOpacity(0.4)),
               ),
-              onWebViewCreated: (controller) {
-                _webViewController = controller;
-              },
-              onLoadStop: (controller, url) {
-                setState(() {
-                  _statusMessage = "الصفحة جاهزة لتسجيل الدخول";
-                });
-              },
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  FadeTransition(
+                    opacity: _animController,
+                    child: Container(
+                      width: 10,
+                      height: 10,
+                      decoration: const BoxDecoration(
+                        color: Colors.redAccent,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Text(
+                    "بث مباشر: تحديث كل ثانية",
+                    style: TextStyle(
+                      color: primaryColor,
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
 
-          // واجهة المستخدم
-          SingleChildScrollView(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
+            const SizedBox(height: 40),
+
+            // كروت القراءات
+            Row(
               children: [
-                // كارت الحالة
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: cardBg.withOpacity(0.6),
-                    borderRadius: BorderRadius.circular(15),
-                    border: Border.all(
-                      color: primaryColor.withOpacity(0.3),
-                      width: 1,
-                    ),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        _isLoading ? Icons.sync : Icons.check_circle_outline,
-                        color: primaryColor,
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Text(
-                          _statusMessage,
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: isDark ? Colors.white70 : Colors.black87,
-                          ),
-                        ),
-                      ),
-                    ],
+                Expanded(
+                  child: _buildLiveCard(
+                    title: "SMS TODAY",
+                    value: _smsToday,
+                    icon: Icons.today,
+                    glowColor: const Color(0xFF00E5FF),
+                    cardBg: cardBg,
+                    isDark: isDark,
                   ),
                 ),
-
-                const SizedBox(height: 25),
-
-                // 🌟 كروت العرض الفاجرة (SMS Stats)
-                Row(
-                  children: [
-                    Expanded(
-                      child: ScaleTransition(
-                        scale: _pulseAnimation,
-                        child: _buildStatCard(
-                          title: "SMS TODAY",
-                          value: _smsToday,
-                          icon: Icons.today,
-                          color: const Color(0xFF00E5FF),
-                          cardBg: cardBg,
-                          isDark: isDark,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 15),
-                    Expanded(
-                      child: ScaleTransition(
-                        scale: _pulseAnimation,
-                        child: _buildStatCard(
-                          title: "SMS THIS WEEK",
-                          value: _smsThisWeek,
-                          icon: Icons.date_range,
-                          color: const Color(0xFFFF007A),
-                          cardBg: cardBg,
-                          isDark: isDark,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-
-                const SizedBox(height: 30),
-
-                // فورس تسجيل الدخول
-                Container(
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    color: cardBg,
-                    borderRadius: BorderRadius.circular(24),
-                    boxShadow: [
-                      BoxShadow(
-                        color: primaryColor.withOpacity(0.15),
-                        blurRadius: 20,
-                        spreadRadius: 2,
-                      )
-                    ],
-                    border: Border.all(
-                      color: primaryColor.withOpacity(0.2),
-                    ),
-                  ),
-                  child: Column(
-                    children: [
-                      _buildTextField(
-                        controller: _userController,
-                        label: 'اسم المستخدم / الإيميل',
-                        icon: Icons.person_outline,
-                        isDark: isDark,
-                        primaryColor: primaryColor,
-                      ),
-                      const SizedBox(height: 15),
-                      _buildTextField(
-                        controller: _passController,
-                        label: 'كلمة المرور',
-                        icon: Icons.lock_outline,
-                        isPassword: true,
-                        isDark: isDark,
-                        primaryColor: primaryColor,
-                      ),
-                      const SizedBox(height: 25),
-
-                      // زرار الدخول الفاجر
-                      ElevatedButton(
-                        onPressed: _isLoading ? null : _executeAutoLogin,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: primaryColor,
-                          foregroundColor: Colors.black,
-                          minimumSize: const Size(double.infinity, 55),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                          elevation: 10,
-                          shadowColor: primaryColor.withOpacity(0.5),
-                        ),
-                        child: _isLoading
-                            ? const CircularProgressIndicator(color: Colors.black)
-                            : const Text(
-                                'تسجيل دخول وتحديث',
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                      ),
-                    ],
-                  ),
-                ),
-
-                const SizedBox(height: 20),
-
-                // زرار سحب القراءات يدوياً
-                OutlinedButton.icon(
-                  onPressed: _readSmsData,
-                  icon: Icon(Icons.refresh, color: primaryColor),
-                  label: Text(
-                    'قراءة البيانات الآن',
-                    style: TextStyle(color: primaryColor),
-                  ),
-                  style: OutlinedButton.styleFrom(
-                    minimumSize: const Size(double.infinity, 50),
-                    side: BorderSide(color: primaryColor),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
+                const SizedBox(width: 15),
+                Expanded(
+                  child: _buildLiveCard(
+                    title: "SMS THIS WEEK",
+                    value: _smsThisWeek,
+                    icon: Icons.date_range,
+                    glowColor: const Color(0xFFFF007A),
+                    cardBg: cardBg,
+                    isDark: isDark,
                   ),
                 ),
               ],
             ),
-          ),
-        ],
+
+            const Spacer(),
+
+            // زر الخروج للعودة لشاشة الدخول
+            OutlinedButton.icon(
+              onPressed: () {
+                _liveTimer?.cancel();
+                Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => LoginScreen(
+                      onToggleTheme: widget.onToggleTheme,
+                      isDark: widget.isDark,
+                    ),
+                  ),
+                );
+              },
+              icon: const Icon(Icons.logout, color: Colors.redAccent),
+              label: const Text(
+                'تسجيل الخروج',
+                style: TextStyle(color: Colors.redAccent),
+              ),
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size(double.infinity, 50),
+                side: const BorderSide(color: Colors.redAccent),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
+          ],
+        ),
       ),
     );
   }
 
-  // كود تشكيل الكروت والإدخالات
-  Widget _buildStatCard({
+  Widget _buildLiveCard({
     required String title,
     required String value,
     required IconData icon,
-    required Color color,
+    required Color glowColor,
     required Color cardBg,
     required bool isDark,
   }) {
@@ -432,21 +538,21 @@ class _DashboardScreenState extends State<DashboardScreen>
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: cardBg,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: color.withOpacity(0.5), width: 1.5),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: glowColor.withOpacity(0.6), width: 2),
         boxShadow: [
           BoxShadow(
-            color: color.withOpacity(0.2),
-            blurRadius: 15,
-            spreadRadius: 1,
+            color: glowColor.withOpacity(0.25),
+            blurRadius: 20,
+            spreadRadius: 2,
           )
         ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, color: color, size: 28),
-          const SizedBox(height: 12),
+          Icon(icon, color: glowColor, size: 30),
+          const SizedBox(height: 15),
           Text(
             title,
             style: GoogleFonts.orbitron(
@@ -455,46 +561,16 @@ class _DashboardScreenState extends State<DashboardScreen>
               color: isDark ? Colors.white60 : Colors.black54,
             ),
           ),
-          const SizedBox(height: 5),
+          const SizedBox(height: 6),
           Text(
             value,
             style: GoogleFonts.orbitron(
-              fontSize: 26,
+              fontSize: 32,
               fontWeight: FontWeight.bold,
-              color: color,
+              color: glowColor,
             ),
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildTextField({
-    required TextEditingController controller,
-    required String label,
-    required IconData icon,
-    required bool isDark,
-    required Color primaryColor,
-    bool isPassword = false,
-  }) {
-    return TextField(
-      controller: controller,
-      obscureText: isPassword,
-      style: TextStyle(color: isDark ? Colors.white : Colors.black),
-      decoration: InputDecoration(
-        labelText: label,
-        labelStyle: TextStyle(color: isDark ? Colors.white60 : Colors.black54),
-        prefixIcon: Icon(icon, color: primaryColor),
-        filled: true,
-        fillColor: isDark ? const Color(0xFF1A1D2B) : const Color(0xFFF1F2F6),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
-          borderSide: BorderSide.none,
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
-          borderSide: BorderSide(color: primaryColor, width: 2),
-        ),
       ),
     );
   }
