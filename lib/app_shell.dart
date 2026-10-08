@@ -133,6 +133,18 @@ class _AppShellState extends State<AppShell> {
   int _week = 0;
 
   @override
+  void initState() {
+    super.initState();
+    // فحص أولي بعد 3 ثواني
+    Future.delayed(const Duration(seconds: 3), () {
+      if (!mounted) return;
+      debugPrint('=== init check: webReady=$_webReady, web=${_web != null} ===');
+      setState(() => _lastJs =
+          'init: web=${_web != null}, ready=$_webReady, loaded=$_pageLoaded');
+    });
+  }
+
+  @override
   void dispose() {
     _userCtrl.dispose();
     _passCtrl.dispose();
@@ -162,7 +174,8 @@ class _AppShellState extends State<AppShell> {
 
   Future<(int, int)?> _readStats() async {
     final s = await _eval(_kReadStatsJs);
-    _lastJs = 'READ: $s';
+    if (!mounted) return null;
+    setState(() => _lastJs = 'READ: $s');
     if (!s.startsWith('ok|')) return null;
     final parts = s.split('|');
     if (parts.length < 3) return null;
@@ -197,13 +210,13 @@ class _AppShellState extends State<AppShell> {
 
     try {
       final sw = Stopwatch()..start();
-      while (_web == null && sw.elapsed < const Duration(seconds: 10)) {
+      while (_web == null && sw.elapsed < const Duration(seconds: 20)) {
         await Future.delayed(const Duration(milliseconds: 200));
       }
       if (_web == null) {
         setState(() {
           _busy = false;
-          _error = 'الـ WebView مش جاهز';
+          _error = 'الـ WebView مش جاهز. تأكد من Android System WebView.';
           _lastJs = 'webview==null';
         });
         return;
@@ -212,7 +225,7 @@ class _AppShellState extends State<AppShell> {
       while (!_pageLoaded && sw.elapsed < const Duration(seconds: 22)) {
         await Future.delayed(const Duration(milliseconds: 300));
       }
-      setState(() => _lastJs = 'الصفحة اتحمّلت: $_pageLoaded');
+      if (mounted) setState(() => _lastJs = 'الصفحة اتحمّلت: $_pageLoaded');
       await _updateDiag();
 
       final js = _kFillJs
@@ -222,7 +235,7 @@ class _AppShellState extends State<AppShell> {
       for (int i = 0; i < 20; i++) {
         await Future.delayed(const Duration(milliseconds: 400));
         fillRes = await _eval(js);
-        setState(() => _lastJs = 'FILL[$i]: $fillRes');
+        if (mounted) setState(() => _lastJs = 'FILL[$i]: $fillRes');
         if (fillRes == 'ok') break;
         if (fillRes.startsWith('err:')) break;
       }
@@ -263,6 +276,7 @@ class _AppShellState extends State<AppShell> {
   Future<void> _refresh() async {
     if (_web == null || _busy) return;
     setState(() => _busy = true);
+    await _updateDiag();
     final stats = await _readStats();
     if (stats != null && mounted) {
       setState(() {
@@ -321,23 +335,37 @@ class _AppShellState extends State<AppShell> {
                 cacheEnabled: true,
                 thirdPartyCookiesEnabled: true,
                 sharedCookiesEnabled: true,
-                useHybridComposition: true,
-                transparentBackground: false,
+                mediaPlaybackRequiresUserGesture: false,
               ),
               onWebViewCreated: (c) {
+                debugPrint('✅ onWebViewCreated fired');
                 _web = c;
-                _webReady = true;
+                if (mounted) setState(() => _webReady = true);
               },
               onLoadStart: (c, url) {
-                _pageLoaded = false;
+                debugPrint('🌐 loadStart: $url');
+                if (mounted) setState(() => _pageLoaded = false);
               },
               onLoadStop: (c, url) async {
-                _pageLoaded = true;
+                debugPrint('✅ loadStop: $url');
+                if (mounted) setState(() => _pageLoaded = true);
                 await Future.delayed(const Duration(milliseconds: 500));
                 await _updateDiag();
               },
               onReceivedError: (c, req, err) {
-                _lastJs = 'webview error: ${err.description}';
+                debugPrint('❌ onReceivedError: ${err.description}');
+                if (mounted) {
+                  setState(() => _lastJs = 'err: ${err.description}');
+                }
+              },
+              onReceivedHttpError: (c, req, resp) {
+                debugPrint('❌ httpError: ${resp.statusCode} ${req.url}');
+                if (mounted) {
+                  setState(() => _lastJs = 'http ${resp.statusCode}');
+                }
+              },
+              onConsoleMessage: (c, msg) {
+                debugPrint('🖥 console: ${msg.message}');
               },
             ),
           ),
