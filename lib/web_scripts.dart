@@ -52,7 +52,6 @@ class WebScripts {
 })()
 ''';
 
-  // ═══════ Blob/CSV interception ═══════
   static const blobCapture = r'''
 (function(){
   try {
@@ -200,8 +199,7 @@ class WebScripts {
 })()
 ''';
 
-  // ═══════ Selects — الحل الشامل ═══════
-  /// ضبط قوي جدًا على الـ selects باستخدام كل الطرق الممكنة
+  // ═══════ Selects — حل Vue internals ═══════
   static const setFilters = r'''
 (function(){
   try {
@@ -214,125 +212,148 @@ class WebScripts {
 
     function findSelect(primarySel, requiredVals){
       var el = document.querySelector(primarySel);
-      if (el && el.tagName === 'SELECT'){
+      if (el && el.tagName === 'SELECT') return el;
+      var all = document.querySelectorAll('select');
+      for (var k=0;k<all.length;k++){
         var ok = true;
-        for (var i=0;i<requiredVals.length;i++){
+        for (var m=0;m<requiredVals.length;m++){
           var f = false;
-          for (var j=0;j<el.options.length;j++){
-            if (String(el.options[j].value) === String(requiredVals[i])){ f = true; break; }
+          for (var n=0;n<all[k].options.length;n++){
+            if (String(all[k].options[n].value) === String(requiredVals[m])){ f = true; break; }
           }
           if (!f){ ok = false; break; }
         }
-        if (ok) return el;
-      }
-      var all = document.querySelectorAll('select');
-      for (var k=0;k<all.length;k++){
-        var ok2 = true;
-        for (var m=0;m<requiredVals.length;m++){
-          var f2 = false;
-          for (var n=0;n<all[k].options.length;n++){
-            if (String(all[k].options[n].value) === String(requiredVals[m])){ f2 = true; break; }
-          }
-          if (!f2){ ok2 = false; break; }
-        }
-        if (ok2) return all[k];
+        if (ok) return all[k];
       }
       return null;
     }
 
-    function forceSelect(el, val){
-      if (!el) return {ok:false, log:'no-el'};
+    // ⭐ الحل القوي: نوصل لـ Vue internals ونستدعي handler مباشرة
+    function forceSelectVue(el, val){
+      if (!el) return 'no-el';
       val = String(val);
       var det = [];
 
-      var optIndex = -1;
+      var idx = -1;
       for (var k=0;k<el.options.length;k++){
-        if (String(el.options[k].value) === val){ optIndex = k; break; }
+        if (String(el.options[k].value) === val){ idx = k; break; }
       }
-      if (optIndex < 0) return {ok:false, log:'no-opt'};
+      if (idx < 0) return 'no-opt';
 
-      det.push('idx=' + optIndex);
+      det.push('idx=' + idx);
 
-      // 1) focus
-      try { el.focus(); } catch(e){}
-
-      // 2) Native setter selectedIndex
+      // 1) Native setters
       try {
-        Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'selectedIndex').set.call(el, optIndex);
+        Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'selectedIndex').set.call(el, idx);
         det.push('iset');
-      } catch(e){ det.push('iset!'); }
-
-      // 3) Native setter value
+      } catch(e){}
       try {
         Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set.call(el, val);
         det.push('vset');
-      } catch(e){ det.push('vset!'); }
-
-      // 4) تأكيد يدوي
-      for (var m=0;m<el.options.length;m++){
-        el.options[m].selected = (m === optIndex);
-        el.options[m].removeAttribute('selected');
-      }
-      el.options[optIndex].setAttribute('selected','');
-      el.selectedIndex = optIndex;
-      el.value = val;
-
-      // 5) click على option
-      try { el.options[optIndex].click(); } catch(e){}
-
-      // 6) كل أنواع الأحداث
-      var fired = [];
-      function tryFire(ev, name){
-        try { el.dispatchEvent(ev); fired.push(name); } catch(e){}
-      }
-      tryFire(new Event('focus', {bubbles:true}), 'focus');
-      tryFire(new Event('input', {bubbles:true, cancelable:true}), 'input');
-      tryFire(new Event('change', {bubbles:true, cancelable:true}), 'change');
-      try { tryFire(new UIEvent('change', {bubbles:true, cancelable:true}), 'UIchg'); } catch(e){}
-      try { tryFire(new InputEvent('input', {bubbles:true, cancelable:true, data:val, inputType:'insertText'}), 'IEinp'); } catch(e){}
-      tryFire(new Event('blur', {bubbles:true}), 'blur');
-      tryFire(new Event('focusout', {bubbles:true}), 'focusout');
-
-      // 7) KeyboardEnter
-      try {
-        ['keydown','keypress','keyup'].forEach(function(t){
-          var e = new KeyboardEvent(t, {key:'Enter', code:'Enter', keyCode:13, which:13, bubbles:true, cancelable:true});
-          el.dispatchEvent(e);
-        });
-        fired.push('kbd');
       } catch(e){}
 
-      try { el.blur(); } catch(e){}
+      // 2) ضبط كل الخيارات
+      for (var m=0;m<el.options.length;m++){
+        el.options[m].selected = (m === idx);
+        el.options[m].removeAttribute('selected');
+      }
+      el.options[idx].setAttribute('selected','');
+      try { el.selectedIndex = idx; } catch(e){}
+      try { el.value = val; } catch(e){}
 
-      det.push('fired=' + fired.length);
-      det.push('now=' + String(el.value));
+      // 3) _value (Vue 3 internal)
+      try { el._value = val; det.push('_v'); } catch(e){}
 
-      return {ok:true, log:det.join(',')};
+      // 4) ⭐ استدعاء الـ onChange handler من Vue مباشرة
+      // في Vue 3، v-model بيحط onChange على الـ element
+      var handlerCalled = false;
+      try {
+        // محاولة 1: el.onChange مباشرة
+        if (typeof el.onChange === 'function'){
+          try {
+            var fakeEvt = {target: el, currentTarget: el, type: 'change', preventDefault:function(){}, stopPropagation:function(){}};
+            el.onChange.call(el, fakeEvt);
+            handlerCalled = true;
+            det.push('onChg');
+          } catch(e){}
+        }
+
+        // محاولة 2: من خلال __vnode.props
+        if (!handlerCalled){
+          var vnode = el.__vnode || el._vnode;
+          if (vnode && vnode.props){
+            var h = vnode.props.onChange || vnode.props['onUpdate:modelValue'];
+            if (typeof h === 'function'){
+              try {
+                var fakeEvt2 = {target: el, currentTarget: el, type: 'change', preventDefault:function(){}, stopPropagation:function(){}};
+                h(fakeEvt2);
+                handlerCalled = true;
+                det.push('vnodeH');
+              } catch(e){}
+            }
+          }
+        }
+
+        // محاولة 3: __vueParentComponent
+        if (!handlerCalled){
+          var comp = el.__vueParentComponent;
+          if (comp && comp.vnode && comp.vnode.props){
+            var h2 = comp.vnode.props.onChange;
+            if (typeof h2 === 'function'){
+              try {
+                var fakeEvt3 = {target: el, currentTarget: el, type: 'change'};
+                h2(fakeEvt3);
+                handlerCalled = true;
+                det.push('compH');
+              } catch(e){}
+            }
+          }
+        }
+
+        // محاولة 4: من خلال __vue__ (Vue 2 fallback)
+        if (!handlerCalled){
+          var v2 = el.__vue__;
+          if (v2 && typeof v2.$emit === 'function'){
+            try { v2.$emit('input', val); v2.$emit('change', val); det.push('v2emit'); handlerCalled = true; } catch(e){}
+          }
+        }
+      } catch(e){}
+
+      if (!handlerCalled) det.push('NO-HANDLER');
+
+      // 5) أحداث كاملة
+      var fired = [];
+      function fire(ev, name){ try { el.dispatchEvent(ev); fired.push(name); } catch(e){} }
+      fire(new Event('focus', {bubbles:true}), 'f');
+      fire(new Event('input', {bubbles:true, cancelable:true}), 'in');
+      fire(new Event('change', {bubbles:true, cancelable:true}), 'ch');
+      try { fire(new UIEvent('change', {bubbles:true, cancelable:true}), 'UI'); } catch(e){}
+      try { fire(new InputEvent('input', {bubbles:true, cancelable:true, data:val, inputType:'insertText'}), 'IE'); } catch(e){}
+      fire(new Event('blur', {bubbles:true}), 'b');
+      fire(new Event('focusout', {bubbles:true}), 'fo');
+
+      det.push('ev=' + fired.join('+'));
+
+      return det.join(',');
     }
 
     var cSel = findSelect(SEL_COUNT, ['5000','1000','10']);
     var tSel = findSelect(SEL_TYPE, ['full','local']);
 
-    log.push('cSel=' + (cSel?'y':'n'));
-    log.push('tSel=' + (tSel?'y':'n'));
+    log.push('cS=' + (cSel?'y':'n'));
+    log.push('tS=' + (tSel?'y':'n'));
 
-    if (cSel){ var rC = forceSelect(cSel, count); log.push('C[' + rC.log + ']'); }
-    if (tSel){ var rT = forceSelect(tSel, type);  log.push('T[' + rT.log + ']'); }
+    if (cSel) log.push('C[' + forceSelectVue(cSel, count) + ']');
+    if (tSel) log.push('T[' + forceSelectVue(tSel, type)  + ']');
 
-    // خزّن للتحقق لاحقاً
-    window.__imsFilterCheck = {
-      wantC: count,
-      wantT: type,
-      cIdx: (cSel ? cSel.selectedIndex : -1),
-      tIdx: (tSel ? tSel.selectedIndex : -1)
-    };
+    // خزّن للتحقق
+    window.__imsFilterCheck = {wantC: count, wantT: type};
 
-    return 'ok|cSel=' + (cSel?1:0) + '|tSel=' + (tSel?1:0) + '|| ' + log.join(' || ');
+    return 'ok|| ' + log.join(' || ');
   } catch(e){ return 'err:' + e.message; }
 })()
 ''';
 
-  /// يقرأ القيم الحقيقية من الصفحة (بعد ما Vue يعمل re-render)
   static const verifyFilters = r'''
 (function(){
   try {
@@ -341,28 +362,18 @@ class WebScripts {
 
     function findSelect(primarySel, requiredVals){
       var el = document.querySelector(primarySel);
-      if (el && el.tagName === 'SELECT'){
+      if (el && el.tagName === 'SELECT') return el;
+      var all = document.querySelectorAll('select');
+      for (var k=0;k<all.length;k++){
         var ok = true;
-        for (var i=0;i<requiredVals.length;i++){
+        for (var m=0;m<requiredVals.length;m++){
           var f = false;
-          for (var j=0;j<el.options.length;j++){
-            if (String(el.options[j].value) === String(requiredVals[i])){ f = true; break; }
+          for (var n=0;n<all[k].options.length;n++){
+            if (String(all[k].options[n].value) === String(requiredVals[m])){ f = true; break; }
           }
           if (!f){ ok = false; break; }
         }
-        if (ok) return el;
-      }
-      var all = document.querySelectorAll('select');
-      for (var k=0;k<all.length;k++){
-        var ok2 = true;
-        for (var m=0;m<requiredVals.length;m++){
-          var f2 = false;
-          for (var n=0;n<all[k].options.length;n++){
-            if (String(all[k].options[n].value) === String(requiredVals[m])){ f2 = true; break; }
-          }
-          if (!f2){ ok2 = false; break; }
-        }
-        if (ok2) return all[k];
+        if (ok) return all[k];
       }
       return null;
     }
@@ -371,9 +382,12 @@ class WebScripts {
     var tSel = findSelect(SEL_TYPE, ['full','local']);
     var w = window.__imsFilterCheck || {};
 
+    // نقرأ القيمة الحقيقية من DOM
     return JSON.stringify({
       c: cSel ? String(cSel.value) : null,
       t: tSel ? String(tSel.value) : null,
+      cText: cSel && cSel.selectedIndex >= 0 ? String(cSel.options[cSel.selectedIndex].text).trim() : null,
+      tText: tSel && tSel.selectedIndex >= 0 ? String(tSel.options[tSel.selectedIndex].text).trim() : null,
       wantC: w.wantC || null,
       wantT: w.wantT || null
     });
