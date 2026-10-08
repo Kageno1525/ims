@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'models.dart';
 
 class AutoFillBridge {
   static const _channel = MethodChannel('ims/autofill');
@@ -61,8 +62,6 @@ class AutoFillBridge {
       await _channel.invokeMethod('updateFloatingText', {'text': text});
     } catch (_) {}
   }
-
-  // ═══════ الجديد: دوال التحكم في التطبيقات ═══════
 
   static Future<bool> openApp(String package) async {
     try {
@@ -149,6 +148,23 @@ class AutoFillBridge {
       return await _channel.invokeMethod('currentPackage') ?? '';
     } catch (_) {
       return '';
+    }
+  }
+
+  // ⭐ جديد: قائمة التطبيقات المثبتة
+  static Future<List<InstalledApp>> listInstalledApps() async {
+    try {
+      final result = await _channel.invokeMethod('listApps');
+      if (result == null) return [];
+      return (result as List).map((e) {
+        final m = Map<String, dynamic>.from(e);
+        return InstalledApp(
+          package: m['package']?.toString() ?? '',
+          name: m['name']?.toString() ?? '',
+        );
+      }).toList();
+    } catch (_) {
+      return [];
     }
   }
 
