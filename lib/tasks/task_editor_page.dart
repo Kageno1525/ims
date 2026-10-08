@@ -103,8 +103,8 @@ class _TaskEditorPageState extends State<TaskEditorPage> {
       ),
     );
     if (result == null) return;
-
     if (!mounted) return;
+
     final configured = await showModalBottomSheet<TaskStep>(
       context: context,
       backgroundColor: Colors.transparent,
@@ -148,18 +148,47 @@ class _TaskEditorPageState extends State<TaskEditorPage> {
     });
   }
 
-  Future<void> _save() async {
+  // ⭐ بيستخدم AlertDialog بدل SnackBar
+  void _showMsg(String msg, {bool error = true}) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Theme.of(ctx).colorScheme.surface,
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: [
+            Icon(
+              error ? Icons.error_outline_rounded : Icons.check_circle_rounded,
+              color: error ? const Color(0xFFFF6B6B) : const Color(0xFF00D68F),
+              size: 22,
+            ),
+            const SizedBox(width: 8),
+            Text(error ? 'خطأ' : 'تمام',
+                style: const TextStyle(
+                    fontWeight: FontWeight.bold, fontSize: 16)),
+          ],
+        ),
+        content: Text(msg, style: const TextStyle(fontSize: 14)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('حسناً',
+                style: TextStyle(fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _save() {
     final name = _nameCtrl.text.trim();
     if (name.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('اكتب اسم المهمة')),
-      );
+      _showMsg('من فضلك اكتب اسم المهمة الأول');
       return;
     }
     if (_steps.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('ضيف خطوة على الأقل')),
-      );
+      _showMsg('ضيف خطوة على الأقل قبل الحفظ');
       return;
     }
 
@@ -183,6 +212,7 @@ class _TaskEditorPageState extends State<TaskEditorPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              // ═══ Header ═══
               Row(
                 children: [
                   IconBtn(
@@ -193,8 +223,8 @@ class _TaskEditorPageState extends State<TaskEditorPage> {
                   Expanded(
                     child: Text(
                       widget.initialTask == null ? 'مهمة جديدة' : 'تعديل المهمة',
-                      style: theme.textTheme.titleLarge
-                          ?.copyWith(fontWeight: FontWeight.bold),
+                      style: const TextStyle(
+                          fontSize: 20, fontWeight: FontWeight.bold),
                     ),
                   ),
                   IconBtn(
@@ -205,26 +235,49 @@ class _TaskEditorPageState extends State<TaskEditorPage> {
                   ),
                 ],
               ),
-              const SizedBox(height: 14),
+              const SizedBox(height: 16),
+
+              // ═══ اسم المهمة ═══
               TextField(
                 controller: _nameCtrl,
+                style: const TextStyle(fontSize: 15),
                 decoration: const InputDecoration(
                   labelText: 'اسم المهمة',
+                  hintText: 'مثال: افتح واتساب',
                   prefixIcon: Icon(Icons.drive_file_rename_outline_rounded),
                 ),
               ),
-              const SizedBox(height: 14),
+              const SizedBox(height: 18),
+
+              // ═══ الخطوات ═══
               Row(
                 children: [
                   Icon(Icons.list_alt_rounded,
                       size: 18, color: theme.colorScheme.primary),
                   const SizedBox(width: 6),
-                  Text('الخطوات (${_steps.length})',
-                      style: const TextStyle(
-                          fontWeight: FontWeight.bold, fontSize: 14)),
+                  Text('الخطوات',
+                      style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.bold,
+                          color: theme.colorScheme.onSurface)),
+                  const SizedBox(width: 6),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.primary.withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Text('${_steps.length}',
+                        style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                            color: theme.colorScheme.primary)),
+                  ),
                 ],
               ),
               const SizedBox(height: 10),
+
               Expanded(
                 child: _steps.isEmpty
                     ? Center(
@@ -257,7 +310,10 @@ class _TaskEditorPageState extends State<TaskEditorPage> {
                         itemBuilder: (_, i) => _stepCard(theme, i),
                       ),
               ),
-              const SizedBox(height: 10),
+
+              const SizedBox(height: 12),
+
+              // ═══ أزرار ═══
               Row(
                 children: [
                   Expanded(
@@ -288,7 +344,7 @@ class _TaskEditorPageState extends State<TaskEditorPage> {
     );
   }
 
-  // ⭐ كارت الخطوة - تصميم نضيف
+  // ⭐ كارت الخطوة - بدون underline
   Widget _stepCard(ThemeData theme, int i) {
     final step = _steps[i];
     final colors = _colorFor(step.type);
@@ -304,8 +360,8 @@ class _TaskEditorPageState extends State<TaskEditorPage> {
         children: [
           // رقم + أيقونة
           Container(
-            width: 44,
-            height: 44,
+            width: 46,
+            height: 46,
             decoration: BoxDecoration(
               gradient: LinearGradient(
                   colors: colors,
@@ -317,15 +373,17 @@ class _TaskEditorPageState extends State<TaskEditorPage> {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Icon(_iconFor(step.type), color: Colors.white, size: 18),
+                const SizedBox(height: 1),
                 Text('${i + 1}',
                     style: const TextStyle(
                         color: Colors.white,
-                        fontSize: 9,
-                        fontWeight: FontWeight.bold)),
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                        decoration: TextDecoration.none)),
               ],
             ),
           ),
-          const SizedBox(width: 10),
+          const SizedBox(width: 12),
           // النوع + التفاصيل
           Expanded(
             child: Column(
@@ -334,8 +392,9 @@ class _TaskEditorPageState extends State<TaskEditorPage> {
                 Text(step.typeLabel,
                     style: TextStyle(
                       fontWeight: FontWeight.bold,
-                      fontSize: 13,
+                      fontSize: 14,
                       color: colors.first,
+                      decoration: TextDecoration.none,
                     )),
                 if (step.summary.isNotEmpty) ...[
                   const SizedBox(height: 3),
@@ -343,16 +402,16 @@ class _TaskEditorPageState extends State<TaskEditorPage> {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                          fontSize: 11.5,
-                          color:
-                              theme.colorScheme.onSurface.withOpacity(0.75))),
+                          fontSize: 12,
+                          color: theme.colorScheme.onSurface.withOpacity(0.75),
+                          decoration: TextDecoration.none)),
                 ],
                 const SizedBox(height: 2),
                 Text('انتظار: ${step.waitAfterMs} مللي',
                     style: TextStyle(
-                        fontSize: 10,
-                        color:
-                            theme.colorScheme.onSurface.withOpacity(0.45))),
+                        fontSize: 11,
+                        color: theme.colorScheme.onSurface.withOpacity(0.45),
+                        decoration: TextDecoration.none)),
               ],
             ),
           ),
@@ -463,70 +522,73 @@ class _StepTypePicker extends StatelessWidget {
         borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
       ),
       padding: const EdgeInsets.all(16),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          const SizedBox(height: 8),
-          Center(
-            child: Container(
-              width: 50,
-              height: 5,
-              decoration: BoxDecoration(
-                color: theme.colorScheme.onSurface.withOpacity(0.2),
-                borderRadius: BorderRadius.circular(3),
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const SizedBox(height: 8),
+            Center(
+              child: Container(
+                width: 50,
+                height: 5,
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.onSurface.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(3),
+                ),
               ),
             ),
-          ),
-          const SizedBox(height: 16),
-          Text('اختر نوع الخطوة',
-              textAlign: TextAlign.center,
-              style: theme.textTheme.titleLarge
-                  ?.copyWith(fontWeight: FontWeight.bold)),
-          const SizedBox(height: 16),
-          Wrap(
-            spacing: 10,
-            runSpacing: 10,
-            alignment: WrapAlignment.center,
-            children: items.map((t) {
-              final label = TaskStep(
-                      id: '', type: t, params: {}, waitAfterMs: 0)
-                  .typeLabel;
-              return Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(14),
-                  onTap: () => onPick(t),
-                  child: Container(
-                    width: 100,
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: theme.colorScheme.surface
-                          .withOpacity(isDark ? 0.6 : 0.9),
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(
-                          color:
-                              theme.colorScheme.primary.withOpacity(0.25)),
-                    ),
-                    child: Column(
-                      children: [
-                        Icon(_iconFor(t),
-                            size: 26, color: theme.colorScheme.primary),
-                        const SizedBox(height: 6),
-                        Text(label,
-                            textAlign: TextAlign.center,
-                            style: const TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w600)),
-                      ],
+            const SizedBox(height: 16),
+            Text('اختر نوع الخطوة',
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                    fontSize: 20, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 16),
+            Wrap(
+              spacing: 10,
+              runSpacing: 10,
+              alignment: WrapAlignment.center,
+              children: items.map((t) {
+                final label = TaskStep(
+                        id: '', type: t, params: {}, waitAfterMs: 0)
+                    .typeLabel;
+                return Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(14),
+                    onTap: () => onPick(t),
+                    child: Container(
+                      width: 100,
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.surface
+                            .withOpacity(isDark ? 0.6 : 0.9),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(
+                            color:
+                                theme.colorScheme.primary.withOpacity(0.25)),
+                      ),
+                      child: Column(
+                        children: [
+                          Icon(_iconFor(t),
+                              size: 26, color: theme.colorScheme.primary),
+                          const SizedBox(height: 6),
+                          Text(label,
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                  decoration: TextDecoration.none)),
+                        ],
+                      ),
                     ),
                   ),
-                ),
-              );
-            }).toList(),
-          ),
-          const SizedBox(height: 20),
-        ],
+                );
+              }).toList(),
+            ),
+            const SizedBox(height: 20),
+          ],
+        ),
       ),
     );
   }
@@ -658,13 +720,14 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
               const SizedBox(height: 16),
               Text(label,
                   textAlign: TextAlign.center,
-                  style: theme.textTheme.titleLarge
-                      ?.copyWith(fontWeight: FontWeight.bold)),
+                  style: const TextStyle(
+                      fontSize: 20, fontWeight: FontWeight.bold)),
               const SizedBox(height: 16),
               ..._ctrls.entries.map((e) => Padding(
                     padding: const EdgeInsets.only(bottom: 12),
                     child: TextField(
                       controller: e.value,
+                      style: const TextStyle(fontSize: 15),
                       keyboardType: int.tryParse(e.value.text) != null
                           ? TextInputType.number
                           : TextInputType.text,
