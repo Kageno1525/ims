@@ -6,6 +6,7 @@ import android.accessibilityservice.GestureDescription
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.Intent
 import android.graphics.Path
 import android.graphics.Rect
 import android.os.Bundle
@@ -17,7 +18,6 @@ import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.AccessibilityWindowInfo
 import java.lang.ref.WeakReference
-import java.util.concurrent.atomic.AtomicBoolean
 
 class ImsAccessibilityService : AccessibilityService() {
 
@@ -46,6 +46,39 @@ class ImsAccessibilityService : AccessibilityService() {
                 n != null && n.refresh() && n.isEditable
             } catch (_: Exception) { false }
         }
+
+        fun openAppStatic(pkg: String): Boolean =
+            instance?.openAppInternal(pkg) ?: false
+
+        fun clickByTextStatic(text: String): Boolean =
+            instance?.clickByTextInternal(text) ?: false
+
+        fun clickByDescStatic(desc: String): Boolean =
+            instance?.clickByDescInternal(desc) ?: false
+
+        fun clickByIdStatic(viewId: String): Boolean =
+            instance?.clickByIdInternal(viewId) ?: false
+
+        fun clickAtStatic(x: Int, y: Int): Boolean =
+            instance?.clickAtInternal(x, y) ?: false
+
+        fun swipeStatic(x1: Int, y1: Int, x2: Int, y2: Int, duration: Int): Boolean =
+            instance?.swipeInternal(x1, y1, x2, y2, duration) ?: false
+
+        fun globalBackStatic(): Boolean =
+            instance?.performGlobalAction(GLOBAL_ACTION_BACK) ?: false
+
+        fun globalHomeStatic(): Boolean =
+            instance?.performGlobalAction(GLOBAL_ACTION_HOME) ?: false
+
+        fun globalRecentsStatic(): Boolean =
+            instance?.performGlobalAction(GLOBAL_ACTION_RECENTS) ?: false
+
+        fun currentPackageStatic(): String {
+            return try {
+                instance?.rootInActiveWindow?.packageName?.toString() ?: ""
+            } catch (_: Exception) { "" }
+        }
     }
 
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -65,13 +98,11 @@ class ImsAccessibilityService : AccessibilityService() {
         } catch (e: Exception) {
             Log.e(TAG, "config", e)
         }
-        Log.d(TAG, "Service connected")
     }
 
     override fun onDestroy() {
         instance = null
         super.onDestroy()
-        Log.d(TAG, "Service destroyed")
     }
 
     override fun onInterrupt() {}
@@ -92,7 +123,24 @@ class ImsAccessibilityService : AccessibilityService() {
         } catch (_: Exception) {}
     }
 
-    // ═══════════════ الكتابة مع Retry و Verification ═══════════════
+    // ═══════════════ التطبيقات ═══════════════
+    private fun openAppInternal(pkg: String): Boolean {
+        return try {
+            val intent = packageManager.getLaunchIntentForPackage(pkg)
+            if (intent == null) {
+                Log.w(TAG, "no launch intent for $pkg")
+                return false
+            }
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            startActivity(intent)
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "openApp", e)
+            false
+        }
+    }
+
+    // ═══════════════ الكتابة ═══════════════
     private fun typeTextInternal(text: String): Boolean {
         val delays = longArrayOf(0L, 120L, 220L, 350L)
         for (delay in delays) {
@@ -105,49 +153,29 @@ class ImsAccessibilityService : AccessibilityService() {
     }
 
     private fun tryOnce(text: String): Boolean {
-        // 1) الحقل المركّز حالياً
         val focused = findFocusedInput()
         if (focused != null && tryMethodsWithVerify(focused, text)) return true
 
-        // 2) الحقل المخزّن
         val cached = resolveCached()
         if (cached != null && (focused == null || cached != focused)) {
             if (tryMethodsWithVerify(cached, text)) return true
         }
 
-        // 3) أول حقل قابل للكتابة
         val best = findBestTarget()
         if (best != null && best != focused && best != cached) {
             if (tryMethodsWithVerify(best, text)) return true
         }
 
-        // 4) gesture tap + paste
-        val gestureTarget = focused ?: cached ?: best
-        if (gestureTarget != null) {
-            return gestureTapAndPaste(gestureTarget, text)
-        }
-
+        val target = focused ?: cached ?: best
+        if (target != null) return gestureTapAndPaste(target, text)
         return false
     }
 
     private fun tryMethodsWithVerify(node: AccessibilityNodeInfo, text: String): Boolean {
         if (!safeRefresh(node)) return false
-
-        // 1) SET_TEXT مباشرة
-        if (doSetText(node, text)) {
-            if (verifyText(node, text)) return true
-        }
-
-        // 2) FOCUS ثم SET_TEXT
-        if (doFocusThenSet(node, text)) {
-            if (verifyText(node, text)) return true
-        }
-
-        // 3) Clipboard + ACTION_PASTE مباشرة
-        if (doFocusThenPaste(node, text)) {
-            if (verifyText(node, text)) return true
-        }
-
+        if (doSetText(node, text) && verifyText(node, text)) return true
+        if (doFocusThenSet(node, text) && verifyText(node, text)) return true
+        if (doFocusThenPaste(node, text) && verifyText(node, text)) return true
         return false
     }
 
@@ -181,15 +209,13 @@ class ImsAccessibilityService : AccessibilityService() {
     }
 
     private fun verifyText(node: AccessibilityNodeInfo, expected: String): Boolean {
-        try {
+        return try {
             Thread.sleep(50)
             if (!safeRefresh(node)) return false
             val now = node.text?.toString() ?: ""
             if (now.isEmpty()) return false
-            return now == expected || now.contains(expected)
-        } catch (_: Exception) {
-            return true
-        }
+            now == expected || now.contains(expected)
+        } catch (_: Exception) { true }
     }
 
     private fun safeRefresh(node: AccessibilityNodeInfo?): Boolean {
@@ -197,69 +223,43 @@ class ImsAccessibilityService : AccessibilityService() {
         return try { node.refresh() } catch (_: Exception) { false }
     }
 
-    // ═══════════════ Gesture Tap + Paste ═══════════════
     private fun gestureTapAndPaste(node: AccessibilityNodeInfo, text: String): Boolean {
         try {
             copyToClipboard(text)
-
             if (!safeRefresh(node)) return false
             val rect = Rect()
             node.getBoundsInScreen(rect)
             if (rect.width() <= 0 || rect.height() <= 0) return false
 
-            val path = Path().apply {
-                moveTo(rect.exactCenterX(), rect.exactCenterY())
-            }
+            val path = Path().apply { moveTo(rect.exactCenterX(), rect.exactCenterY()) }
             val stroke = GestureDescription.StrokeDescription(path, 0, 50)
             val gesture = GestureDescription.Builder().addStroke(stroke).build()
 
-            val doneFlag = AtomicBoolean(false)
-            val completedFlag = AtomicBoolean(false)
+            val completed = java.util.concurrent.atomic.AtomicBoolean(false)
+            val done = java.util.concurrent.atomic.AtomicBoolean(false)
 
             dispatchGesture(gesture, object : GestureResultCallback() {
                 override fun onCompleted(g: GestureDescription?) {
-                    completedFlag.set(true)
-                    doneFlag.set(true)
+                    completed.set(true); done.set(true)
                 }
-                override fun onCancelled(g: GestureDescription?) {
-                    doneFlag.set(true)
-                }
+                override fun onCancelled(g: GestureDescription?) { done.set(true) }
             }, mainHandler)
 
             val start = System.currentTimeMillis()
-            while (!doneFlag.get() && System.currentTimeMillis() - start < 1000) {
+            while (!done.get() && System.currentTimeMillis() - start < 1000) {
                 try { Thread.sleep(20) } catch (_: InterruptedException) {}
             }
-
-            if (!completedFlag.get()) return false
+            if (!completed.get()) return false
 
             try { Thread.sleep(100) } catch (_: InterruptedException) {}
-
-            // ⭐ الحل: ACTION_PASTE على الـ node بعد ما الـ gesture خلص
-            var pasted = false
-            try {
-                if (safeRefresh(node)) {
-                    pasted = node.performAction(AccessibilityNodeInfo.ACTION_PASTE)
-                }
-            } catch (_: Exception) {}
-
-            // لو الـ node مش لسه متاح، جرّب الحقل المركّز الجديد
-            if (!pasted) {
-                val newFocus = findFocusedInput()
-                if (newFocus != null && safeRefresh(newFocus)) {
-                    pasted = newFocus.performAction(AccessibilityNodeInfo.ACTION_PASTE)
-                }
-            }
-
+            val ok = performGlobalAction(GLOBAL_ACTION_PASTE)
             try { Thread.sleep(80) } catch (_: InterruptedException) {}
 
-            // تأكيد
-            val target = resolveCached() ?: findFocusedInput() ?: node
-            if (safeRefresh(target)) {
-                val now = target.text?.toString() ?: ""
+            if (safeRefresh(node)) {
+                val now = node.text?.toString() ?: ""
                 if (now.contains(text)) return true
             }
-            return pasted
+            return ok
         } catch (e: Exception) {
             Log.e(TAG, "gesture paste", e)
             return false
@@ -273,7 +273,134 @@ class ImsAccessibilityService : AccessibilityService() {
         } catch (_: Exception) {}
     }
 
-    // ═══════════════ البحث عن الحقل ═══════════════
+    // ═══════════════ الضغط على العناصر ═══════════════
+    private fun clickByTextInternal(text: String): Boolean {
+        val node = findNodeByPredicate { n ->
+            val t = n.text?.toString() ?: ""
+            t == text || t.contains(text)
+        } ?: return false
+        return performClickOnNode(node)
+    }
+
+    private fun clickByDescInternal(desc: String): Boolean {
+        val node = findNodeByPredicate { n ->
+            val d = n.contentDescription?.toString() ?: ""
+            d == desc || d.contains(desc)
+        } ?: return false
+        return performClickOnNode(node)
+    }
+
+    private fun clickByIdInternal(viewId: String): Boolean {
+        val node = findNodeByPredicate { n ->
+            val id = n.viewIdResourceName ?: ""
+            id == viewId || id.endsWith(":id/$viewId") || id.endsWith("/$viewId")
+        } ?: return false
+        return performClickOnNode(node)
+    }
+
+    private fun findNodeByPredicate(pred: (AccessibilityNodeInfo) -> Boolean): AccessibilityNodeInfo? {
+        try {
+            val wins = windows
+            if (!wins.isNullOrEmpty()) {
+                for (w in wins) {
+                    val root = w.root ?: continue
+                    val r = searchNode(root, pred)
+                    if (r != null) return r
+                }
+            }
+        } catch (_: Exception) {}
+        val active = rootInActiveWindow ?: return null
+        return searchNode(active, pred)
+    }
+
+    private fun searchNode(
+        node: AccessibilityNodeInfo?,
+        pred: (AccessibilityNodeInfo) -> Boolean
+    ): AccessibilityNodeInfo? {
+        if (node == null) return null
+        try {
+            if (safeRefresh(node) && pred(node)) {
+                // لو قابل للضغط، ارجعه
+                if (node.isClickable) return node
+                // طلع للأب القابل للضغط
+                var p = node.parent
+                var depth = 0
+                while (p != null && depth < 6) {
+                    if (p.isClickable) return p
+                    p = p.parent
+                    depth++
+                }
+                return node
+            }
+        } catch (_: Exception) {}
+
+        val count = try { node.childCount } catch (_: Exception) { 0 }
+        for (i in 0 until count) {
+            val c = try { node.getChild(i) } catch (_: Exception) { null } ?: continue
+            val r = searchNode(c, pred)
+            if (r != null) return r
+        }
+        return null
+    }
+
+    private fun performClickOnNode(node: AccessibilityNodeInfo): Boolean {
+        // 1) ACTION_CLICK
+        try {
+            if (node.performAction(AccessibilityNodeInfo.ACTION_CLICK)) return true
+        } catch (_: Exception) {}
+
+        // 2) على الأب
+        try {
+            var p = node.parent
+            var depth = 0
+            while (p != null && depth < 6) {
+                if (p.isClickable && p.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
+                    return true
+                }
+                p = p.parent
+                depth++
+            }
+        } catch (_: Exception) {}
+
+        // 3) gesture tap
+        return clickAtNodeCenter(node)
+    }
+
+    private fun clickAtNodeCenter(node: AccessibilityNodeInfo): Boolean {
+        return try {
+            val rect = Rect()
+            node.getBoundsInScreen(rect)
+            if (rect.width() <= 0 || rect.height() <= 0) return false
+            clickAtInternal(rect.exactCenterX().toInt(), rect.exactCenterY().toInt())
+        } catch (_: Exception) { false }
+    }
+
+    // ═══════════════ Gestures ═══════════════
+    private fun clickAtInternal(x: Int, y: Int): Boolean {
+        return try {
+            val path = Path().apply { moveTo(x.toFloat(), y.toFloat()) }
+            val stroke = GestureDescription.StrokeDescription(path, 0, 50)
+            val gesture = GestureDescription.Builder().addStroke(stroke).build()
+            dispatchGesture(gesture, null, null)
+            true
+        } catch (e: Exception) { false }
+    }
+
+    private fun swipeInternal(x1: Int, y1: Int, x2: Int, y2: Int, duration: Int): Boolean {
+        return try {
+            val path = Path().apply {
+                moveTo(x1.toFloat(), y1.toFloat())
+                lineTo(x2.toFloat(), y2.toFloat())
+            }
+            val dur = duration.toLong().coerceAtLeast(80L)
+            val stroke = GestureDescription.StrokeDescription(path, 0, dur)
+            val gesture = GestureDescription.Builder().addStroke(stroke).build()
+            dispatchGesture(gesture, null, null)
+            true
+        } catch (_: Exception) { false }
+    }
+
+    // ═══════════════ البحث عن الحقول ═══════════════
     private fun resolveCached(): AccessibilityNodeInfo? {
         return try {
             val n = lastEditableRef?.get()
@@ -311,7 +438,6 @@ class ImsAccessibilityService : AccessibilityService() {
                 }
             }
         } catch (_: Exception) {}
-
         val active = rootInActiveWindow ?: return null
         return findFirstEditable(active)
     }
@@ -331,7 +457,6 @@ class ImsAccessibilityService : AccessibilityService() {
         return null
     }
 
-    // ═══════════════ أزرار الصوت ═══════════════
     override fun onKeyEvent(event: KeyEvent): Boolean {
         if (!volumeEnabled) return false
         if (event.action != KeyEvent.ACTION_DOWN) return false
