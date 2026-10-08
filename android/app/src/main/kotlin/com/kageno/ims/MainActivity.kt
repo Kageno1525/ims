@@ -1,7 +1,6 @@
 package com.kageno.ims
 
 import android.content.Intent
-import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Handler
@@ -101,7 +100,15 @@ class MainActivity : FlutterActivity() {
                 "globalRecents" -> runAsync(result) { ImsAccessibilityService.globalRecentsStatic() }
                 "currentPackage" -> result.success(ImsAccessibilityService.currentPackageStatic())
 
-                // ⭐ listApps - 3 طرق مدمجة
+                // ⭐ تفريغ الشاشة
+                "dumpScreen" -> {
+                    try {
+                        result.success(ImsAccessibilityService.dumpScreenStatic())
+                    } catch (e: Exception) {
+                        result.success("[]")
+                    }
+                }
+
                 "listApps" -> {
                     try {
                         result.success(listInstalledApps())
@@ -127,12 +134,10 @@ class MainActivity : FlutterActivity() {
         }
     }
 
-    /// ⭐ 3 طرق مدمجة عشان نضمن كل التطبيقات
     private fun listInstalledApps(): List<Map<String, String>> {
         val pm = packageManager
         val map = mutableMapOf<String, String>()
 
-        // ═══ الطريقة 1: getInstalledApplications ═══
         try {
             @Suppress("DEPRECATION")
             val allApps = pm.getInstalledApplications(0)
@@ -140,17 +145,13 @@ class MainActivity : FlutterActivity() {
                 try {
                     val pkg = app.packageName
                     if (pkg == packageName) continue
-                    // لازم يكون عنده launch intent
                     val launch = pm.getLaunchIntentForPackage(pkg) ?: continue
                     val label = pm.getApplicationLabel(app).toString()
-                    if (label.isNotBlank()) {
-                        map[pkg] = label
-                    }
+                    if (label.isNotBlank()) map[pkg] = label
                 } catch (_: Exception) {}
             }
         } catch (_: Exception) {}
 
-        // ═══ الطريقة 2: queryIntentActivities ═══
         try {
             val mainIntent = Intent(Intent.ACTION_MAIN).apply {
                 addCategory(Intent.CATEGORY_LAUNCHER)
@@ -162,28 +163,7 @@ class MainActivity : FlutterActivity() {
                     val pkg = info.activityInfo.packageName
                     if (pkg == packageName) continue
                     val label = info.loadLabel(pm).toString()
-                    if (label.isNotBlank() && !map.containsKey(pkg)) {
-                        map[pkg] = label
-                    }
-                } catch (_: Exception) {}
-            }
-        } catch (_: Exception) {}
-
-        // ═══ الطريقة 3: queryIntentActivities بـ CATEGORY_LEANBACK ═══
-        try {
-            val leanback = Intent(Intent.ACTION_MAIN).apply {
-                addCategory(Intent.CATEGORY_LEANBACK_LAUNCHER)
-            }
-            @Suppress("DEPRECATION")
-            val launchers = pm.queryIntentActivities(leanback, 0)
-            for (info in launchers) {
-                try {
-                    val pkg = info.activityInfo.packageName
-                    if (pkg == packageName) continue
-                    val label = info.loadLabel(pm).toString()
-                    if (label.isNotBlank() && !map.containsKey(pkg)) {
-                        map[pkg] = label
-                    }
+                    if (label.isNotBlank() && !map.containsKey(pkg)) map[pkg] = label
                 } catch (_: Exception) {}
             }
         } catch (_: Exception) {}
@@ -197,29 +177,19 @@ class MainActivity : FlutterActivity() {
         if (query.isBlank()) return null
         val q = query.trim()
         val pm = packageManager
-
         try {
             @Suppress("DEPRECATION")
             pm.getPackageInfo(q, 0)
             return q
         } catch (_: Exception) {}
-
-        // دور بالاسم
         val apps = listInstalledApps()
         val ql = q.lowercase()
-
-        val exact = apps.firstOrNull {
-            (it["name"] ?: "").lowercase() == ql
-        }
-        if (exact != null) return exact["package"]
-
-        val partial = apps.firstOrNull {
+        apps.firstOrNull { (it["name"] ?: "").lowercase() == ql }?.let { return it["package"] }
+        apps.firstOrNull {
             val n = (it["name"] ?: "").lowercase()
             val p = (it["package"] ?: "").lowercase()
             n.contains(ql) || p.contains(ql)
-        }
-        if (partial != null) return partial["package"]
-
+        }?.let { return it["package"] }
         return null
     }
 
