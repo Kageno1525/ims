@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'widgets.dart';
 import 'models.dart';
@@ -6,7 +7,6 @@ class NumbersPage extends StatelessWidget {
   final bool isDark;
   final VoidCallback onToggleTheme;
 
-  // قسم التحميل
   final List<String> ranges;
   final String? selectedRange;
   final int selectedCount;
@@ -20,7 +20,6 @@ class NumbersPage extends StatelessWidget {
   final Future<void> Function() onApplyFilter;
   final Future<void> Function() onDownloadCsv;
 
-  // قسم التشغيل
   final List<CsvFile> csvFiles;
   final String? selectedCsvName;
   final List<String> currentNumbers;
@@ -33,7 +32,6 @@ class NumbersPage extends StatelessWidget {
   final bool accessibilityOn;
   final bool overlayOn;
 
-  // ⭐ الجديد
   final bool running;
   final Future<void> Function() onToggleRunning;
   final Future<void> Function() onReset;
@@ -52,7 +50,7 @@ class NumbersPage extends StatelessWidget {
   final Future<void> Function() onOpenAccessibility;
   final Future<void> Function() onOpenOverlay;
 
-  final List<LogEntry> logs;
+  final ValueListenable<List<LogEntry>> logs;
   final VoidCallback onBack;
 
   const NumbersPage({
@@ -127,8 +125,8 @@ class NumbersPage extends StatelessWidget {
                                 ?.copyWith(fontWeight: FontWeight.bold)),
                         Text('حمّل الأرقام وشغّلها',
                             style: theme.textTheme.bodySmall?.copyWith(
-                                color:
-                                    theme.colorScheme.onSurface.withOpacity(0.5))),
+                                color: theme.colorScheme.onSurface
+                                    .withOpacity(0.5))),
                       ],
                     ),
                   ),
@@ -142,18 +140,15 @@ class NumbersPage extends StatelessWidget {
               ),
               const SizedBox(height: 12),
               Expanded(
-                child: SingleChildScrollView(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      _downloadCard(theme),
-                      const SizedBox(height: 14),
-                      _autofillCard(theme),
-                      const SizedBox(height: 14),
-                      LogPanel(logs: logs, isDark: isDark, shrink: true),
-                      const SizedBox(height: 30),
-                    ],
-                  ),
+                child: ListView(
+                  padding: const EdgeInsets.only(bottom: 30),
+                  children: [
+                    _downloadCard(theme),
+                    const SizedBox(height: 14),
+                    _autofillCard(theme),
+                    const SizedBox(height: 14),
+                    LogPanel(logs: logs, isDark: isDark, shrink: true),
+                  ],
                 ),
               ),
             ],
@@ -163,7 +158,6 @@ class NumbersPage extends StatelessWidget {
     );
   }
 
-  // ═══════════ قسم التحميل ═══════════
   Widget _downloadCard(ThemeData theme) {
     return _card(theme,
       child: Column(
@@ -265,7 +259,6 @@ class NumbersPage extends StatelessWidget {
     );
   }
 
-  // ═══════════ قسم التشغيل ═══════════
   Widget _autofillCard(ThemeData theme) {
     final current = (currentIndex >= 0 && currentIndex < currentNumbers.length)
         ? currentNumbers[currentIndex]
@@ -276,11 +269,8 @@ class NumbersPage extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // ⭐ شريط التشغيل الرئيسي ON/OFF + Reset
           _masterBar(theme),
           const SizedBox(height: 16),
-
-          // اختيار ملف
           _label(theme, Icons.folder_rounded, 'ملف الأرقام'),
           const SizedBox(height: 8),
           _CsvPicker(
@@ -288,12 +278,10 @@ class NumbersPage extends StatelessWidget {
             files: csvFiles,
             selected: selectedCsvName,
             onSelect: onSelectCsv,
+            onRefresh: onRefreshFiles,
           ),
           const SizedBox(height: 14),
-
-          // العداد الكبير
-          AnimatedContainer(
-            duration: const Duration(milliseconds: 350),
+          Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
               gradient: LinearGradient(
@@ -343,20 +331,16 @@ class NumbersPage extends StatelessWidget {
                     style: TextStyle(
                         color: Colors.white.withOpacity(0.8), fontSize: 12)),
                 const SizedBox(height: 6),
-                AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 200),
-                  child: Text(
-                    current,
-                    key: ValueKey(current + currentIndex.toString()),
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 28,
-                      fontWeight: FontWeight.bold,
-                      fontFamily: 'monospace',
-                      letterSpacing: 1,
-                    ),
-                    textAlign: TextAlign.center,
+                Text(
+                  current,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 28,
+                    fontWeight: FontWeight.bold,
+                    fontFamily: 'monospace',
+                    letterSpacing: 1,
                   ),
+                  textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 6),
                 Text('${currentIndex + 1} / $total',
@@ -366,8 +350,6 @@ class NumbersPage extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 14),
-
-          // أزرار التنقل
           Row(
             children: [
               Expanded(
@@ -412,12 +394,9 @@ class NumbersPage extends StatelessWidget {
               onTap: currentNumbers.isEmpty ? null : () => onTypeCurrent(),
             ),
           ),
-
           const SizedBox(height: 18),
           Divider(color: theme.colorScheme.primary.withOpacity(0.15)),
           const SizedBox(height: 10),
-
-          // التكرار
           Row(
             children: [
               Expanded(
@@ -449,14 +428,15 @@ class NumbersPage extends StatelessWidget {
                   const SizedBox(height: 22),
                   GestureDetector(
                     onTap: () => onToggleInfinite(!infinite),
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 250),
+                    child: Container(
                       padding: const EdgeInsets.symmetric(
                           horizontal: 16, vertical: 14),
                       decoration: BoxDecoration(
                         gradient: infinite
-                            ? const LinearGradient(
-                                colors: [Color(0xFFFF6B6B), Color(0xFFFF8E53)])
+                            ? const LinearGradient(colors: [
+                                Color(0xFFFF6B6B),
+                                Color(0xFFFF8E53)
+                              ])
                             : null,
                         color: infinite
                             ? null
@@ -493,14 +473,11 @@ class NumbersPage extends StatelessWidget {
               ),
             ],
           ),
-
           const SizedBox(height: 18),
           Divider(color: theme.colorScheme.primary.withOpacity(0.15)),
           const SizedBox(height: 10),
-
           _label(theme, Icons.settings_remote_rounded, 'أزرار التشغيل'),
           const SizedBox(height: 10),
-
           _toggleRow(
             theme,
             icon: Icons.keyboard_alt_rounded,
@@ -527,7 +504,6 @@ class NumbersPage extends StatelessWidget {
             value: floatingEnabled,
             onChanged: onToggleFloating,
           ),
-
           const SizedBox(height: 14),
           if (!accessibilityOn)
             _warnBox(
@@ -555,10 +531,8 @@ class NumbersPage extends StatelessWidget {
     );
   }
 
-  // ⭐ شريط ON/OFF + Reset
   Widget _masterBar(ThemeData theme) {
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 350),
+    return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       decoration: BoxDecoration(
         gradient: running
@@ -587,8 +561,7 @@ class NumbersPage extends StatelessWidget {
       ),
       child: Row(
         children: [
-          AnimatedContainer(
-            duration: const Duration(milliseconds: 300),
+          Container(
             width: 44,
             height: 44,
             decoration: BoxDecoration(
@@ -598,9 +571,7 @@ class NumbersPage extends StatelessWidget {
               borderRadius: BorderRadius.circular(14),
             ),
             child: Icon(
-              running
-                  ? Icons.power_settings_new_rounded
-                  : Icons.power_off_rounded,
+              running ? Icons.power_settings_new_rounded : Icons.power_off_rounded,
               color: running ? Colors.white : theme.colorScheme.primary,
               size: 22,
             ),
@@ -620,9 +591,7 @@ class NumbersPage extends StatelessWidget {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  running
-                      ? 'الأزرار شغّالة والكتابة التلقائية مفعّلة'
-                      : 'كل الأزرار متوقفة',
+                  running ? 'الأزرار شغّالة' : 'كل الأزرار متوقفة',
                   style: TextStyle(
                     color: running
                         ? Colors.white.withOpacity(0.8)
@@ -633,7 +602,6 @@ class NumbersPage extends StatelessWidget {
               ],
             ),
           ),
-          // زرار Reset
           Material(
             color: running
                 ? Colors.white.withOpacity(0.2)
@@ -651,16 +619,13 @@ class NumbersPage extends StatelessWidget {
                     Icon(
                       Icons.refresh_rounded,
                       size: 16,
-                      color: running
-                          ? Colors.white
-                          : theme.colorScheme.onSurface,
+                      color: running ? Colors.white : theme.colorScheme.onSurface,
                     ),
                     const SizedBox(width: 4),
                     Text('ريست',
                         style: TextStyle(
-                          color: running
-                              ? Colors.white
-                              : theme.colorScheme.onSurface,
+                          color:
+                              running ? Colors.white : theme.colorScheme.onSurface,
                           fontWeight: FontWeight.bold,
                           fontSize: 12,
                         )),
@@ -670,7 +635,6 @@ class NumbersPage extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 8),
-          // زرار ON/OFF
           Switch(
             value: running,
             onChanged: (v) => onToggleRunning(),
@@ -762,8 +726,8 @@ class NumbersPage extends StatelessWidget {
               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
             ),
             child: Text(actionLabel,
-                style: const TextStyle(
-                    fontWeight: FontWeight.bold, fontSize: 12)),
+                style:
+                    const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
           ),
         ],
       ),
@@ -789,8 +753,8 @@ class NumbersPage extends StatelessWidget {
                 ? theme.colorScheme.surface.withOpacity(0.3)
                 : color.withOpacity(0.15),
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(
-                color: color.withOpacity(onTap == null ? 0.1 : 0.35)),
+            border:
+                Border.all(color: color.withOpacity(onTap == null ? 0.1 : 0.35)),
           ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -1083,18 +1047,20 @@ class _RangeSheetState extends State<_RangeSheet> {
   }
 }
 
-// ═══════════ CSV Picker ═══════════
+// ═══════════ CSV Picker (مع auto-refresh كل ثانية) ═══════════
 class _CsvPicker extends StatelessWidget {
   final ThemeData theme;
   final List<CsvFile> files;
   final String? selected;
   final ValueChanged<String> onSelect;
+  final Future<void> Function() onRefresh;
 
   const _CsvPicker({
     required this.theme,
     required this.files,
     required this.selected,
     required this.onSelect,
+    required this.onRefresh,
   });
 
   @override
@@ -1103,7 +1069,7 @@ class _CsvPicker extends StatelessWidget {
       color: Colors.transparent,
       child: InkWell(
         borderRadius: BorderRadius.circular(14),
-        onTap: files.isEmpty ? null : () => _open(context),
+        onTap: () => _open(context),
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
           decoration: BoxDecoration(
@@ -1143,103 +1109,184 @@ class _CsvPicker extends StatelessWidget {
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
-      builder: (ctx) => Container(
-        decoration: BoxDecoration(
-          color: Theme.of(ctx).scaffoldBackgroundColor,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const SizedBox(height: 12),
-            Container(
-              width: 50,
-              height: 5,
-              decoration: BoxDecoration(
-                color: Theme.of(ctx).colorScheme.onSurface.withOpacity(0.2),
-                borderRadius: BorderRadius.circular(3),
-              ),
+      isScrollControlled: true,
+      builder: (ctx) => _CsvSheet(
+        initialFiles: files,
+        selected: selected,
+        onSelect: (name) {
+          Navigator.pop(ctx);
+          onSelect(name);
+        },
+        onRefresh: onRefresh,
+      ),
+    );
+  }
+}
+
+class _CsvSheet extends StatefulWidget {
+  final List<CsvFile> initialFiles;
+  final String? selected;
+  final ValueChanged<String> onSelect;
+  final Future<void> Function() onRefresh;
+  const _CsvSheet({
+    required this.initialFiles,
+    required this.selected,
+    required this.onSelect,
+    required this.onRefresh,
+  });
+  @override
+  State<_CsvSheet> createState() => _CsvSheetState();
+}
+
+class _CsvSheetState extends State<_CsvSheet> {
+  late List<CsvFile> files;
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    files = widget.initialFiles;
+    // ⭐ auto-refresh كل ثانية
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) async {
+      await widget.onRefresh();
+      // نحدّث الليست محلياً كمان
+      if (!mounted) return;
+    });
+  }
+
+  @override
+  void didUpdateWidget(_CsvSheet old) {
+    super.didUpdateWidget(old);
+    if (old.initialFiles != widget.initialFiles) {
+      setState(() => files = widget.initialFiles);
+    }
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      height: MediaQuery.of(context).size.height * 0.7,
+      decoration: BoxDecoration(
+        color: theme.scaffoldBackgroundColor,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      child: Column(
+        children: [
+          const SizedBox(height: 12),
+          Container(
+            width: 50,
+            height: 5,
+            decoration: BoxDecoration(
+              color: theme.colorScheme.onSurface.withOpacity(0.2),
+              borderRadius: BorderRadius.circular(3),
             ),
-            const SizedBox(height: 16),
-            Text('اختر ملف CSV',
-                style: Theme.of(ctx)
-                    .textTheme
-                    .titleLarge
-                    ?.copyWith(fontWeight: FontWeight.bold)),
-            const SizedBox(height: 14),
-            Flexible(
-              child: ListView.builder(
-                shrinkWrap: true,
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                itemCount: files.length,
-                itemBuilder: (_, i) {
-                  final f = files[i];
-                  final isSel = f.name == selected;
-                  return Padding(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    child: Material(
-                      color: isSel
-                          ? Theme.of(ctx).colorScheme.primary.withOpacity(0.15)
-                          : Colors.transparent,
-                      borderRadius: BorderRadius.circular(14),
-                      child: InkWell(
-                        borderRadius: BorderRadius.circular(14),
-                        onTap: () {
-                          Navigator.pop(ctx);
-                          onSelect(f.name);
-                        },
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 14, vertical: 14),
-                          child: Row(
-                            children: [
-                              Icon(
-                                isSel
-                                    ? Icons.radio_button_checked_rounded
-                                    : Icons.radio_button_unchecked_rounded,
-                                color: isSel
-                                    ? Theme.of(ctx).colorScheme.primary
-                                    : Theme.of(ctx)
-                                        .colorScheme
-                                        .onSurface
-                                        .withOpacity(0.4),
-                                size: 20,
+          ),
+          const SizedBox(height: 16),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text('اختر ملف CSV',
+                  style: theme.textTheme.titleLarge
+                      ?.copyWith(fontWeight: FontWeight.bold)),
+              const SizedBox(width: 8),
+              SizedBox(
+                width: 14,
+                height: 14,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: theme.colorScheme.primary,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text('تحديث تلقائي كل ثانية',
+              style: TextStyle(
+                fontSize: 11,
+                color: theme.colorScheme.onSurface.withOpacity(0.5),
+              )),
+          const SizedBox(height: 14),
+          Expanded(
+            child: files.isEmpty
+                ? Center(
+                    child: Text('مفيش ملفات',
+                        style: TextStyle(
+                            color: theme.colorScheme.onSurface
+                                .withOpacity(0.5))),
+                  )
+                : ListView.builder(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    itemCount: files.length,
+                    itemBuilder: (_, i) {
+                      final f = files[i];
+                      final isSel = f.name == widget.selected;
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 4),
+                        child: Material(
+                          color: isSel
+                              ? theme.colorScheme.primary.withOpacity(0.15)
+                              : Colors.transparent,
+                          borderRadius: BorderRadius.circular(14),
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(14),
+                            onTap: () => widget.onSelect(f.name),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 14, vertical: 14),
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    isSel
+                                        ? Icons.radio_button_checked_rounded
+                                        : Icons
+                                            .radio_button_unchecked_rounded,
+                                    color: isSel
+                                        ? theme.colorScheme.primary
+                                        : theme.colorScheme.onSurface
+                                            .withOpacity(0.4),
+                                    size: 20,
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(f.name,
+                                            style: TextStyle(
+                                                fontWeight: isSel
+                                                    ? FontWeight.bold
+                                                    : FontWeight.normal,
+                                                fontSize: 14)),
+                                        const SizedBox(height: 2),
+                                        Text('${f.count} رقم',
+                                            style: TextStyle(
+                                                fontSize: 11,
+                                                color: theme
+                                                    .colorScheme.onSurface
+                                                    .withOpacity(0.5))),
+                                      ],
+                                    ),
+                                  ),
+                                ],
                               ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(f.name,
-                                        style: TextStyle(
-                                            fontWeight: isSel
-                                                ? FontWeight.bold
-                                                : FontWeight.normal,
-                                            fontSize: 14)),
-                                    const SizedBox(height: 2),
-                                    Text('${f.count} رقم',
-                                        style: TextStyle(
-                                            fontSize: 11,
-                                            color: Theme.of(ctx)
-                                                .colorScheme
-                                                .onSurface
-                                                .withOpacity(0.5))),
-                                  ],
-                                ),
-                              ),
-                            ],
+                            ),
                           ),
                         ),
-                      ),
-                    ),
-                  );
-                },
-              ),
-            ),
-            const SizedBox(height: 20),
-          ],
-        ),
+                      );
+                    },
+                  ),
+          ),
+          const SizedBox(height: 20),
+        ],
       ),
     );
   }
