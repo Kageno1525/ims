@@ -1,84 +1,47 @@
-import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'models.dart';
 
-// ═══════════════════ خلفية سريعة جداً ═══════════════════
-class AnimatedBackground extends StatefulWidget {
+// ═══════════════════ خلفية ثابتة وسريعة ═══════════════════
+class AnimatedBackground extends StatelessWidget {
   final Widget child;
   const AnimatedBackground({super.key, required this.child});
-  @override
-  State<AnimatedBackground> createState() => _AnimatedBackgroundState();
-}
-
-class _AnimatedBackgroundState extends State<AnimatedBackground>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _c;
-
-  @override
-  void initState() {
-    super.initState();
-    _c = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 30),
-    )..repeat();
-  }
-
-  @override
-  void dispose() {
-    _c.dispose();
-    super.dispose();
-  }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-
     return Container(
       color: theme.scaffoldBackgroundColor,
       child: Stack(
         children: [
-          // الخلفية: RepaintBoundary يمنع إعادة الرسم
           Positioned.fill(
             child: IgnorePointer(
               child: RepaintBoundary(
-                child: RotationTransition(
-                  // دوران بطيء جداً (30 ثانية للفة كاملة)
-                  turns: _c,
-                  alignment: Alignment.center,
-                  child: CustomPaint(
-                    painter: _BlobsPainter(
-                      c1: theme.colorScheme.primary.withOpacity(0.28),
-                      c2: theme.colorScheme.secondary.withOpacity(0.22),
-                      c3: theme.colorScheme.tertiary.withOpacity(0.16),
-                    ),
+                child: CustomPaint(
+                  painter: _BlobsPainter(
+                    c1: theme.colorScheme.primary.withOpacity(0.35),
+                    c2: theme.colorScheme.secondary.withOpacity(0.25),
+                    c3: theme.colorScheme.tertiary.withOpacity(0.18),
                   ),
                 ),
               ),
             ),
           ),
-          widget.child,
+          child,
         ],
       ),
     );
   }
 }
 
-// ═══════════════════ رسم البقع الثلاثة مرة واحدة فقط ═══════════════════
 class _BlobsPainter extends CustomPainter {
   final Color c1, c2, c3;
   _BlobsPainter({required this.c1, required this.c2, required this.c3});
 
   @override
   void paint(Canvas canvas, Size size) {
-    // نرسم في مربع أكبر عشان الدوران ميبانش فيه فراغ
-    final w = size.width * 1.8;
-    final h = size.height * 1.8;
-    final ox = -size.width * 0.4;
-    final oy = -size.height * 0.4;
-
-    _blob(canvas, Offset(ox + w * 0.25, oy + h * 0.2), 320, c1);
-    _blob(canvas, Offset(ox + w * 0.75, oy + h * 0.55), 360, c2);
-    _blob(canvas, Offset(ox + w * 0.5, oy + h * 0.85), 260, c3);
+    _blob(canvas, Offset(size.width * 0.1, size.height * 0.1), 320, c1);
+    _blob(canvas, Offset(size.width * 0.95, size.height * 0.45), 360, c2);
+    _blob(canvas, Offset(size.width * 0.4, size.height * 0.95), 260, c3);
   }
 
   void _blob(Canvas canvas, Offset center, double radius, Color color) {
@@ -194,138 +157,80 @@ class ActionBtn extends StatelessWidget {
   }
 }
 
-// ═══════════════════ StatCard (بدون TweenAnimationBuilder دائم) ═══════════════════
-class StatCard extends StatefulWidget {
+// ═══════════════════ StatCard ═══════════════════
+class StatCard extends StatelessWidget {
   final String title;
   final int value;
   final IconData icon;
   final List<Color> colors;
-  final int delay;
   const StatCard({
     super.key,
     required this.title,
     required this.value,
     required this.icon,
     required this.colors,
-    this.delay = 0,
   });
   @override
-  State<StatCard> createState() => _StatCardState();
-}
-
-class _StatCardState extends State<StatCard> {
-  bool _animated = false;
-
-  @override
-  void initState() {
-    super.initState();
-    Future.delayed(Duration(milliseconds: widget.delay), () {
-      if (mounted) setState(() => _animated = true);
-    });
-  }
-
-  @override
   Widget build(BuildContext context) {
-    return AnimatedSlide(
-      duration: const Duration(milliseconds: 500),
-      curve: Curves.easeOutCubic,
-      offset: _animated ? Offset.zero : const Offset(0, 0.15),
-      child: AnimatedOpacity(
-        duration: const Duration(milliseconds: 500),
-        opacity: _animated ? 1 : 0,
-        child: Container(
-          padding: const EdgeInsets.all(22),
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: widget.colors,
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-            borderRadius: BorderRadius.circular(28),
-            boxShadow: [
-              BoxShadow(
-                color: widget.colors.first.withOpacity(0.4),
-                blurRadius: 28,
-                offset: const Offset(0, 14),
-              ),
-            ],
-          ),
-          child: Row(
-            children: [
-              Container(
-                width: 60, height: 60,
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(18),
-                  border: Border.all(color: Colors.white.withOpacity(0.25)),
-                ),
-                child: Icon(widget.icon, color: Colors.white, size: 30),
-              ),
-              const SizedBox(width: 18),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(widget.title,
-                        style: TextStyle(
-                          color: Colors.white.withOpacity(0.85),
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                        )),
-                    const SizedBox(height: 8),
-                    // عدّاد بسيط بدون TweenAnimationBuilder متكرر
-                    _AnimatedValue(
-                      value: widget.value,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 38,
-                        fontWeight: FontWeight.bold,
-                        height: 1,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
+    return Container(
+      padding: const EdgeInsets.all(22),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: colors,
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
         ),
+        borderRadius: BorderRadius.circular(28),
+        boxShadow: [
+          BoxShadow(
+            color: colors.first.withOpacity(0.4),
+            blurRadius: 28,
+            offset: const Offset(0, 14),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 60, height: 60,
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.2),
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: Colors.white.withOpacity(0.25)),
+            ),
+            child: Icon(icon, color: Colors.white, size: 30),
+          ),
+          const SizedBox(width: 18),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title,
+                    style: TextStyle(
+                      color: Colors.white.withOpacity(0.85),
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    )),
+                const SizedBox(height: 8),
+                Text('$value',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 38,
+                      fontWeight: FontWeight.bold,
+                      height: 1,
+                    )),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
 }
 
-class _AnimatedValue extends StatefulWidget {
-  final int value;
-  final TextStyle? style;
-  const _AnimatedValue({required this.value, this.style});
-  @override
-  State<_AnimatedValue> createState() => _AnimatedValueState();
-}
-
-class _AnimatedValueState extends State<_AnimatedValue> {
-  int _display = 0;
-
-  @override
-  void initState() {
-    super.initState();
-    _display = widget.value;
-  }
-
-  @override
-  void didUpdateWidget(_AnimatedValue old) {
-    super.didUpdateWidget(old);
-    if (old.value != widget.value) _display = widget.value;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Text('$_display', style: widget.style);
-  }
-}
-
-// ═══════════════════ LogPanel ═══════════════════
+// ═══════════════════ LogPanel (يستخدم ValueListenable) ═══════════════════
 class LogPanel extends StatelessWidget {
-  final List<LogEntry> logs;
+  final ValueListenable<List<LogEntry>> logs;
   final bool isDark;
   final bool shrink;
   const LogPanel({
@@ -337,6 +242,15 @@ class LogPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    return ValueListenableBuilder<List<LogEntry>>(
+      valueListenable: logs,
+      builder: (context, entries, _) {
+        return _buildPanel(context, entries);
+      },
+    );
+  }
+
+  Widget _buildPanel(BuildContext context, List<LogEntry> entries) {
     final theme = Theme.of(context);
     return Container(
       padding: const EdgeInsets.all(12),
@@ -360,8 +274,8 @@ class LogPanel extends StatelessWidget {
                     fontWeight: FontWeight.bold,
                   )),
               const Spacer(),
-              if (logs.isNotEmpty)
-                Text('${logs.length}',
+              if (entries.isNotEmpty)
+                Text('${entries.length}',
                     style: TextStyle(
                       fontSize: 11,
                       color: theme.colorScheme.onSurface.withOpacity(0.4),
@@ -369,7 +283,7 @@ class LogPanel extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 8),
-          if (logs.isEmpty)
+          if (entries.isEmpty)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 12),
               child: Center(
@@ -384,12 +298,13 @@ class LogPanel extends StatelessWidget {
             shrink
                 ? Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: logs.take(6).map((l) => _tile(theme, l)).toList(),
+                    children:
+                        entries.take(6).map((l) => _tile(theme, l)).toList(),
                   )
                 : Expanded(
                     child: ListView.builder(
-                      itemCount: logs.length,
-                      itemBuilder: (_, i) => _tile(theme, logs[i]),
+                      itemCount: entries.length,
+                      itemBuilder: (_, i) => _tile(theme, entries[i]),
                     ),
                   ),
         ],
