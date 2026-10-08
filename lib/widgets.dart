@@ -213,7 +213,8 @@ class StatCard extends StatelessWidget {
 class LogPanel extends StatelessWidget {
   final List<LogEntry> logs;
   final bool isDark;
-  const LogPanel({super.key, required this.logs, required this.isDark});
+  final bool shrink;
+  const LogPanel({super.key, required this.logs, required this.isDark, this.shrink = false});
 
   @override
   Widget build(BuildContext context) {
@@ -227,6 +228,7 @@ class LogPanel extends StatelessWidget {
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: shrink ? MainAxisSize.min : MainAxisSize.max,
         children: [
           Row(
             children: [
@@ -241,15 +243,24 @@ class LogPanel extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 8),
-          Expanded(
-            child: logs.isEmpty
-                ? Center(child: Text('لا يوجد سجل بعد',
-                    style: TextStyle(color: theme.colorScheme.onSurface.withOpacity(0.3), fontSize: 12)))
-                : ListView.builder(
-                    itemCount: logs.length,
-                    itemBuilder: (_, i) => _tile(theme, logs[i]),
+          if (logs.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              child: Center(child: Text('لا يوجد سجل بعد',
+                  style: TextStyle(color: theme.colorScheme.onSurface.withOpacity(0.3), fontSize: 12))),
+            )
+          else
+            shrink
+                ? Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: logs.take(6).map((l) => _tile(theme, l)).toList(),
+                  )
+                : Expanded(
+                    child: ListView.builder(
+                      itemCount: logs.length,
+                      itemBuilder: (_, i) => _tile(theme, logs[i]),
+                    ),
                   ),
-          ),
         ],
       ),
     );
