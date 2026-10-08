@@ -17,6 +17,7 @@ import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.AccessibilityWindowInfo
 import java.lang.ref.WeakReference
+import java.util.concurrent.atomic.AtomicBoolean
 
 class ImsAccessibilityService : AccessibilityService() {
 
@@ -93,7 +94,6 @@ class ImsAccessibilityService : AccessibilityService() {
 
     // ═══════════════ الكتابة مع Retry و Verification ═══════════════
     private fun typeTextInternal(text: String): Boolean {
-        // ⭐ 4 محاولات مع تأخير متزايد
         val delays = longArrayOf(0L, 120L, 220L, 350L)
         for (delay in delays) {
             if (delay > 0) {
@@ -115,13 +115,13 @@ class ImsAccessibilityService : AccessibilityService() {
             if (tryMethodsWithVerify(cached, text)) return true
         }
 
-        // 3) أول حقل قابل للكتابة في الشاشة
+        // 3) أول حقل قابل للكتابة
         val best = findBestTarget()
         if (best != null && best != focused && best != cached) {
             if (tryMethodsWithVerify(best, text)) return true
         }
 
-        // 4) fallback: gesture tap + paste (للـ WebViews اللي بترفض SET_TEXT)
+        // 4) gesture tap + paste
         val gestureTarget = focused ?: cached ?: best
         if (gestureTarget != null) {
             return gestureTapAndPaste(gestureTarget, text)
@@ -130,12 +130,8 @@ class ImsAccessibilityService : AccessibilityService() {
         return false
     }
 
-    /// ⭐ تجرب كل الطرق المباشرة مع التحقق الفعلي من الكتابة
     private fun tryMethodsWithVerify(node: AccessibilityNodeInfo, text: String): Boolean {
         if (!safeRefresh(node)) return false
-
-        // ⚠️ في WebViews، SET_TEXT ممكن ترجع true بدون ما تكتب فعلاً
-        // فبنتحقق بعد كل محاولة
 
         // 1) SET_TEXT مباشرة
         if (doSetText(node, text)) {
@@ -184,7 +180,6 @@ class ImsAccessibilityService : AccessibilityService() {
         } catch (_: Exception) { false }
     }
 
-    /// ⭐ تحقق حقيقي إن النص اتكتب
     private fun verifyText(node: AccessibilityNodeInfo, expected: String): Boolean {
         try {
             Thread.sleep(50)
@@ -193,7 +188,6 @@ class ImsAccessibilityService : AccessibilityService() {
             if (now.isEmpty()) return false
             return now == expected || now.contains(expected)
         } catch (_: Exception) {
-            // لو مش عارفين نقرأ (مثلاً password field)، نفترض النجاح
             return true
         }
     }
@@ -203,8 +197,7 @@ class ImsAccessibilityService : AccessibilityService() {
         return try { node.refresh() } catch (_: Exception) { false }
     }
 
-    // ═══════════════ Gesture Tap + Paste (الأقوى) ═══════════════
-    /// ⭐ بيستنى الـ gesture تخلص فعلاً قبل ما يرد
+    // ═══════════════ Gesture Tap + Paste ═══════════════
     private fun gestureTapAndPaste(node: AccessibilityNodeInfo, text: String): Boolean {
         try {
             copyToClipboard(text)
@@ -220,13 +213,12 @@ class ImsAccessibilityService : AccessibilityService() {
             val stroke = GestureDescription.StrokeDescription(path, 0, 50)
             val gesture = GestureDescription.Builder().addStroke(stroke).build()
 
-            // ⭐ بنستخدم flag يخلص من غير blocking
-            val completionFlag = java.util.concurrent.atomic.AtomicBoolean(false)
-            val doneFlag = java.util.concurrent.atomic.AtomicBoolean(false)
+            val doneFlag = AtomicBoolean(false)
+            val completedFlag = AtomicBoolean(false)
 
             dispatchGesture(gesture, object : GestureResultCallback() {
                 override fun onCompleted(g: GestureDescription?) {
-                    completionFlag.set(true)
+                    completedFlag.set(true)
                     doneFlag.set(true)
                 }
                 override fun onCancelled(g: GestureDescription?) {
@@ -234,27 +226,40 @@ class ImsAccessibilityService : AccessibilityService() {
                 }
             }, mainHandler)
 
-            // انتظر النتيجة (بس مش أكتر من ثانية)
             val start = System.currentTimeMillis()
             while (!doneFlag.get() && System.currentTimeMillis() - start < 1000) {
                 try { Thread.sleep(20) } catch (_: InterruptedException) {}
             }
 
-            if (!completionFlag.get()) return false
+            if (!completedFlag.get()) return false
 
-            // بعد ما الـ tap خلص، استنى الـ focus يوصل
             try { Thread.sleep(100) } catch (_: InterruptedException) {}
 
-            // paste
-            val ok = performGlobalAction(GLOBAL_ACTION_PASTE)
+            // ⭐ الحل: ACTION_PASTE على الـ node بعد ما الـ gesture خلص
+            var pasted = false
+            try {
+                if (safeRefresh(node)) {
+                    pasted = node.performAction(AccessibilityNodeInfo.ACTION_PASTE)
+                }
+            } catch (_: Exception) {}
+
+            // لو الـ node مش لسه متاح، جرّب الحقل المركّز الجديد
+            if (!pasted) {
+                val newFocus = findFocusedInput()
+                if (newFocus != null && safeRefresh(newFocus)) {
+                    pasted = newFocus.performAction(AccessibilityNodeInfo.ACTION_PASTE)
+                }
+            }
+
             try { Thread.sleep(80) } catch (_: InterruptedException) {}
 
-            // تأكيد إن الكتابة حصلت
-            if (safeRefresh(node)) {
-                val now = node.text?.toString() ?: ""
+            // تأكيد
+            val target = resolveCached() ?: findFocusedInput() ?: node
+            if (safeRefresh(target)) {
+                val now = target.text?.toString() ?: ""
                 if (now.contains(text)) return true
             }
-            return ok
+            return pasted
         } catch (e: Exception) {
             Log.e(TAG, "gesture paste", e)
             return false
