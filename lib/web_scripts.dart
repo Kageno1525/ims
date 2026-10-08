@@ -162,7 +162,6 @@ class WebScripts {
 })()
 ''';
 
-  /// يرجّع نص زر الرنج الحالي (اسم اللي متحدد)
   static const readRangeButton = r'''
 (function(){
   try {
@@ -173,7 +172,6 @@ class WebScripts {
 })()
 ''';
 
-  /// اختيار رنج بالاسم — يستخدم %NAME%
   static const selectRange = r'''
 (function(){
   try {
@@ -202,42 +200,55 @@ class WebScripts {
 })()
 ''';
 
-  // ═══════ Selects (Vue 3 native setter) ═══════
-  /// %COUNT% و %TYPE% — يرجّع "ok|c=1|t=1" أو "ok|c=0|t=1"
+  // ═══════ Selects (Vue 3) — محدّث ═══════
+  /// يحدد الـ select الصح حسب الـ options اللي جواه
   static const setFilters = r'''
 (function(){
   try {
-    var count = String(%COUNT%), type = %TYPE%;
+    var count = String(%COUNT%), type = String(%TYPE%);
     var cOk = 0, tOk = 0;
-    var setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set;
+    var info = [];
 
-    function setSel(sel, val){
+    function findByOptions(requiredVals){
+      var sels = document.querySelectorAll('select');
+      for (var i=0;i<sels.length;i++){
+        var ok = true;
+        for (var k=0;k<requiredVals.length;k++){
+          var found = false;
+          for (var j=0;j<sels[i].options.length;j++){
+            if (String(sels[i].options[j].value) === String(requiredVals[k])) { found = true; break; }
+          }
+          if (!found) { ok = false; break; }
+        }
+        if (ok) return sels[i];
+      }
+      return null;
+    }
+
+    function setVal(sel, val){
+      var setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set;
       try { setter.call(sel, String(val)); } catch(e){ sel.value = String(val); }
       for (var k=0;k<sel.options.length;k++){
-        if (String(sel.options[k].value) === String(val)){
-          sel.options[k].selected = true;
-          break;
-        }
+        sel.options[k].selected = (String(sel.options[k].value) === String(val));
       }
       sel.dispatchEvent(new Event('input', {bubbles:true}));
       sel.dispatchEvent(new Event('change', {bubbles:true}));
       sel.dispatchEvent(new Event('blur', {bubbles:true}));
+      return String(sel.value) === String(val);
     }
 
-    var sels = document.querySelectorAll('select.select, select');
-    for (var i=0;i<sels.length;i++){
-      var s = sels[i];
-      var vals = [];
-      for (var j=0;j<s.options.length;j++) vals.push(String(s.options[j].value));
+    // العدد: فيه 5000 و 1000 و 10
+    var cSel = findByOptions(['5000','1000','10']);
+    // النوع: فيه full و local
+    var tSel = findByOptions(['full','local']);
 
-      if (!cOk && vals.indexOf(count) >= 0){
-        setSel(s, count); cOk = 1; continue;
-      }
-      if (!tOk && vals.indexOf(type) >= 0){
-        setSel(s, type); tOk = 1; continue;
-      }
-    }
-    return 'ok|c=' + cOk + '|t=' + tOk;
+    info.push('cSel=' + (cSel ? 'yes' : 'no'));
+    info.push('tSel=' + (tSel ? 'yes' : 'no'));
+
+    if (cSel) cOk = setVal(cSel, count) ? 1 : 0;
+    if (tSel) tOk = setVal(tSel, type) ? 1 : 0;
+
+    return 'ok|c=' + cOk + '|t=' + tOk + '|' + info.join(',');
   } catch(e){ return 'err:' + e.message; }
 })()
 ''';
@@ -250,7 +261,8 @@ class WebScripts {
     if (!f){
       var btns = document.querySelectorAll('button');
       for (var i=0;i<btns.length;i++){
-        if ((btns[i].innerText||'').trim().toLowerCase() === 'filter'){ f = btns[i]; break; }
+        var t = (btns[i].innerText||'').trim().toLowerCase();
+        if (t === 'filter'){ f = btns[i]; break; }
       }
     }
     if (!f) return 'no-filter';
