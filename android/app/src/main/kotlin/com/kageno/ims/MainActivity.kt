@@ -2,6 +2,8 @@ package com.kageno.ims
 
 import android.content.Intent
 import android.net.Uri
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -43,8 +45,15 @@ class MainActivity : FlutterActivity() {
                 }
                 "typeText" -> {
                     val text = call.argument<String>("text") ?: ""
-                    val ok = ImsAccessibilityService.typeTextStatic(text)
-                    result.success(ok)
+                    // ⭐ شغل في thread منفصل عشان ميجمدش الـ UI
+                    Thread {
+                        val ok = try {
+                            ImsAccessibilityService.typeTextStatic(text)
+                        } catch (_: Exception) { false }
+                        Handler(Looper.getMainLooper()).post {
+                            result.success(ok)
+                        }
+                    }.start()
                 }
                 "startVolume" -> {
                     ImsAccessibilityService.volumeEnabled = true
@@ -64,7 +73,7 @@ class MainActivity : FlutterActivity() {
                             }
                             startService(i)
                             result.success(true)
-                        } catch (e: Exception) {
+                        } catch (_: Exception) {
                             result.success(false)
                         }
                     }
@@ -87,7 +96,6 @@ class MainActivity : FlutterActivity() {
             }
         }
 
-        // ربط callbacks من الـ Services
         ImsAccessibilityService.onVolumeKey = { action ->
             runOnUiThread {
                 methodChannel?.invokeMethod("onVolume", action)
