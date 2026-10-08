@@ -1,6 +1,7 @@
 package com.kageno.ims
 
 import android.content.Intent
+import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Handler
@@ -100,32 +101,15 @@ class MainActivity : FlutterActivity() {
                 "globalRecents" -> runAsync(result) { ImsAccessibilityService.globalRecentsStatic() }
                 "currentPackage" -> result.success(ImsAccessibilityService.currentPackageStatic())
 
-                // ⭐ قائمة كل التطبيقات
+                // ⭐ listApps - 3 طرق مدمجة
                 "listApps" -> {
                     try {
-                        val pm = packageManager
-                        val mainIntent = Intent(Intent.ACTION_MAIN).apply {
-                            addCategory(Intent.CATEGORY_LAUNCHER)
-                        }
-                        val apps = pm.queryIntentActivities(mainIntent, 0)
-                        val list = apps.mapNotNull { info ->
-                            try {
-                                val pkg = info.activityInfo.packageName
-                                val name = info.loadLabel(pm).toString()
-                                // استبعد نفسنا
-                                if (pkg == packageName) null
-                                else mapOf("package" to pkg, "name" to name)
-                            } catch (_: Exception) { null }
-                        }
-                            .distinctBy { it["package"] }
-                            .sortedBy { (it["name"] ?: "").lowercase() }
-                        result.success(list)
+                        result.success(listInstalledApps())
                     } catch (e: Exception) {
                         result.success(emptyList<Map<String, String>>())
                     }
                 }
 
-                // ⭐ تحويل الاسم → باكدج
                 "resolvePackage" -> {
                     val name = call.argument<String>("name") ?: ""
                     result.success(resolvePackageByName(name))
@@ -143,44 +127,98 @@ class MainActivity : FlutterActivity() {
         }
     }
 
-    /// يدور على باكدج من الاسم أو الباكدج نفسه
+    /// ⭐ 3 طرق مدمجة عشان نضمن كل التطبيقات
+    private fun listInstalledApps(): List<Map<String, String>> {
+        val pm = packageManager
+        val map = mutableMapOf<String, String>()
+
+        // ═══ الطريقة 1: getInstalledApplications ═══
+        try {
+            @Suppress("DEPRECATION")
+            val allApps = pm.getInstalledApplications(0)
+            for (app in allApps) {
+                try {
+                    val pkg = app.packageName
+                    if (pkg == packageName) continue
+                    // لازم يكون عنده launch intent
+                    val launch = pm.getLaunchIntentForPackage(pkg) ?: continue
+                    val label = pm.getApplicationLabel(app).toString()
+                    if (label.isNotBlank()) {
+                        map[pkg] = label
+                    }
+                } catch (_: Exception) {}
+            }
+        } catch (_: Exception) {}
+
+        // ═══ الطريقة 2: queryIntentActivities ═══
+        try {
+            val mainIntent = Intent(Intent.ACTION_MAIN).apply {
+                addCategory(Intent.CATEGORY_LAUNCHER)
+            }
+            @Suppress("DEPRECATION")
+            val launchers = pm.queryIntentActivities(mainIntent, 0)
+            for (info in launchers) {
+                try {
+                    val pkg = info.activityInfo.packageName
+                    if (pkg == packageName) continue
+                    val label = info.loadLabel(pm).toString()
+                    if (label.isNotBlank() && !map.containsKey(pkg)) {
+                        map[pkg] = label
+                    }
+                } catch (_: Exception) {}
+            }
+        } catch (_: Exception) {}
+
+        // ═══ الطريقة 3: queryIntentActivities بـ CATEGORY_LEANBACK ═══
+        try {
+            val leanback = Intent(Intent.ACTION_MAIN).apply {
+                addCategory(Intent.CATEGORY_LEANBACK_LAUNCHER)
+            }
+            @Suppress("DEPRECATION")
+            val launchers = pm.queryIntentActivities(leanback, 0)
+            for (info in launchers) {
+                try {
+                    val pkg = info.activityInfo.packageName
+                    if (pkg == packageName) continue
+                    val label = info.loadLabel(pm).toString()
+                    if (label.isNotBlank() && !map.containsKey(pkg)) {
+                        map[pkg] = label
+                    }
+                } catch (_: Exception) {}
+            }
+        } catch (_: Exception) {}
+
+        return map.entries
+            .map { mapOf("package" to it.key, "name" to it.value) }
+            .sortedBy { (it["name"] ?: "").lowercase() }
+    }
+
     private fun resolvePackageByName(query: String): String? {
         if (query.isBlank()) return null
         val q = query.trim()
         val pm = packageManager
 
-        // 1) لو الإدخال باكدج فعلاً موجود
         try {
+            @Suppress("DEPRECATION")
             pm.getPackageInfo(q, 0)
             return q
         } catch (_: Exception) {}
 
-        // 2) دوّر بالاسم - مطابقة تامة أولاً
-        try {
-            val mainIntent = Intent(Intent.ACTION_MAIN).apply {
-                addCategory(Intent.CATEGORY_LAUNCHER)
-            }
-            val apps = pm.queryIntentActivities(mainIntent, 0)
-            val candidates = apps.mapNotNull { info ->
-                try {
-                    val pkg = info.activityInfo.packageName
-                    val label = info.loadLabel(pm).toString()
-                    if (pkg == packageName) null
-                    else Triple(pkg, label, label.lowercase())
-                } catch (_: Exception) { null }
-            }
+        // دور بالاسم
+        val apps = listInstalledApps()
+        val ql = q.lowercase()
 
-            // مطابقة تامة
-            val exact = candidates.firstOrNull { it.third == q.lowercase() }
-            if (exact != null) return exact.first
+        val exact = apps.firstOrNull {
+            (it["name"] ?: "").lowercase() == ql
+        }
+        if (exact != null) return exact["package"]
 
-            // مطابقة جزئية
-            val partial = candidates.firstOrNull {
-                it.third.contains(q.lowercase()) ||
-                it.first.lowercase().contains(q.lowercase())
-            }
-            if (partial != null) return partial.first
-        } catch (_: Exception) {}
+        val partial = apps.firstOrNull {
+            val n = (it["name"] ?: "").lowercase()
+            val p = (it["package"] ?: "").lowercase()
+            n.contains(ql) || p.contains(ql)
+        }
+        if (partial != null) return partial["package"]
 
         return null
     }
