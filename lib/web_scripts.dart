@@ -199,12 +199,12 @@ class WebScripts {
 })()
 ''';
 
-  // ═══════ Selects — حل Vue internals ═══════
+  // ═══════ Selects — حل Vue 3 reactivity ═══════
   static const setFilters = r'''
 (function(){
   try {
-    var count = String(%COUNT%);
-    var type  = String(%TYPE%);
+    var count = '%COUNT%';
+    var type  = '%TYPE%';
     var log = [];
 
     var SEL_COUNT = '#app > div > div > main > div > div:nth-child(2) > div.card > div.classic-toolbar > div:nth-child(1) > div.classic-toolbar-records > label > select';
@@ -214,11 +214,11 @@ class WebScripts {
       var el = document.querySelector(primarySel);
       if (el && el.tagName === 'SELECT') return el;
       var all = document.querySelectorAll('select');
-      for (var k=0;k<all.length;k++){
+      for (var k=0; k<all.length; k++){
         var ok = true;
-        for (var m=0;m<requiredVals.length;m++){
+        for (var m=0; m<requiredVals.length; m++){
           var f = false;
-          for (var n=0;n<all[k].options.length;n++){
+          for (var n=0; n<all[k].options.length; n++){
             if (String(all[k].options[n].value) === String(requiredVals[m])){ f = true; break; }
           }
           if (!f){ ok = false; break; }
@@ -228,125 +228,63 @@ class WebScripts {
       return null;
     }
 
-    // ⭐ الحل القوي: نوصل لـ Vue internals ونستدعي handler مباشرة
-    function forceSelectVue(el, val){
+    function applyVueSelect(el, targetVal){
       if (!el) return 'no-el';
-      val = String(val);
-      var det = [];
+      targetVal = String(targetVal);
 
       var idx = -1;
-      for (var k=0;k<el.options.length;k++){
-        if (String(el.options[k].value) === val){ idx = k; break; }
+      for (var i = 0; i < el.options.length; i++) {
+        if (String(el.options[i].value) === targetVal) {
+          idx = i;
+          break;
+        }
       }
-      if (idx < 0) return 'no-opt';
+      if (idx === -1) return 'no-opt';
 
-      det.push('idx=' + idx);
+      // 1) Set HTML native index
+      el.selectedIndex = idx;
 
-      // 1) Native setters
+      // 2) Break Vue/React descriptor overrides
       try {
-        Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'selectedIndex').set.call(el, idx);
-        det.push('iset');
-      } catch(e){}
-      try {
-        Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set.call(el, val);
-        det.push('vset');
-      } catch(e){}
-
-      // 2) ضبط كل الخيارات
-      for (var m=0;m<el.options.length;m++){
-        el.options[m].selected = (m === idx);
-        el.options[m].removeAttribute('selected');
+        var setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set;
+        setter.call(el, targetVal);
+      } catch(e) {
+        el.value = targetVal;
       }
-      el.options[idx].setAttribute('selected','');
-      try { el.selectedIndex = idx; } catch(e){}
-      try { el.value = val; } catch(e){}
 
-      // 3) _value (Vue 3 internal)
-      try { el._value = val; det.push('_v'); } catch(e){}
+      // 3) Vue internal value store
+      try { el._value = targetVal; } catch(e){}
 
-      // 4) ⭐ استدعاء الـ onChange handler من Vue مباشرة
-      // في Vue 3، v-model بيحط onChange على الـ element
-      var handlerCalled = false;
+      // 4) Dispatch Events for Vue v-model listener
+      ['focus', 'input', 'change', 'blur'].forEach(function(evtName){
+        var ev;
+        try {
+          ev = new Event(evtName, { bubbles: true, cancelable: true });
+        } catch(e) {
+          ev = document.createEvent('HTMLEvents');
+          ev.initEvent(evtName, true, true);
+        }
+        el.dispatchEvent(ev);
+      });
+
+      // 5) Direct VNode handler trigger fallback
       try {
-        // محاولة 1: el.onChange مباشرة
-        if (typeof el.onChange === 'function'){
-          try {
-            var fakeEvt = {target: el, currentTarget: el, type: 'change', preventDefault:function(){}, stopPropagation:function(){}};
-            el.onChange.call(el, fakeEvt);
-            handlerCalled = true;
-            det.push('onChg');
-          } catch(e){}
-        }
-
-        // محاولة 2: من خلال __vnode.props
-        if (!handlerCalled){
-          var vnode = el.__vnode || el._vnode;
-          if (vnode && vnode.props){
-            var h = vnode.props.onChange || vnode.props['onUpdate:modelValue'];
-            if (typeof h === 'function'){
-              try {
-                var fakeEvt2 = {target: el, currentTarget: el, type: 'change', preventDefault:function(){}, stopPropagation:function(){}};
-                h(fakeEvt2);
-                handlerCalled = true;
-                det.push('vnodeH');
-              } catch(e){}
-            }
-          }
-        }
-
-        // محاولة 3: __vueParentComponent
-        if (!handlerCalled){
-          var comp = el.__vueParentComponent;
-          if (comp && comp.vnode && comp.vnode.props){
-            var h2 = comp.vnode.props.onChange;
-            if (typeof h2 === 'function'){
-              try {
-                var fakeEvt3 = {target: el, currentTarget: el, type: 'change'};
-                h2(fakeEvt3);
-                handlerCalled = true;
-                det.push('compH');
-              } catch(e){}
-            }
-          }
-        }
-
-        // محاولة 4: من خلال __vue__ (Vue 2 fallback)
-        if (!handlerCalled){
-          var v2 = el.__vue__;
-          if (v2 && typeof v2.$emit === 'function'){
-            try { v2.$emit('input', val); v2.$emit('change', val); det.push('v2emit'); handlerCalled = true; } catch(e){}
-          }
+        var vnode = el.__vnode || el._vnode;
+        if (vnode && vnode.props) {
+          if (typeof vnode.props.onChange === 'function') vnode.props.onChange({ target: el, currentTarget: el });
+          if (typeof vnode.props['onUpdate:modelValue'] === 'function') vnode.props['onUpdate:modelValue'](targetVal);
         }
       } catch(e){}
 
-      if (!handlerCalled) det.push('NO-HANDLER');
-
-      // 5) أحداث كاملة
-      var fired = [];
-      function fire(ev, name){ try { el.dispatchEvent(ev); fired.push(name); } catch(e){} }
-      fire(new Event('focus', {bubbles:true}), 'f');
-      fire(new Event('input', {bubbles:true, cancelable:true}), 'in');
-      fire(new Event('change', {bubbles:true, cancelable:true}), 'ch');
-      try { fire(new UIEvent('change', {bubbles:true, cancelable:true}), 'UI'); } catch(e){}
-      try { fire(new InputEvent('input', {bubbles:true, cancelable:true, data:val, inputType:'insertText'}), 'IE'); } catch(e){}
-      fire(new Event('blur', {bubbles:true}), 'b');
-      fire(new Event('focusout', {bubbles:true}), 'fo');
-
-      det.push('ev=' + fired.join('+'));
-
-      return det.join(',');
+      return 'ok:' + targetVal;
     }
 
     var cSel = findSelect(SEL_COUNT, ['5000','1000','10']);
     var tSel = findSelect(SEL_TYPE, ['full','local']);
 
-    log.push('cS=' + (cSel?'y':'n'));
-    log.push('tS=' + (tSel?'y':'n'));
+    if (cSel) log.push('Count[' + applyVueSelect(cSel, count) + ']');
+    if (tSel) log.push('Type[' + applyVueSelect(tSel, type) + ']');
 
-    if (cSel) log.push('C[' + forceSelectVue(cSel, count) + ']');
-    if (tSel) log.push('T[' + forceSelectVue(tSel, type)  + ']');
-
-    // خزّن للتحقق
     window.__imsFilterCheck = {wantC: count, wantT: type};
 
     return 'ok|| ' + log.join(' || ');
@@ -382,7 +320,6 @@ class WebScripts {
     var tSel = findSelect(SEL_TYPE, ['full','local']);
     var w = window.__imsFilterCheck || {};
 
-    // نقرأ القيمة الحقيقية من DOM
     return JSON.stringify({
       c: cSel ? String(cSel.value) : null,
       t: tSel ? String(tSel.value) : null,
