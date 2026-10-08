@@ -6,7 +6,7 @@ class NumbersPage extends StatelessWidget {
   final bool isDark;
   final VoidCallback onToggleTheme;
 
-  // قسم التحميل من الموقع
+  // قسم التحميل
   final List<String> ranges;
   final String? selectedRange;
   final int selectedCount;
@@ -20,7 +20,7 @@ class NumbersPage extends StatelessWidget {
   final Future<void> Function() onApplyFilter;
   final Future<void> Function() onDownloadCsv;
 
-  // قسم تشغيل الأرقام
+  // قسم التشغيل
   final List<CsvFile> csvFiles;
   final String? selectedCsvName;
   final List<String> currentNumbers;
@@ -32,6 +32,12 @@ class NumbersPage extends StatelessWidget {
   final bool floatingEnabled;
   final bool accessibilityOn;
   final bool overlayOn;
+
+  // ⭐ الجديد
+  final bool running;
+  final Future<void> Function() onToggleRunning;
+  final Future<void> Function() onReset;
+
   final Future<void> Function() onRefreshFiles;
   final ValueChanged<String> onSelectCsv;
   final VoidCallback onPrevNumber;
@@ -46,7 +52,6 @@ class NumbersPage extends StatelessWidget {
   final Future<void> Function() onOpenAccessibility;
   final Future<void> Function() onOpenOverlay;
 
-  // سجل
   final List<LogEntry> logs;
   final VoidCallback onBack;
 
@@ -77,6 +82,9 @@ class NumbersPage extends StatelessWidget {
     required this.floatingEnabled,
     required this.accessibilityOn,
     required this.overlayOn,
+    required this.running,
+    required this.onToggleRunning,
+    required this.onReset,
     required this.onRefreshFiles,
     required this.onSelectCsv,
     required this.onPrevNumber,
@@ -115,15 +123,19 @@ class NumbersPage extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text('الأرقام',
-                            style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
+                            style: theme.textTheme.titleLarge
+                                ?.copyWith(fontWeight: FontWeight.bold)),
                         Text('حمّل الأرقام وشغّلها',
                             style: theme.textTheme.bodySmall?.copyWith(
-                                color: theme.colorScheme.onSurface.withOpacity(0.5))),
+                                color:
+                                    theme.colorScheme.onSurface.withOpacity(0.5))),
                       ],
                     ),
                   ),
                   IconBtn(
-                    icon: isDark ? Icons.dark_mode_rounded : Icons.light_mode_rounded,
+                    icon: isDark
+                        ? Icons.dark_mode_rounded
+                        : Icons.light_mode_rounded,
                     onTap: onToggleTheme,
                   ),
                 ],
@@ -159,10 +171,12 @@ class NumbersPage extends StatelessWidget {
         children: [
           Row(
             children: [
-              Icon(Icons.cloud_download_rounded, size: 18, color: theme.colorScheme.primary),
+              Icon(Icons.cloud_download_rounded,
+                  size: 18, color: theme.colorScheme.primary),
               const SizedBox(width: 8),
               Text('تحميل من الموقع',
-                  style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+                  style: theme.textTheme.titleMedium
+                      ?.copyWith(fontWeight: FontWeight.bold)),
               const Spacer(),
               IconBtn(
                 icon: Icons.refresh_rounded,
@@ -213,7 +227,8 @@ class NumbersPage extends StatelessWidget {
                       theme: theme,
                       value: selectedType,
                       items: const ['full', 'local'],
-                      labelBuilder: (v) => v == 'full' ? 'Full Num' : 'Local Num',
+                      labelBuilder: (v) =>
+                          v == 'full' ? 'Full Num' : 'Local Num',
                       onChanged: onSelectType,
                     ),
                   ],
@@ -256,24 +271,14 @@ class NumbersPage extends StatelessWidget {
         ? currentNumbers[currentIndex]
         : '—';
     final total = currentNumbers.length;
+
     return _card(theme,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Icon(Icons.play_circle_fill_rounded, size: 20, color: const Color(0xFFFF6B6B)),
-              const SizedBox(width: 8),
-              Text('تشغيل الأرقام',
-                  style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
-              const Spacer(),
-              IconBtn(
-                icon: Icons.refresh_rounded,
-                onTap: () => onRefreshFiles(),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
+          // ⭐ شريط التشغيل الرئيسي ON/OFF + Reset
+          _masterBar(theme),
+          const SizedBox(height: 16),
 
           // اختيار ملف
           _label(theme, Icons.folder_rounded, 'ملف الأرقام'),
@@ -286,33 +291,77 @@ class NumbersPage extends StatelessWidget {
           ),
           const SizedBox(height: 14),
 
-          // العداد
-          Container(
+          // العداد الكبير
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 350),
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [Color(0xFF6C5CE7), Color(0xFF00D2FF)],
-                begin: Alignment.topLeft, end: Alignment.bottomRight,
+              gradient: LinearGradient(
+                colors: running
+                    ? const [Color(0xFF6C5CE7), Color(0xFF00D2FF)]
+                    : const [Color(0xFF3A3A4A), Color(0xFF2A2A38)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
               ),
               borderRadius: BorderRadius.circular(20),
               boxShadow: [
-                BoxShadow(color: const Color(0xFF6C5CE7).withOpacity(0.35), blurRadius: 20, offset: const Offset(0, 10)),
+                BoxShadow(
+                  color: (running
+                          ? const Color(0xFF6C5CE7)
+                          : const Color(0xFF3A3A4A))
+                      .withOpacity(0.35),
+                  blurRadius: 20,
+                  offset: const Offset(0, 10),
+                ),
               ],
             ),
             child: Column(
               children: [
-                Text('الرقم الحالي',
-                    style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 12)),
-                const SizedBox(height: 6),
-                Text(current,
-                    style: const TextStyle(
-                      color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold,
-                      fontFamily: 'monospace', letterSpacing: 1,
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      running
+                          ? Icons.play_circle_fill_rounded
+                          : Icons.pause_circle_filled_rounded,
+                      color: Colors.white,
+                      size: 16,
                     ),
-                    textAlign: TextAlign.center),
+                    const SizedBox(width: 6),
+                    Text(
+                      running ? 'شغّال' : 'متوقف',
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.9),
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Text('الرقم الحالي',
+                    style: TextStyle(
+                        color: Colors.white.withOpacity(0.8), fontSize: 12)),
                 const SizedBox(height: 6),
-                Text('$currentIndex + 1 / $total',
-                    style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 11)),
+                AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 200),
+                  child: Text(
+                    current,
+                    key: ValueKey(current + currentIndex.toString()),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 28,
+                      fontWeight: FontWeight.bold,
+                      fontFamily: 'monospace',
+                      letterSpacing: 1,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text('${currentIndex + 1} / $total',
+                    style: TextStyle(
+                        color: Colors.white.withOpacity(0.7), fontSize: 11)),
               ],
             ),
           ),
@@ -377,15 +426,16 @@ class NumbersPage extends StatelessWidget {
                   children: [
                     _label(theme, Icons.repeat_rounded, 'عدد مرات التكرار'),
                     const SizedBox(height: 8),
-                    TextField(
+                    TextFormField(
+                      key: ValueKey('repeat-$repeatCount-$infinite'),
                       keyboardType: TextInputType.number,
                       enabled: !infinite,
-                      controller: TextEditingController(text: repeatCount.toString()),
+                      initialValue: repeatCount.toString(),
                       onChanged: (v) {
                         final n = int.tryParse(v);
                         if (n != null && n > 0) onSetRepeat(n);
                       },
-                      decoration: InputDecoration(
+                      decoration: const InputDecoration(
                         hintText: 'مثال: 3',
                         suffixIcon: Icon(Icons.repeat_rounded, size: 18),
                       ),
@@ -401,12 +451,16 @@ class NumbersPage extends StatelessWidget {
                     onTap: () => onToggleInfinite(!infinite),
                     child: AnimatedContainer(
                       duration: const Duration(milliseconds: 250),
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 14),
                       decoration: BoxDecoration(
                         gradient: infinite
-                            ? const LinearGradient(colors: [Color(0xFFFF6B6B), Color(0xFFFF8E53)])
+                            ? const LinearGradient(
+                                colors: [Color(0xFFFF6B6B), Color(0xFFFF8E53)])
                             : null,
-                        color: infinite ? null : theme.colorScheme.surface.withOpacity(0.6),
+                        color: infinite
+                            ? null
+                            : theme.colorScheme.surface.withOpacity(0.6),
                         borderRadius: BorderRadius.circular(14),
                         border: Border.all(
                           color: infinite
@@ -419,12 +473,17 @@ class NumbersPage extends StatelessWidget {
                         children: [
                           Icon(Icons.all_inclusive_rounded,
                               size: 20,
-                              color: infinite ? Colors.white : theme.colorScheme.onSurface),
+                              color: infinite
+                                  ? Colors.white
+                                  : theme.colorScheme.onSurface),
                           const SizedBox(width: 6),
                           Text('∞',
                               style: TextStyle(
-                                fontSize: 18, fontWeight: FontWeight.bold,
-                                color: infinite ? Colors.white : theme.colorScheme.onSurface,
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                color: infinite
+                                    ? Colors.white
+                                    : theme.colorScheme.onSurface,
                               )),
                         ],
                       ),
@@ -439,7 +498,6 @@ class NumbersPage extends StatelessWidget {
           Divider(color: theme.colorScheme.primary.withOpacity(0.15)),
           const SizedBox(height: 10),
 
-          // إعدادات الأتمتة
           _label(theme, Icons.settings_remote_rounded, 'أزرار التشغيل'),
           const SizedBox(height: 10),
 
@@ -471,7 +529,6 @@ class NumbersPage extends StatelessWidget {
           ),
 
           const SizedBox(height: 14),
-          // التنبيهات
           if (!accessibilityOn)
             _warnBox(
               theme,
@@ -498,6 +555,133 @@ class NumbersPage extends StatelessWidget {
     );
   }
 
+  // ⭐ شريط ON/OFF + Reset
+  Widget _masterBar(ThemeData theme) {
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 350),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      decoration: BoxDecoration(
+        gradient: running
+            ? const LinearGradient(
+                colors: [Color(0xFF00B894), Color(0xFF00D68F)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              )
+            : null,
+        color: running ? null : theme.colorScheme.surface.withOpacity(0.5),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: running
+              ? Colors.transparent
+              : const Color(0xFFFF6B6B).withOpacity(0.35),
+        ),
+        boxShadow: running
+            ? [
+                BoxShadow(
+                  color: const Color(0xFF00B894).withOpacity(0.4),
+                  blurRadius: 20,
+                  offset: const Offset(0, 10),
+                ),
+              ]
+            : null,
+      ),
+      child: Row(
+        children: [
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 300),
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: running
+                  ? Colors.white.withOpacity(0.25)
+                  : theme.colorScheme.primary.withOpacity(0.15),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Icon(
+              running
+                  ? Icons.power_settings_new_rounded
+                  : Icons.power_off_rounded,
+              color: running ? Colors.white : theme.colorScheme.primary,
+              size: 22,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  running ? 'التشغيل مفعّل' : 'التشغيل متوقف',
+                  style: TextStyle(
+                    color: running ? Colors.white : theme.colorScheme.onSurface,
+                    fontSize: 15,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  running
+                      ? 'الأزرار شغّالة والكتابة التلقائية مفعّلة'
+                      : 'كل الأزرار متوقفة',
+                  style: TextStyle(
+                    color: running
+                        ? Colors.white.withOpacity(0.8)
+                        : theme.colorScheme.onSurface.withOpacity(0.55),
+                    fontSize: 11,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          // زرار Reset
+          Material(
+            color: running
+                ? Colors.white.withOpacity(0.2)
+                : theme.colorScheme.surface.withOpacity(0.6),
+            borderRadius: BorderRadius.circular(12),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(12),
+              onTap: () => onReset(),
+              child: Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.refresh_rounded,
+                      size: 16,
+                      color: running
+                          ? Colors.white
+                          : theme.colorScheme.onSurface,
+                    ),
+                    const SizedBox(width: 4),
+                    Text('ريست',
+                        style: TextStyle(
+                          color: running
+                              ? Colors.white
+                              : theme.colorScheme.onSurface,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12,
+                        )),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          // زرار ON/OFF
+          Switch(
+            value: running,
+            onChanged: (v) => onToggleRunning(),
+            activeColor: Colors.white,
+            activeTrackColor: Colors.white.withOpacity(0.5),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _toggleRow(
     ThemeData theme, {
     required IconData icon,
@@ -506,37 +690,44 @@ class NumbersPage extends StatelessWidget {
     required bool value,
     required Future<void> Function(bool) onChanged,
   }) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surface.withOpacity(0.5),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: theme.colorScheme.primary.withOpacity(0.15)),
-      ),
-      child: Row(
-        children: [
-          Icon(icon, size: 20, color: theme.colorScheme.primary),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
-                const SizedBox(height: 2),
-                Text(subtitle,
-                    style: TextStyle(
-                      fontSize: 10.5,
-                      color: theme.colorScheme.onSurface.withOpacity(0.5),
-                    )),
-              ],
+    final enabled = running;
+    return Opacity(
+      opacity: enabled ? 1 : 0.5,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surface.withOpacity(0.5),
+          borderRadius: BorderRadius.circular(14),
+          border:
+              Border.all(color: theme.colorScheme.primary.withOpacity(0.15)),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, size: 20, color: theme.colorScheme.primary),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title,
+                      style: const TextStyle(
+                          fontSize: 13, fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 2),
+                  Text(subtitle,
+                      style: TextStyle(
+                        fontSize: 10.5,
+                        color: theme.colorScheme.onSurface.withOpacity(0.5),
+                      )),
+                ],
+              ),
             ),
-          ),
-          Switch(
-            value: value,
-            onChanged: (v) => onChanged(v),
-            activeColor: theme.colorScheme.primary,
-          ),
-        ],
+            Switch(
+              value: value,
+              onChanged: enabled ? (v) => onChanged(v) : null,
+              activeColor: theme.colorScheme.primary,
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -560,7 +751,8 @@ class NumbersPage extends StatelessWidget {
         children: [
           Icon(icon, color: color, size: 18),
           const SizedBox(width: 8),
-          Expanded(child: Text(text, style: TextStyle(color: color, fontSize: 12))),
+          Expanded(
+              child: Text(text, style: TextStyle(color: color, fontSize: 12))),
           TextButton(
             onPressed: onAction,
             style: TextButton.styleFrom(
@@ -569,7 +761,9 @@ class NumbersPage extends StatelessWidget {
               minimumSize: Size.zero,
               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
             ),
-            child: Text(actionLabel, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+            child: Text(actionLabel,
+                style: const TextStyle(
+                    fontWeight: FontWeight.bold, fontSize: 12)),
           ),
         ],
       ),
@@ -595,19 +789,26 @@ class NumbersPage extends StatelessWidget {
                 ? theme.colorScheme.surface.withOpacity(0.3)
                 : color.withOpacity(0.15),
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: color.withOpacity(onTap == null ? 0.1 : 0.35)),
+            border: Border.all(
+                color: color.withOpacity(onTap == null ? 0.1 : 0.35)),
           ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(icon, size: 18,
-                  color: onTap == null ? theme.colorScheme.onSurface.withOpacity(0.3) : color),
+              Icon(icon,
+                  size: 18,
+                  color: onTap == null
+                      ? theme.colorScheme.onSurface.withOpacity(0.3)
+                      : color),
               const SizedBox(width: 6),
               Flexible(
                 child: Text(label,
                     style: TextStyle(
-                      fontSize: 12, fontWeight: FontWeight.bold,
-                      color: onTap == null ? theme.colorScheme.onSurface.withOpacity(0.3) : color,
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      color: onTap == null
+                          ? theme.colorScheme.onSurface.withOpacity(0.3)
+                          : color,
                     ),
                     overflow: TextOverflow.ellipsis),
               ),
@@ -625,7 +826,13 @@ class NumbersPage extends StatelessWidget {
         color: theme.colorScheme.surface.withOpacity(isDark ? 0.55 : 0.85),
         borderRadius: BorderRadius.circular(24),
         border: Border.all(color: theme.colorScheme.primary.withOpacity(0.15)),
-        boxShadow: [BoxShadow(color: theme.colorScheme.primary.withOpacity(0.1), blurRadius: 30, offset: const Offset(0, 15))],
+        boxShadow: [
+          BoxShadow(
+            color: theme.colorScheme.primary.withOpacity(0.1),
+            blurRadius: 30,
+            offset: const Offset(0, 15),
+          ),
+        ],
       ),
       child: child,
     );
@@ -636,13 +843,18 @@ class NumbersPage extends StatelessWidget {
       children: [
         Icon(icon, size: 15, color: theme.colorScheme.primary),
         const SizedBox(width: 6),
-        Text(text, style: TextStyle(color: theme.colorScheme.onSurface.withOpacity(0.7), fontSize: 12.5, fontWeight: FontWeight.w600)),
+        Text(text,
+            style: TextStyle(
+              color: theme.colorScheme.onSurface.withOpacity(0.7),
+              fontSize: 12.5,
+              fontWeight: FontWeight.w600,
+            )),
       ],
     );
   }
 }
 
-// ═══════════ Range Picker (زي ما هو) ═══════════
+// ═══════════ Range Picker ═══════════
 class _RangePicker extends StatelessWidget {
   final ThemeData theme;
   final List<String> ranges;
@@ -670,18 +882,28 @@ class _RangePicker extends StatelessWidget {
           decoration: BoxDecoration(
             color: theme.colorScheme.surface.withOpacity(0.6),
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: theme.colorScheme.primary.withOpacity(0.25)),
+            border: Border.all(
+                color: theme.colorScheme.primary.withOpacity(0.25)),
           ),
           child: Row(
             children: [
               Expanded(
                 child: loading
                     ? Row(children: [
-                        SizedBox(width: 16, height: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2, color: theme.colorScheme.primary)),
+                        SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: theme.colorScheme.primary,
+                          ),
+                        ),
                         const SizedBox(width: 10),
                         Text('جاري التحميل…',
-                            style: TextStyle(color: theme.colorScheme.onSurface.withOpacity(0.6), fontSize: 14)),
+                            style: TextStyle(
+                                color: theme.colorScheme.onSurface
+                                    .withOpacity(0.6),
+                                fontSize: 14)),
                       ])
                     : Text(
                         selected ?? (ranges.isEmpty ? 'مفيش رنجات' : 'اختر رنج'),
@@ -690,11 +912,14 @@ class _RangePicker extends StatelessWidget {
                               ? theme.colorScheme.onSurface
                               : theme.colorScheme.onSurface.withOpacity(0.5),
                           fontSize: 14,
-                          fontWeight: selected != null ? FontWeight.w600 : FontWeight.normal,
+                          fontWeight: selected != null
+                              ? FontWeight.w600
+                              : FontWeight.normal,
                         ),
                       ),
               ),
-              Icon(Icons.keyboard_arrow_down_rounded, color: theme.colorScheme.onSurface.withOpacity(0.6)),
+              Icon(Icons.keyboard_arrow_down_rounded,
+                  color: theme.colorScheme.onSurface.withOpacity(0.6)),
             ],
           ),
         ),
@@ -707,7 +932,14 @@ class _RangePicker extends StatelessWidget {
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
-      builder: (ctx) => _RangeSheet(ranges: ranges, selected: selected, onSelect: (r) { Navigator.pop(ctx); onSelect(r); }),
+      builder: (ctx) => _RangeSheet(
+        ranges: ranges,
+        selected: selected,
+        onSelect: (r) {
+          Navigator.pop(ctx);
+          onSelect(r);
+        },
+      ),
     );
   }
 }
@@ -716,7 +948,11 @@ class _RangeSheet extends StatefulWidget {
   final List<String> ranges;
   final String? selected;
   final ValueChanged<String> onSelect;
-  const _RangeSheet({required this.ranges, required this.selected, required this.onSelect});
+  const _RangeSheet({
+    required this.ranges,
+    required this.selected,
+    required this.onSelect,
+  });
   @override
   State<_RangeSheet> createState() => _RangeSheetState();
 }
@@ -731,7 +967,10 @@ class _RangeSheetState extends State<_RangeSheet> {
     filtered = widget.ranges;
   }
   @override
-  void dispose() { _search.dispose(); super.dispose(); }
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -744,12 +983,20 @@ class _RangeSheetState extends State<_RangeSheet> {
       child: Column(
         children: [
           const SizedBox(height: 12),
-          Container(width: 50, height: 5,
-              decoration: BoxDecoration(color: theme.colorScheme.onSurface.withOpacity(0.2), borderRadius: BorderRadius.circular(3))),
+          Container(
+            width: 50,
+            height: 5,
+            decoration: BoxDecoration(
+              color: theme.colorScheme.onSurface.withOpacity(0.2),
+              borderRadius: BorderRadius.circular(3),
+            ),
+          ),
           const SizedBox(height: 16),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: Text('اختر الرنج', style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
+            child: Text('اختر الرنج',
+                style: theme.textTheme.titleLarge
+                    ?.copyWith(fontWeight: FontWeight.bold)),
           ),
           const SizedBox(height: 14),
           Padding(
@@ -759,7 +1006,10 @@ class _RangeSheetState extends State<_RangeSheet> {
               onChanged: (q) => setState(() {
                 filtered = q.trim().isEmpty
                     ? widget.ranges
-                    : widget.ranges.where((r) => r.toLowerCase().contains(q.trim().toLowerCase())).toList();
+                    : widget.ranges
+                        .where((r) =>
+                            r.toLowerCase().contains(q.trim().toLowerCase()))
+                        .toList();
               }),
               decoration: InputDecoration(
                 hintText: 'ابحث…',
@@ -771,8 +1021,11 @@ class _RangeSheetState extends State<_RangeSheet> {
           const SizedBox(height: 10),
           Expanded(
             child: filtered.isEmpty
-                ? Center(child: Text('مفيش نتائج',
-                    style: TextStyle(color: theme.colorScheme.onSurface.withOpacity(0.5))))
+                ? Center(
+                    child: Text('مفيش نتائج',
+                        style: TextStyle(
+                            color:
+                                theme.colorScheme.onSurface.withOpacity(0.5))))
                 : ListView.builder(
                     padding: const EdgeInsets.symmetric(horizontal: 12),
                     itemCount: filtered.length,
@@ -780,25 +1033,40 @@ class _RangeSheetState extends State<_RangeSheet> {
                       final r = filtered[i];
                       final isSel = r == widget.selected;
                       return Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 4),
                         child: Material(
-                          color: isSel ? theme.colorScheme.primary.withOpacity(0.15) : Colors.transparent,
+                          color: isSel
+                              ? theme.colorScheme.primary.withOpacity(0.15)
+                              : Colors.transparent,
                           borderRadius: BorderRadius.circular(14),
                           child: InkWell(
                             borderRadius: BorderRadius.circular(14),
                             onTap: () => widget.onSelect(r),
                             child: Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 14, vertical: 14),
                               child: Row(
                                 children: [
                                   Icon(
-                                    isSel ? Icons.radio_button_checked_rounded : Icons.radio_button_unchecked_rounded,
-                                    color: isSel ? theme.colorScheme.primary : theme.colorScheme.onSurface.withOpacity(0.4),
+                                    isSel
+                                        ? Icons.radio_button_checked_rounded
+                                        : Icons
+                                            .radio_button_unchecked_rounded,
+                                    color: isSel
+                                        ? theme.colorScheme.primary
+                                        : theme.colorScheme.onSurface
+                                            .withOpacity(0.4),
                                     size: 20,
                                   ),
                                   const SizedBox(width: 12),
-                                  Expanded(child: Text(r,
-                                      style: TextStyle(fontWeight: isSel ? FontWeight.bold : FontWeight.normal, fontSize: 14))),
+                                  Expanded(
+                                      child: Text(r,
+                                          style: TextStyle(
+                                              fontWeight: isSel
+                                                  ? FontWeight.bold
+                                                  : FontWeight.normal,
+                                              fontSize: 14))),
                                 ],
                               ),
                             ),
@@ -841,11 +1109,13 @@ class _CsvPicker extends StatelessWidget {
           decoration: BoxDecoration(
             color: theme.colorScheme.surface.withOpacity(0.6),
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: theme.colorScheme.primary.withOpacity(0.25)),
+            border: Border.all(
+                color: theme.colorScheme.primary.withOpacity(0.25)),
           ),
           child: Row(
             children: [
-              Icon(Icons.description_rounded, size: 20, color: theme.colorScheme.primary),
+              Icon(Icons.description_rounded,
+                  size: 20, color: theme.colorScheme.primary),
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
@@ -855,11 +1125,13 @@ class _CsvPicker extends StatelessWidget {
                         ? theme.colorScheme.onSurface
                         : theme.colorScheme.onSurface.withOpacity(0.5),
                     fontSize: 14,
-                    fontWeight: selected != null ? FontWeight.w600 : FontWeight.normal,
+                    fontWeight:
+                        selected != null ? FontWeight.w600 : FontWeight.normal,
                   ),
                 ),
               ),
-              Icon(Icons.keyboard_arrow_down_rounded, color: theme.colorScheme.onSurface.withOpacity(0.6)),
+              Icon(Icons.keyboard_arrow_down_rounded,
+                  color: theme.colorScheme.onSurface.withOpacity(0.6)),
             ],
           ),
         ),
@@ -880,13 +1152,20 @@ class _CsvPicker extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             const SizedBox(height: 12),
-            Container(width: 50, height: 5,
-                decoration: BoxDecoration(
-                  color: Theme.of(ctx).colorScheme.onSurface.withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(3),
-                )),
+            Container(
+              width: 50,
+              height: 5,
+              decoration: BoxDecoration(
+                color: Theme.of(ctx).colorScheme.onSurface.withOpacity(0.2),
+                borderRadius: BorderRadius.circular(3),
+              ),
+            ),
             const SizedBox(height: 16),
-            Text('اختر ملف CSV', style: Theme.of(ctx).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
+            Text('اختر ملف CSV',
+                style: Theme.of(ctx)
+                    .textTheme
+                    .titleLarge
+                    ?.copyWith(fontWeight: FontWeight.bold)),
             const SizedBox(height: 14),
             Flexible(
               child: ListView.builder(
@@ -897,20 +1176,34 @@ class _CsvPicker extends StatelessWidget {
                   final f = files[i];
                   final isSel = f.name == selected;
                   return Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                     child: Material(
-                      color: isSel ? Theme.of(ctx).colorScheme.primary.withOpacity(0.15) : Colors.transparent,
+                      color: isSel
+                          ? Theme.of(ctx).colorScheme.primary.withOpacity(0.15)
+                          : Colors.transparent,
                       borderRadius: BorderRadius.circular(14),
                       child: InkWell(
                         borderRadius: BorderRadius.circular(14),
-                        onTap: () { Navigator.pop(ctx); onSelect(f.name); },
+                        onTap: () {
+                          Navigator.pop(ctx);
+                          onSelect(f.name);
+                        },
                         child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 14, vertical: 14),
                           child: Row(
                             children: [
                               Icon(
-                                isSel ? Icons.radio_button_checked_rounded : Icons.radio_button_unchecked_rounded,
-                                color: isSel ? Theme.of(ctx).colorScheme.primary : Theme.of(ctx).colorScheme.onSurface.withOpacity(0.4),
+                                isSel
+                                    ? Icons.radio_button_checked_rounded
+                                    : Icons.radio_button_unchecked_rounded,
+                                color: isSel
+                                    ? Theme.of(ctx).colorScheme.primary
+                                    : Theme.of(ctx)
+                                        .colorScheme
+                                        .onSurface
+                                        .withOpacity(0.4),
                                 size: 20,
                               ),
                               const SizedBox(width: 12),
@@ -918,10 +1211,20 @@ class _CsvPicker extends StatelessWidget {
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Text(f.name, style: TextStyle(fontWeight: isSel ? FontWeight.bold : FontWeight.normal, fontSize: 14)),
+                                    Text(f.name,
+                                        style: TextStyle(
+                                            fontWeight: isSel
+                                                ? FontWeight.bold
+                                                : FontWeight.normal,
+                                            fontSize: 14)),
                                     const SizedBox(height: 2),
                                     Text('${f.count} رقم',
-                                        style: TextStyle(fontSize: 11, color: Theme.of(ctx).colorScheme.onSurface.withOpacity(0.5))),
+                                        style: TextStyle(
+                                            fontSize: 11,
+                                            color: Theme.of(ctx)
+                                                .colorScheme
+                                                .onSurface
+                                                .withOpacity(0.5))),
                                   ],
                                 ),
                               ),
@@ -972,10 +1275,20 @@ class _MiniSelect<T> extends StatelessWidget {
           isExpanded: true,
           dropdownColor: theme.colorScheme.surface,
           borderRadius: BorderRadius.circular(14),
-          icon: Icon(Icons.keyboard_arrow_down_rounded, color: theme.colorScheme.onSurface.withOpacity(0.6)),
-          style: TextStyle(color: theme.colorScheme.onSurface, fontSize: 14, fontWeight: FontWeight.w600),
-          items: items.map((e) => DropdownMenuItem<T>(value: e, child: Text(labelBuilder(e)))).toList(),
-          onChanged: (v) { if (v != null) onChanged(v); },
+          icon: Icon(Icons.keyboard_arrow_down_rounded,
+              color: theme.colorScheme.onSurface.withOpacity(0.6)),
+          style: TextStyle(
+            color: theme.colorScheme.onSurface,
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+          ),
+          items: items
+              .map((e) =>
+                  DropdownMenuItem<T>(value: e, child: Text(labelBuilder(e))))
+              .toList(),
+          onChanged: (v) {
+            if (v != null) onChanged(v);
+          },
         ),
       ),
     );
