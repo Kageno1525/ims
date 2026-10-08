@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import '../widgets.dart';
+import '../autofill_bridge.dart';
+import '../models.dart' show InstalledApp;
 import 'task_model.dart';
 
 class TaskEditorPage extends StatefulWidget {
@@ -21,6 +23,11 @@ class TaskEditorPage extends StatefulWidget {
 class _TaskEditorPageState extends State<TaskEditorPage> {
   late TextEditingController _nameCtrl;
   late List<TaskStep> _steps;
+
+  static const _noDeco = TextStyle(
+    decoration: TextDecoration.none,
+    decorationColor: Colors.transparent,
+  );
 
   @override
   void initState() {
@@ -148,14 +155,12 @@ class _TaskEditorPageState extends State<TaskEditorPage> {
     });
   }
 
-  // ⭐ بيستخدم AlertDialog بدل SnackBar
   void _showMsg(String msg, {bool error = true}) {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: Theme.of(ctx).colorScheme.surface,
-        shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: Row(
           children: [
             Icon(
@@ -165,16 +170,16 @@ class _TaskEditorPageState extends State<TaskEditorPage> {
             ),
             const SizedBox(width: 8),
             Text(error ? 'خطأ' : 'تمام',
-                style: const TextStyle(
+                style: _noDeco.copyWith(
                     fontWeight: FontWeight.bold, fontSize: 16)),
           ],
         ),
-        content: Text(msg, style: const TextStyle(fontSize: 14)),
+        content: Text(msg, style: _noDeco.copyWith(fontSize: 14)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('حسناً',
-                style: TextStyle(fontWeight: FontWeight.bold)),
+            child: Text('حسناً',
+                style: _noDeco.copyWith(fontWeight: FontWeight.bold)),
           ),
         ],
       ),
@@ -212,7 +217,6 @@ class _TaskEditorPageState extends State<TaskEditorPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // ═══ Header ═══
               Row(
                 children: [
                   IconBtn(
@@ -223,10 +227,16 @@ class _TaskEditorPageState extends State<TaskEditorPage> {
                   Expanded(
                     child: Text(
                       widget.initialTask == null ? 'مهمة جديدة' : 'تعديل المهمة',
-                      style: const TextStyle(
+                      style: _noDeco.copyWith(
                           fontSize: 20, fontWeight: FontWeight.bold),
                     ),
                   ),
+                  // ⭐ زرار الإعدادات
+                  IconBtn(
+                    icon: Icons.settings_rounded,
+                    onTap: () => AutoFillBridge.openAccessibilitySettings(),
+                  ),
+                  const SizedBox(width: 4),
                   IconBtn(
                     icon: widget.isDark
                         ? Icons.dark_mode_rounded
@@ -236,27 +246,27 @@ class _TaskEditorPageState extends State<TaskEditorPage> {
                 ],
               ),
               const SizedBox(height: 16),
-
-              // ═══ اسم المهمة ═══
               TextField(
                 controller: _nameCtrl,
-                style: const TextStyle(fontSize: 15),
-                decoration: const InputDecoration(
+                style: _noDeco.copyWith(fontSize: 15),
+                decoration: InputDecoration(
                   labelText: 'اسم المهمة',
                   hintText: 'مثال: افتح واتساب',
-                  prefixIcon: Icon(Icons.drive_file_rename_outline_rounded),
+                  labelStyle: _noDeco.copyWith(
+                      color: theme.colorScheme.onSurface.withOpacity(0.6)),
+                  hintStyle: _noDeco.copyWith(
+                      color: theme.colorScheme.onSurface.withOpacity(0.4)),
+                  prefixIcon: const Icon(Icons.drive_file_rename_outline_rounded),
                 ),
               ),
               const SizedBox(height: 18),
-
-              // ═══ الخطوات ═══
               Row(
                 children: [
                   Icon(Icons.list_alt_rounded,
                       size: 18, color: theme.colorScheme.primary),
                   const SizedBox(width: 6),
                   Text('الخطوات',
-                      style: TextStyle(
+                      style: _noDeco.copyWith(
                           fontSize: 15,
                           fontWeight: FontWeight.bold,
                           color: theme.colorScheme.onSurface)),
@@ -269,7 +279,7 @@ class _TaskEditorPageState extends State<TaskEditorPage> {
                       borderRadius: BorderRadius.circular(10),
                     ),
                     child: Text('${_steps.length}',
-                        style: TextStyle(
+                        style: _noDeco.copyWith(
                             fontSize: 12,
                             fontWeight: FontWeight.bold,
                             color: theme.colorScheme.primary)),
@@ -277,7 +287,6 @@ class _TaskEditorPageState extends State<TaskEditorPage> {
                 ],
               ),
               const SizedBox(height: 10),
-
               Expanded(
                 child: _steps.isEmpty
                     ? Center(
@@ -290,14 +299,14 @@ class _TaskEditorPageState extends State<TaskEditorPage> {
                                     .withOpacity(0.3)),
                             const SizedBox(height: 12),
                             Text('مفيش خطوات',
-                                style: TextStyle(
+                                style: _noDeco.copyWith(
                                     color: theme.colorScheme.onSurface
                                         .withOpacity(0.5),
                                     fontSize: 16,
                                     fontWeight: FontWeight.bold)),
                             const SizedBox(height: 6),
                             Text('اضغط "إضافة خطوة" وابدأ',
-                                style: TextStyle(
+                                style: _noDeco.copyWith(
                                     color: theme.colorScheme.onSurface
                                         .withOpacity(0.4),
                                     fontSize: 12)),
@@ -310,10 +319,7 @@ class _TaskEditorPageState extends State<TaskEditorPage> {
                         itemBuilder: (_, i) => _stepCard(theme, i),
                       ),
               ),
-
               const SizedBox(height: 12),
-
-              // ═══ أزرار ═══
               Row(
                 children: [
                   Expanded(
@@ -344,7 +350,6 @@ class _TaskEditorPageState extends State<TaskEditorPage> {
     );
   }
 
-  // ⭐ كارت الخطوة - بدون underline
   Widget _stepCard(ThemeData theme, int i) {
     final step = _steps[i];
     final colors = _colorFor(step.type);
@@ -358,7 +363,6 @@ class _TaskEditorPageState extends State<TaskEditorPage> {
       ),
       child: Row(
         children: [
-          // رقم + أيقونة
           Container(
             width: 46,
             height: 46,
@@ -375,47 +379,42 @@ class _TaskEditorPageState extends State<TaskEditorPage> {
                 Icon(_iconFor(step.type), color: Colors.white, size: 18),
                 const SizedBox(height: 1),
                 Text('${i + 1}',
-                    style: const TextStyle(
+                    style: _noDeco.copyWith(
                         color: Colors.white,
                         fontSize: 10,
-                        fontWeight: FontWeight.bold,
-                        decoration: TextDecoration.none)),
+                        fontWeight: FontWeight.bold)),
               ],
             ),
           ),
           const SizedBox(width: 12),
-          // النوع + التفاصيل
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(step.typeLabel,
-                    style: TextStyle(
+                    style: _noDeco.copyWith(
                       fontWeight: FontWeight.bold,
                       fontSize: 14,
                       color: colors.first,
-                      decoration: TextDecoration.none,
                     )),
                 if (step.summary.isNotEmpty) ...[
                   const SizedBox(height: 3),
                   Text(step.summary,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
+                      style: _noDeco.copyWith(
                           fontSize: 12,
-                          color: theme.colorScheme.onSurface.withOpacity(0.75),
-                          decoration: TextDecoration.none)),
+                          color: theme.colorScheme.onSurface.withOpacity(0.75))),
                 ],
                 const SizedBox(height: 2),
                 Text('انتظار: ${step.waitAfterMs} مللي',
-                    style: TextStyle(
+                    style: _noDeco.copyWith(
                         fontSize: 11,
-                        color: theme.colorScheme.onSurface.withOpacity(0.45),
-                        decoration: TextDecoration.none)),
+                        color:
+                            theme.colorScheme.onSurface.withOpacity(0.45))),
               ],
             ),
           ),
-          // أزرار التحكم
           Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -429,9 +428,8 @@ class _TaskEditorPageState extends State<TaskEditorPage> {
                   ),
                   _tinyIconBtn(
                     icon: Icons.keyboard_arrow_down_rounded,
-                    onTap: i == _steps.length - 1
-                        ? null
-                        : () => _moveStep(i, 1),
+                    onTap:
+                        i == _steps.length - 1 ? null : () => _moveStep(i, 1),
                     color: theme.colorScheme.onSurface,
                   ),
                 ],
@@ -484,6 +482,11 @@ class _StepTypePicker extends StatelessWidget {
   final bool isDark;
   final Function(TaskStepType) onPick;
   const _StepTypePicker({required this.isDark, required this.onPick});
+
+  static const _noDeco = TextStyle(
+    decoration: TextDecoration.none,
+    decorationColor: Colors.transparent,
+  );
 
   IconData _iconFor(TaskStepType t) {
     switch (t) {
@@ -541,7 +544,7 @@ class _StepTypePicker extends StatelessWidget {
             const SizedBox(height: 16),
             Text('اختر نوع الخطوة',
                 textAlign: TextAlign.center,
-                style: const TextStyle(
+                style: _noDeco.copyWith(
                     fontSize: 20, fontWeight: FontWeight.bold)),
             const SizedBox(height: 16),
             Wrap(
@@ -575,10 +578,9 @@ class _StepTypePicker extends StatelessWidget {
                           const SizedBox(height: 6),
                           Text(label,
                               textAlign: TextAlign.center,
-                              style: const TextStyle(
+                              style: _noDeco.copyWith(
                                   fontSize: 11,
-                                  fontWeight: FontWeight.w600,
-                                  decoration: TextDecoration.none)),
+                                  fontWeight: FontWeight.w600)),
                         ],
                       ),
                     ),
@@ -605,6 +607,11 @@ class _StepConfigSheet extends StatefulWidget {
 }
 
 class _StepConfigSheetState extends State<_StepConfigSheet> {
+  static const _noDeco = TextStyle(
+    decoration: TextDecoration.none,
+    decorationColor: Colors.transparent,
+  );
+
   late Map<String, TextEditingController> _ctrls;
   late int _waitAfter;
 
@@ -654,7 +661,7 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
   String _labelFor(String key) {
     switch (key) {
       case 'package':
-        return 'اسم الحزمة (مثال: com.whatsapp)';
+        return 'اسم التطبيق';
       case 'text':
         return 'النص';
       case 'desc':
@@ -689,10 +696,27 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
     super.dispose();
   }
 
+  // ⭐ فتح picker التطبيقات
+  Future<void> _pickApp() async {
+    final app = await showModalBottomSheet<InstalledApp>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (ctx) => _AppPickerSheet(isDark: widget.isDark),
+    );
+    if (app != null && mounted) {
+      setState(() {
+        _ctrls['package']?.text = app.package;
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final label = widget.step.typeLabel;
+    final isOpenApp = widget.step.type == TaskStepType.openApp;
+
     return Padding(
       padding:
           EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
@@ -720,24 +744,72 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
               const SizedBox(height: 16),
               Text(label,
                   textAlign: TextAlign.center,
-                  style: const TextStyle(
+                  style: _noDeco.copyWith(
                       fontSize: 20, fontWeight: FontWeight.bold)),
               const SizedBox(height: 16),
+
+              // لو الخطوة openApp - زرار اختيار التطبيق
+              if (isOpenApp) ...[
+                Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(14),
+                    onTap: _pickApp,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 14),
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.primary.withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(
+                            color:
+                                theme.colorScheme.primary.withOpacity(0.35)),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.apps_rounded,
+                              color: theme.colorScheme.primary, size: 22),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text('اختر تطبيق من القائمة',
+                                style: _noDeco.copyWith(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.bold,
+                                    color: theme.colorScheme.primary)),
+                          ),
+                          Icon(Icons.arrow_forward_ios_rounded,
+                              size: 14, color: theme.colorScheme.primary),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 14),
+              ],
+
               ..._ctrls.entries.map((e) => Padding(
                     padding: const EdgeInsets.only(bottom: 12),
                     child: TextField(
                       controller: e.value,
-                      style: const TextStyle(fontSize: 15),
+                      style: _noDeco.copyWith(fontSize: 15),
                       keyboardType: int.tryParse(e.value.text) != null
                           ? TextInputType.number
                           : TextInputType.text,
-                      decoration:
-                          InputDecoration(labelText: _labelFor(e.key)),
+                      decoration: InputDecoration(
+                        labelText: _labelFor(e.key),
+                        labelStyle: _noDeco.copyWith(
+                            color:
+                                theme.colorScheme.onSurface.withOpacity(0.6)),
+                        hintStyle: _noDeco.copyWith(
+                            color:
+                                theme.colorScheme.onSurface.withOpacity(0.4)),
+                      ),
                     ),
                   )),
+
               const SizedBox(height: 4),
               Text('الانتظار بعد الخطوة: $_waitAfter مللي',
-                  style: const TextStyle(
+                  style: _noDeco.copyWith(
                       fontSize: 12, fontWeight: FontWeight.bold)),
               Slider(
                 value: _waitAfter.toDouble(),
@@ -771,6 +843,187 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+// ═══════ قائمة التطبيقات ═══════
+class _AppPickerSheet extends StatefulWidget {
+  final bool isDark;
+  const _AppPickerSheet({required this.isDark});
+
+  @override
+  State<_AppPickerSheet> createState() => _AppPickerSheetState();
+}
+
+class _AppPickerSheetState extends State<_AppPickerSheet> {
+  static const _noDeco = TextStyle(
+    decoration: TextDecoration.none,
+    decorationColor: Colors.transparent,
+  );
+
+  List<InstalledApp> _all = [];
+  List<InstalledApp> _filtered = [];
+  bool _loading = true;
+  late TextEditingController _search;
+
+  @override
+  void initState() {
+    super.initState();
+    _search = TextEditingController();
+    _load();
+  }
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
+
+  Future<void> _load() async {
+    final list = await AutoFillBridge.listInstalledApps();
+    if (!mounted) return;
+    setState(() {
+      _all = list;
+      _filtered = list;
+      _loading = false;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      height: MediaQuery.of(context).size.height * 0.8,
+      decoration: BoxDecoration(
+        color: theme.scaffoldBackgroundColor,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      child: Column(
+        children: [
+          const SizedBox(height: 12),
+          Container(
+            width: 50,
+            height: 5,
+            decoration: BoxDecoration(
+              color: theme.colorScheme.onSurface.withOpacity(0.2),
+              borderRadius: BorderRadius.circular(3),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Text('اختر تطبيق',
+              style: _noDeco.copyWith(
+                  fontSize: 20, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 6),
+          Text('${_all.length} تطبيق مثبّت',
+              style: _noDeco.copyWith(
+                  fontSize: 12,
+                  color: theme.colorScheme.onSurface.withOpacity(0.5))),
+          const SizedBox(height: 14),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: TextField(
+              controller: _search,
+              style: _noDeco.copyWith(fontSize: 15),
+              onChanged: (q) {
+                final s = q.trim().toLowerCase();
+                setState(() {
+                  _filtered = s.isEmpty
+                      ? _all
+                      : _all
+                          .where((a) =>
+                              a.name.toLowerCase().contains(s) ||
+                              a.package.toLowerCase().contains(s))
+                          .toList();
+                });
+              },
+              decoration: InputDecoration(
+                hintText: 'ابحث باسم التطبيق…',
+                hintStyle: _noDeco.copyWith(
+                    color: theme.colorScheme.onSurface.withOpacity(0.4)),
+                prefixIcon: const Icon(Icons.search_rounded),
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+          Expanded(
+            child: _loading
+                ? const Center(child: CircularProgressIndicator())
+                : _filtered.isEmpty
+                    ? Center(
+                        child: Text('مفيش نتائج',
+                            style: _noDeco.copyWith(
+                                color: theme.colorScheme.onSurface
+                                    .withOpacity(0.5))))
+                    : ListView.builder(
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        itemCount: _filtered.length,
+                        itemBuilder: (_, i) {
+                          final app = _filtered[i];
+                          return Padding(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 4, vertical: 3),
+                            child: Material(
+                              color: Colors.transparent,
+                              borderRadius: BorderRadius.circular(12),
+                              child: InkWell(
+                                borderRadius: BorderRadius.circular(12),
+                                onTap: () => Navigator.pop(context, app),
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 12, vertical: 12),
+                                  child: Row(
+                                    children: [
+                                      Container(
+                                        width: 40,
+                                        height: 40,
+                                        decoration: BoxDecoration(
+                                          color: theme.colorScheme.primary
+                                              .withOpacity(0.15),
+                                          borderRadius:
+                                              BorderRadius.circular(10),
+                                        ),
+                                        child: Icon(Icons.android_rounded,
+                                            color: theme.colorScheme.primary,
+                                            size: 22),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Text(app.name,
+                                                style: _noDeco.copyWith(
+                                                    fontSize: 14,
+                                                    fontWeight:
+                                                        FontWeight.bold)),
+                                            const SizedBox(height: 2),
+                                            Text(app.package,
+                                                style: _noDeco.copyWith(
+                                                    fontSize: 10.5,
+                                                    color: theme.colorScheme
+                                                        .onSurface
+                                                        .withOpacity(0.5))),
+                                          ],
+                                        ),
+                                      ),
+                                      Icon(Icons.arrow_forward_ios_rounded,
+                                          size: 12,
+                                          color: theme.colorScheme.onSurface
+                                              .withOpacity(0.3)),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+          ),
+          const SizedBox(height: 12),
+        ],
       ),
     );
   }
