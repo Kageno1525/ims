@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../widgets.dart';
 import '../autofill_bridge.dart';
@@ -46,28 +47,17 @@ class _TaskEditorPageState extends State<TaskEditorPage> {
 
   IconData _iconFor(TaskStepType t) {
     switch (t) {
-      case TaskStepType.openApp:
-        return Icons.apps_rounded;
-      case TaskStepType.typeText:
-        return Icons.keyboard_rounded;
-      case TaskStepType.clickByText:
-        return Icons.touch_app_rounded;
-      case TaskStepType.clickByDesc:
-        return Icons.description_rounded;
-      case TaskStepType.clickById:
-        return Icons.tag_rounded;
-      case TaskStepType.clickAt:
-        return Icons.my_location_rounded;
-      case TaskStepType.swipe:
-        return Icons.swipe_rounded;
-      case TaskStepType.wait:
-        return Icons.hourglass_top_rounded;
-      case TaskStepType.back:
-        return Icons.arrow_back_rounded;
-      case TaskStepType.home:
-        return Icons.home_rounded;
-      case TaskStepType.recents:
-        return Icons.view_carousel_rounded;
+      case TaskStepType.openApp: return Icons.apps_rounded;
+      case TaskStepType.typeText: return Icons.keyboard_rounded;
+      case TaskStepType.clickByText: return Icons.touch_app_rounded;
+      case TaskStepType.clickByDesc: return Icons.description_rounded;
+      case TaskStepType.clickById: return Icons.tag_rounded;
+      case TaskStepType.clickAt: return Icons.my_location_rounded;
+      case TaskStepType.swipe: return Icons.swipe_rounded;
+      case TaskStepType.wait: return Icons.hourglass_top_rounded;
+      case TaskStepType.back: return Icons.arrow_back_rounded;
+      case TaskStepType.home: return Icons.home_rounded;
+      case TaskStepType.recents: return Icons.view_carousel_rounded;
     }
   }
 
@@ -102,10 +92,8 @@ class _TaskEditorPageState extends State<TaskEditorPage> {
       builder: (ctx) => _StepTypePicker(
         isDark: widget.isDark,
         onPick: (type) {
-          Navigator.pop(
-            ctx,
-            TaskStep(id: _uid(), type: type, params: {}, waitAfterMs: 500),
-          );
+          Navigator.pop(ctx,
+              TaskStep(id: _uid(), type: type, params: {}, waitAfterMs: 500));
         },
       ),
     );
@@ -142,9 +130,7 @@ class _TaskEditorPageState extends State<TaskEditorPage> {
     }
   }
 
-  void _removeStep(int index) {
-    setState(() => _steps.removeAt(index));
-  }
+  void _removeStep(int index) => setState(() => _steps.removeAt(index));
 
   void _moveStep(int index, int delta) {
     final newIndex = index + delta;
@@ -170,8 +156,7 @@ class _TaskEditorPageState extends State<TaskEditorPage> {
             ),
             const SizedBox(width: 8),
             Text(error ? 'خطأ' : 'تمام',
-                style: _noDeco.copyWith(
-                    fontWeight: FontWeight.bold, fontSize: 16)),
+                style: _noDeco.copyWith(fontWeight: FontWeight.bold, fontSize: 16)),
           ],
         ),
         content: Text(msg, style: _noDeco.copyWith(fontSize: 14)),
@@ -197,7 +182,6 @@ class _TaskEditorPageState extends State<TaskEditorPage> {
       return;
     }
 
-    // ⭐ تحقق من كل خطوات فتح التطبيق
     final fixedSteps = <TaskStep>[];
     for (final step in _steps) {
       if (step.type == TaskStepType.openApp) {
@@ -206,7 +190,6 @@ class _TaskEditorPageState extends State<TaskEditorPage> {
           _showMsg('فيه خطوة "فتح تطبيق" مش محدّد فيها أي تطبيق');
           return;
         }
-        // لو مش باكدج صريح (مش فيه نقطة)، دوّر عليه بالاسم
         if (!pkg.contains('.')) {
           final resolved = await AutoFillBridge.resolvePackage(pkg);
           if (resolved == null) {
@@ -217,7 +200,6 @@ class _TaskEditorPageState extends State<TaskEditorPage> {
             params: {...step.params, 'package': resolved},
           ));
         } else {
-          // تأكد إن الباكدج موجود
           final resolved = await AutoFillBridge.resolvePackage(pkg);
           if (resolved == null) {
             _showMsg('مفيش تطبيق بالباكدج "$pkg" على الجهاز');
@@ -262,8 +244,7 @@ class _TaskEditorPageState extends State<TaskEditorPage> {
                   Expanded(
                     child: Text(
                       widget.initialTask == null ? 'مهمة جديدة' : 'تعديل المهمة',
-                      style: _noDeco.copyWith(
-                          fontSize: 20, fontWeight: FontWeight.bold),
+                      style: _noDeco.copyWith(fontSize: 20, fontWeight: FontWeight.bold),
                     ),
                   ),
                   IconBtn(
@@ -307,8 +288,8 @@ class _TaskEditorPageState extends State<TaskEditorPage> {
                           color: theme.colorScheme.onSurface)),
                   const SizedBox(width: 6),
                   Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 8, vertical: 2),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                     decoration: BoxDecoration(
                       color: theme.colorScheme.primary.withOpacity(0.2),
                       borderRadius: BorderRadius.circular(10),
@@ -330,8 +311,8 @@ class _TaskEditorPageState extends State<TaskEditorPage> {
                           children: [
                             Icon(Icons.playlist_add_rounded,
                                 size: 60,
-                                color: theme.colorScheme.primary
-                                    .withOpacity(0.3)),
+                                color:
+                                    theme.colorScheme.primary.withOpacity(0.3)),
                             const SizedBox(height: 12),
                             Text('مفيش خطوات',
                                 style: _noDeco.copyWith(
@@ -526,28 +507,17 @@ class _StepTypePicker extends StatelessWidget {
 
   IconData _iconFor(TaskStepType t) {
     switch (t) {
-      case TaskStepType.openApp:
-        return Icons.apps_rounded;
-      case TaskStepType.typeText:
-        return Icons.keyboard_rounded;
-      case TaskStepType.clickByText:
-        return Icons.touch_app_rounded;
-      case TaskStepType.clickByDesc:
-        return Icons.description_rounded;
-      case TaskStepType.clickById:
-        return Icons.tag_rounded;
-      case TaskStepType.clickAt:
-        return Icons.my_location_rounded;
-      case TaskStepType.swipe:
-        return Icons.swipe_rounded;
-      case TaskStepType.wait:
-        return Icons.hourglass_top_rounded;
-      case TaskStepType.back:
-        return Icons.arrow_back_rounded;
-      case TaskStepType.home:
-        return Icons.home_rounded;
-      case TaskStepType.recents:
-        return Icons.view_carousel_rounded;
+      case TaskStepType.openApp: return Icons.apps_rounded;
+      case TaskStepType.typeText: return Icons.keyboard_rounded;
+      case TaskStepType.clickByText: return Icons.touch_app_rounded;
+      case TaskStepType.clickByDesc: return Icons.description_rounded;
+      case TaskStepType.clickById: return Icons.tag_rounded;
+      case TaskStepType.clickAt: return Icons.my_location_rounded;
+      case TaskStepType.swipe: return Icons.swipe_rounded;
+      case TaskStepType.wait: return Icons.hourglass_top_rounded;
+      case TaskStepType.back: return Icons.arrow_back_rounded;
+      case TaskStepType.home: return Icons.home_rounded;
+      case TaskStepType.recents: return Icons.view_carousel_rounded;
     }
   }
 
@@ -580,17 +550,16 @@ class _StepTypePicker extends StatelessWidget {
             const SizedBox(height: 16),
             Text('اختر نوع الخطوة',
                 textAlign: TextAlign.center,
-                style: _noDeco.copyWith(
-                    fontSize: 20, fontWeight: FontWeight.bold)),
+                style: _noDeco.copyWith(fontSize: 20, fontWeight: FontWeight.bold)),
             const SizedBox(height: 16),
             Wrap(
               spacing: 10,
               runSpacing: 10,
               alignment: WrapAlignment.center,
               children: items.map((t) {
-                final label = TaskStep(
-                        id: '', type: t, params: {}, waitAfterMs: 0)
-                    .typeLabel;
+                final label =
+                    TaskStep(id: '', type: t, params: {}, waitAfterMs: 0)
+                        .typeLabel;
                 return Material(
                   color: Colors.transparent,
                   child: InkWell(
@@ -615,8 +584,7 @@ class _StepTypePicker extends StatelessWidget {
                           Text(label,
                               textAlign: TextAlign.center,
                               style: _noDeco.copyWith(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w600)),
+                                  fontSize: 11, fontWeight: FontWeight.w600)),
                         ],
                       ),
                     ),
@@ -669,23 +637,15 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
 
   List<String> _fieldKeysFor(TaskStepType t) {
     switch (t) {
-      case TaskStepType.openApp:
-        return ['package'];
+      case TaskStepType.openApp: return ['package'];
       case TaskStepType.typeText:
-      case TaskStepType.clickByText:
-        return ['text'];
-      case TaskStepType.clickByDesc:
-        return ['desc'];
-      case TaskStepType.clickById:
-        return ['viewId'];
-      case TaskStepType.clickAt:
-        return ['x', 'y'];
-      case TaskStepType.swipe:
-        return ['x1', 'y1', 'x2', 'y2', 'duration'];
-      case TaskStepType.wait:
-        return ['ms'];
-      default:
-        return [];
+      case TaskStepType.clickByText: return ['text'];
+      case TaskStepType.clickByDesc: return ['desc'];
+      case TaskStepType.clickById: return ['viewId'];
+      case TaskStepType.clickAt: return ['x', 'y'];
+      case TaskStepType.swipe: return ['x1', 'y1', 'x2', 'y2', 'duration'];
+      case TaskStepType.wait: return ['ms'];
+      default: return [];
     }
   }
 
@@ -697,31 +657,19 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
 
   String _labelFor(String key) {
     switch (key) {
-      case 'package':
-        return 'اسم التطبيق';
-      case 'text':
-        return 'النص';
-      case 'desc':
-        return 'الوصف (Content Description)';
-      case 'viewId':
-        return 'الـ view id';
-      case 'x':
-        return 'X';
-      case 'y':
-        return 'Y';
-      case 'x1':
-        return 'X البداية';
-      case 'y1':
-        return 'Y البداية';
-      case 'x2':
-        return 'X النهاية';
-      case 'y2':
-        return 'Y النهاية';
+      case 'package': return 'اسم التطبيق';
+      case 'text': return 'النص';
+      case 'desc': return 'الوصف (Content Description)';
+      case 'viewId': return 'الـ view id';
+      case 'x': return 'X';
+      case 'y': return 'Y';
+      case 'x1': return 'X البداية';
+      case 'y1': return 'Y البداية';
+      case 'x2': return 'X النهاية';
+      case 'y2': return 'Y النهاية';
       case 'duration':
-      case 'ms':
-        return 'المدة (مللي ثانية)';
-      default:
-        return key;
+      case 'ms': return 'المدة (مللي ثانية)';
+      default: return key;
     }
   }
 
@@ -745,6 +693,76 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
         _ctrls['package']?.text = app.package;
         _selectedAppName = app.name;
       });
+    }
+  }
+
+  // ⭐ التقاط الشاشة الحالية
+  Future<void> _inspectScreen() async {
+    // 1) dialog countdown
+    final captured = await showDialog<List<ScreenElement>>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => _CountdownDialog(),
+    );
+
+    if (captured == null || captured.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text('مفيش عناصر ظهرت. تأكد من تفعيل Accessibility.')),
+        );
+      }
+      return;
+    }
+
+    if (!mounted) return;
+
+    // 2) عرض العناصر واختيار
+    final picked = await showModalBottomSheet<ScreenElement>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (ctx) =>
+          _ElementPickerSheet(elements: captured, isDark: widget.isDark),
+    );
+
+    if (picked == null) return;
+
+    // 3) املأ الحقول
+    setState(() {
+      if (_ctrls.containsKey('text') && picked.text.isNotEmpty) {
+        _ctrls['text']?.text = picked.text;
+      }
+      if (_ctrls.containsKey('desc') && picked.desc.isNotEmpty) {
+        _ctrls['desc']?.text = picked.desc;
+      }
+      if (_ctrls.containsKey('viewId') && picked.id.isNotEmpty) {
+        _ctrls['viewId']?.text = picked.id;
+      }
+      if (_ctrls.containsKey('x')) {
+        _ctrls['x']?.text = picked.x.toString();
+      }
+      if (_ctrls.containsKey('y')) {
+        _ctrls['y']?.text = picked.y.toString();
+      }
+    });
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('تم اختيار: ${picked.bestLabel}')),
+      );
+    }
+  }
+
+  bool get _canInspect {
+    switch (widget.step.type) {
+      case TaskStepType.clickByText:
+      case TaskStepType.clickByDesc:
+      case TaskStepType.clickById:
+      case TaskStepType.clickAt:
+        return true;
+      default:
+        return false;
     }
   }
 
@@ -786,7 +804,53 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
                       fontSize: 20, fontWeight: FontWeight.bold)),
               const SizedBox(height: 16),
 
-              // لو الخطوة openApp - زرار اختيار التطبيق
+              // زرار التقاط الشاشة
+              if (_canInspect) ...[
+                Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(14),
+                    onTap: _inspectScreen,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 14),
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                            colors: [Color(0xFF6C5CE7), Color(0xFF00D2FF)]),
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.search_rounded,
+                              color: Colors.white, size: 22),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('التقاط الشاشة الحالية',
+                                    style: _noDeco.copyWith(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.white)),
+                                Text('هيتم الالتقاط بعد 5 ثواني',
+                                    style: _noDeco.copyWith(
+                                        fontSize: 11,
+                                        color:
+                                            Colors.white.withOpacity(0.85))),
+                              ],
+                            ),
+                          ),
+                          const Icon(Icons.arrow_forward_ios_rounded,
+                              size: 14, color: Colors.white),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 14),
+              ],
+
               if (isOpenApp) ...[
                 Material(
                   color: Colors.transparent,
@@ -840,8 +904,6 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
                   ),
                 ),
                 const SizedBox(height: 14),
-
-                // حقل الباكدج - بس عشان يشوفه
                 TextField(
                   controller: _ctrls['package'],
                   style: _noDeco.copyWith(fontSize: 15),
@@ -849,8 +911,6 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
                     labelText: 'اسم الحزمة (أو اختار من فوق)',
                     labelStyle: _noDeco.copyWith(
                         color: theme.colorScheme.onSurface.withOpacity(0.6)),
-                    hintStyle: _noDeco.copyWith(
-                        color: theme.colorScheme.onSurface.withOpacity(0.4)),
                     prefixIcon: const Icon(Icons.tag_rounded),
                   ),
                 ),
@@ -870,9 +930,6 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
                           labelStyle: _noDeco.copyWith(
                               color: theme.colorScheme.onSurface
                                   .withOpacity(0.6)),
-                          hintStyle: _noDeco.copyWith(
-                              color: theme.colorScheme.onSurface
-                                  .withOpacity(0.4)),
                         ),
                       ),
                     )),
@@ -903,9 +960,7 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
                   Navigator.pop(
                     context,
                     widget.step.copyWith(
-                      params: params,
-                      waitAfterMs: _waitAfter,
-                    ),
+                        params: params, waitAfterMs: _waitAfter),
                   );
                 },
               ),
@@ -913,6 +968,314 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+// ═══════ Countdown Dialog ═══════
+class _CountdownDialog extends StatefulWidget {
+  @override
+  State<_CountdownDialog> createState() => _CountdownDialogState();
+}
+
+class _CountdownDialogState extends State<_CountdownDialog> {
+  int _seconds = 5;
+  Timer? _timer;
+  bool _capturing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _timer = Timer.periodic(const Duration(seconds: 1), (t) async {
+      if (!mounted) return;
+      if (_seconds > 1) {
+        setState(() => _seconds--);
+      } else {
+        t.cancel();
+        setState(() {
+          _seconds = 0;
+          _capturing = true;
+        });
+        // التقاط الشاشة
+        final elements = await AutoFillBridge.dumpScreen();
+        if (mounted) Navigator.pop(context, elements);
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return AlertDialog(
+      backgroundColor: theme.colorScheme.surface,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.screen_share_rounded,
+              size: 50, color: Color(0xFF6C5CE7)),
+          const SizedBox(height: 14),
+          Text(
+            _capturing ? 'جاري الالتقاط…' : 'هيتم الالتقاط بعد $_seconds',
+            style: const TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.bold,
+              decoration: TextDecoration.none,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            _capturing
+                ? 'من فضلك استنى'
+                : 'اسرع! روح للتطبيق اللي عايز تلتقط منه',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 12,
+              color: theme.colorScheme.onSurface.withOpacity(0.7),
+              decoration: TextDecoration.none,
+            ),
+          ),
+          if (!_capturing) ...[
+            const SizedBox(height: 14),
+            SizedBox(
+              height: 50,
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  SizedBox(
+                    width: 50,
+                    height: 50,
+                    child: CircularProgressIndicator(
+                      value: _seconds / 5,
+                      strokeWidth: 4,
+                      backgroundColor:
+                          theme.colorScheme.onSurface.withOpacity(0.1),
+                    ),
+                  ),
+                  Text('$_seconds',
+                      style: const TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.bold,
+                          decoration: TextDecoration.none)),
+                ],
+              ),
+            ),
+          ] else
+            const Padding(
+              padding: EdgeInsets.only(top: 14),
+              child: CircularProgressIndicator(),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+// ═══════ عرض عناصر الشاشة ═══════
+class _ElementPickerSheet extends StatefulWidget {
+  final List<ScreenElement> elements;
+  final bool isDark;
+  const _ElementPickerSheet({required this.elements, required this.isDark});
+
+  @override
+  State<_ElementPickerSheet> createState() => _ElementPickerSheetState();
+}
+
+class _ElementPickerSheetState extends State<_ElementPickerSheet> {
+  static const _noDeco = TextStyle(
+    decoration: TextDecoration.none,
+    decorationColor: Colors.transparent,
+  );
+
+  late List<ScreenElement> _filtered;
+  late TextEditingController _search;
+
+  @override
+  void initState() {
+    super.initState();
+    _search = TextEditingController();
+    _filtered = widget.elements;
+  }
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
+
+  IconData _iconFor(ScreenElement e) {
+    if (e.editable) return Icons.keyboard_rounded;
+    if (e.clickable) return Icons.touch_app_rounded;
+    if (e.hasText) return Icons.text_fields_rounded;
+    return Icons.widgets_rounded;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      height: MediaQuery.of(context).size.height * 0.85,
+      decoration: BoxDecoration(
+        color: theme.scaffoldBackgroundColor,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      child: Column(
+        children: [
+          const SizedBox(height: 12),
+          Container(
+            width: 50,
+            height: 5,
+            decoration: BoxDecoration(
+              color: theme.colorScheme.onSurface.withOpacity(0.2),
+              borderRadius: BorderRadius.circular(3),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Text('عناصر الشاشة',
+              style: _noDeco.copyWith(fontSize: 20, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 6),
+          Text('${widget.elements.length} عنصر',
+              style: _noDeco.copyWith(
+                  fontSize: 12,
+                  color: theme.colorScheme.onSurface.withOpacity(0.5))),
+          const SizedBox(height: 14),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: TextField(
+              controller: _search,
+              style: _noDeco.copyWith(fontSize: 15),
+              onChanged: (q) {
+                final s = q.trim().toLowerCase();
+                setState(() {
+                  _filtered = s.isEmpty
+                      ? widget.elements
+                      : widget.elements
+                          .where((e) =>
+                              e.text.toLowerCase().contains(s) ||
+                              e.desc.toLowerCase().contains(s) ||
+                              e.id.toLowerCase().contains(s))
+                          .toList();
+                });
+              },
+              decoration: InputDecoration(
+                hintText: 'ابحث عن نص أو id…',
+                hintStyle: _noDeco.copyWith(
+                    color: theme.colorScheme.onSurface.withOpacity(0.4)),
+                prefixIcon: const Icon(Icons.search_rounded),
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+          Expanded(
+            child: _filtered.isEmpty
+                ? Center(
+                    child: Text('مفيش نتائج',
+                        style: _noDeco.copyWith(
+                            color:
+                                theme.colorScheme.onSurface.withOpacity(0.5))))
+                : ListView.builder(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    itemCount: _filtered.length,
+                    itemBuilder: (_, i) {
+                      final e = _filtered[i];
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 4, vertical: 4),
+                        child: Material(
+                          color: Colors.transparent,
+                          borderRadius: BorderRadius.circular(12),
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(12),
+                            onTap: () => Navigator.pop(context, e),
+                            child: Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: theme.colorScheme.surface
+                                    .withOpacity(0.5),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                    color: theme.colorScheme.primary
+                                        .withOpacity(0.15)),
+                              ),
+                              child: Row(
+                                children: [
+                                  Container(
+                                    width: 38,
+                                    height: 38,
+                                    decoration: BoxDecoration(
+                                      color: theme.colorScheme.primary
+                                          .withOpacity(0.15),
+                                      borderRadius:
+                                          BorderRadius.circular(10),
+                                    ),
+                                    child: Icon(_iconFor(e),
+                                        color: theme.colorScheme.primary,
+                                        size: 20),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        if (e.hasText)
+                                          Text(e.text,
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: _noDeco.copyWith(
+                                                  fontSize: 13,
+                                                  fontWeight:
+                                                      FontWeight.bold)),
+                                        if (e.hasDesc)
+                                          Text('📝 ${e.desc}',
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: _noDeco.copyWith(
+                                                  fontSize: 11,
+                                                  color: theme.colorScheme
+                                                      .onSurface
+                                                      .withOpacity(0.75))),
+                                        if (e.hasId)
+                                          Text('🏷 ${e.id}',
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: _noDeco.copyWith(
+                                                  fontSize: 10.5,
+                                                  color: theme.colorScheme
+                                                      .primary
+                                                      .withOpacity(0.8))),
+                                        Text(
+                                          '${e.className.split(".").last} • (${e.x}, ${e.y})',
+                                          style: _noDeco.copyWith(
+                                              fontSize: 10,
+                                              color: theme.colorScheme
+                                                  .onSurface
+                                                  .withOpacity(0.4)),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  if (e.clickable)
+                                    const Icon(Icons.touch_app_rounded,
+                                        size: 16, color: Color(0xFF00D68F)),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+          ),
+          const SizedBox(height: 12),
+        ],
       ),
     );
   }
@@ -983,8 +1346,7 @@ class _AppPickerSheetState extends State<_AppPickerSheet> {
           ),
           const SizedBox(height: 16),
           Text('اختر تطبيق',
-              style: _noDeco.copyWith(
-                  fontSize: 20, fontWeight: FontWeight.bold)),
+              style: _noDeco.copyWith(fontSize: 20, fontWeight: FontWeight.bold)),
           const SizedBox(height: 6),
           Text('${_all.length} تطبيق مثبّت',
               style: _noDeco.copyWith(
