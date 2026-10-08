@@ -13,11 +13,12 @@ import 'models.dart';
 import 'web_scripts.dart';
 import 'csv_reader.dart';
 import 'autofill_bridge.dart';
+import 'tasks/tasks_page.dart';
 
 const String _kLoginUrl = 'https://imssms.org/login';
 const String _kNumbersUrl = 'https://imssms.org/numbers';
 
-enum Stage { login, dashboard, numbers }
+enum Stage { login, dashboard, numbers, tasks }
 
 class AppShell extends StatefulWidget {
   final bool isDark;
@@ -33,7 +34,6 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   final _passCtrl = TextEditingController();
   final _formKey = GlobalKey<FormState>();
 
-  // ⭐ WebView متخزن - مش بيتعمل rebuild
   late final Widget _webViewWidget;
 
   Stage _stage = Stage.login;
@@ -51,7 +51,6 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   String _selectedType = 'full';
   bool _loadingRanges = false;
 
-  // ⭐ logs بـ ValueNotifier — صفر setState
   final ValueNotifier<List<LogEntry>> _logs =
       ValueNotifier<List<LogEntry>>(<LogEntry>[]);
 
@@ -76,7 +75,6 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
 
-    // ⭐ WebView widget بيتبني مرة واحدة بس
     _webViewWidget = InAppWebView(
       initialUrlRequest: URLRequest(url: WebUri(_kLoginUrl)),
       initialSettings: InAppWebViewSettings(
@@ -118,10 +116,8 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       },
     );
 
-    // تحميل الملفات + الصلاحيات بعد ما التطبيق يفتح
     Future.microtask(_bootstrap);
 
-    // تحديث الإحصائيات كل 10 ثواني (كان 5)
     _statsTimer = Timer.periodic(const Duration(seconds: 10), (_) {
       if (!mounted) return;
       if (_stage == Stage.dashboard && !_busy) {
@@ -163,13 +159,9 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     });
   }
 
-  // ⭐ بدون setState
   void _log(String msg, [LogLevel level = LogLevel.info]) {
     final cur = _logs.value;
-    final updated = <LogEntry>[
-      LogEntry(msg, DateTime.now(), level),
-      ...cur,
-    ];
+    final updated = <LogEntry>[LogEntry(msg, DateTime.now(), level), ...cur];
     if (updated.length > 100) updated.removeRange(100, updated.length);
     _logs.value = updated;
   }
@@ -194,7 +186,6 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
 
   String _js(String s) => jsonEncode(s);
 
-  // ═══════ Login ═══════
   Future<(int, int)?> _readStats() async {
     final s = await _eval(WebScripts.readStats);
     if (!s.startsWith('ok|')) return null;
@@ -258,10 +249,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     final st = await _readStats();
     if (st != null && mounted) {
       if (_today != st.$1 || _week != st.$2) {
-        setState(() {
-          _today = st.$1;
-          _week = st.$2;
-        });
+        setState(() { _today = st.$1; _week = st.$2; });
       }
       if (!silent) setState(() => _busy = false);
       return;
@@ -278,7 +266,6 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     });
   }
 
-  // ═══════ Numbers ═══════
   Future<void> _goToNumbers() async {
     _logs.value = <LogEntry>[];
     setState(() {
@@ -288,9 +275,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       _loadingRanges = true;
     });
     _log('جاري فتح صفحة الأرقام…', LogLevel.wait);
-
     await _refreshFiles();
-
     try {
       await _web?.loadUrl(urlRequest: URLRequest(url: WebUri(_kNumbersUrl)));
       final dl = DateTime.now().add(const Duration(seconds: 15));
@@ -383,11 +368,9 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
         return;
       }
       await Future.delayed(const Duration(milliseconds: 500));
-
       final r = await _eval(WebScripts.clickFilter);
       _log('Filter: $r', r == 'ok' ? LogLevel.ok : LogLevel.error);
       await Future.delayed(const Duration(milliseconds: 2500));
-
       _log('الفلتر اتطبق ✅', LogLevel.ok);
     } catch (e) {
       _log('خطأ: $e', LogLevel.error);
@@ -411,7 +394,6 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       _log('إرسال الضبط: $rOpt', LogLevel.info);
 
       await Future.delayed(const Duration(milliseconds: 800));
-
       final vRaw = await _eval(WebScripts.verifyFilters);
       _log('تحقق: $vRaw', LogLevel.info);
 
@@ -440,7 +422,6 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
 
       await Future.delayed(const Duration(milliseconds: 400));
       await _eval(WebScripts.clearBlob);
-
       final r = await _eval(WebScripts.clickCsv);
       _log('ضغط CSV: $r', r == 'ok' ? LogLevel.ok : LogLevel.error);
       if (r != 'ok') { setState(() => _busy = false); return; }
@@ -517,13 +498,13 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     }
   }
 
-  // ═══════ AutoFill ═══════
   Future<void> _refreshFiles() async {
     final list = await CsvReader.listFiles();
     if (!mounted) return;
     if (_csvFiles.length == list.length &&
-        _csvFiles.every((f) => list.any((g) => g.name == f.name && g.count == f.count))) {
-      return; // مفيش تغيير
+        _csvFiles.every((f) =>
+            list.any((g) => g.name == f.name && g.count == f.count))) {
+      return;
     }
     setState(() {
       _csvFiles = list;
@@ -708,14 +689,20 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     } catch (_) {}
   }
 
-  // ═══════ Build ═══════
+  void _openTasks() {
+    setState(() => _stage = Stage.tasks);
+  }
+
+  void _closeTasks() {
+    setState(() => _stage = Stage.dashboard);
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Scaffold(
       body: Stack(
         children: [
-          // ⭐ WebView cached — never rebuilt
           Positioned.fill(child: _webViewWidget),
           if (_showWeb)
             Positioned(
@@ -756,6 +743,14 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
 
   Widget _buildStage() {
     switch (_stage) {
+      case Stage.tasks:
+        return TasksPage(
+          key: const ValueKey('tasks'),
+          isDark: widget.isDark,
+          onToggleTheme: widget.onToggleTheme,
+          onBack: _closeTasks,
+          onLog: (e) => _log(e.msg, e.level),
+        );
       case Stage.numbers:
         return NumbersPage(
           key: const ValueKey('numbers'),
@@ -817,6 +812,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
           onRefresh: _refresh,
           onLogout: _logout,
           onOpenNumbers: _goToNumbers,
+          onOpenTasks: _openTasks,
         );
       case Stage.login:
         return LoginPage(
