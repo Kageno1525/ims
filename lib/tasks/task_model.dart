@@ -42,6 +42,19 @@ class TaskStep {
         waitAfterMs: json['waitAfterMs'] ?? 500,
       );
 
+  TaskStep copyWith({
+    String? id,
+    TaskStepType? type,
+    Map<String, dynamic>? params,
+    int? waitAfterMs,
+  }) =>
+      TaskStep(
+        id: id ?? this.id,
+        type: type ?? this.type,
+        params: params ?? this.params,
+        waitAfterMs: waitAfterMs ?? this.waitAfterMs,
+      );
+
   String get typeLabel {
     switch (type) {
       case TaskStepType.openApp:
