@@ -186,7 +186,7 @@ class _TaskEditorPageState extends State<TaskEditorPage> {
     );
   }
 
-  void _save() {
+  Future<void> _save() async {
     final name = _nameCtrl.text.trim();
     if (name.isEmpty) {
       _showMsg('من فضلك اكتب اسم المهمة الأول');
@@ -197,14 +197,49 @@ class _TaskEditorPageState extends State<TaskEditorPage> {
       return;
     }
 
+    // ⭐ تحقق من كل خطوات فتح التطبيق
+    final fixedSteps = <TaskStep>[];
+    for (final step in _steps) {
+      if (step.type == TaskStepType.openApp) {
+        final pkg = step.params['package']?.toString().trim() ?? '';
+        if (pkg.isEmpty) {
+          _showMsg('فيه خطوة "فتح تطبيق" مش محدّد فيها أي تطبيق');
+          return;
+        }
+        // لو مش باكدج صريح (مش فيه نقطة)، دوّر عليه بالاسم
+        if (!pkg.contains('.')) {
+          final resolved = await AutoFillBridge.resolvePackage(pkg);
+          if (resolved == null) {
+            _showMsg('مش لاقي تطبيق اسمه "$pkg". اختاره من القائمة.');
+            return;
+          }
+          fixedSteps.add(step.copyWith(
+            params: {...step.params, 'package': resolved},
+          ));
+        } else {
+          // تأكد إن الباكدج موجود
+          final resolved = await AutoFillBridge.resolvePackage(pkg);
+          if (resolved == null) {
+            _showMsg('مفيش تطبيق بالباكدج "$pkg" على الجهاز');
+            return;
+          }
+          fixedSteps.add(step.copyWith(
+            params: {...step.params, 'package': resolved},
+          ));
+        }
+      } else {
+        fixedSteps.add(step);
+      }
+    }
+
     final task = Task(
       id: widget.initialTask?.id ?? _uid(),
       name: name,
-      steps: _steps,
+      steps: fixedSteps,
       createdAt: widget.initialTask?.createdAt ?? DateTime.now(),
       lastRunAt: widget.initialTask?.lastRunAt,
     );
-    Navigator.pop(context, task);
+    if (mounted) Navigator.pop(context, task);
   }
 
   @override
@@ -231,7 +266,6 @@ class _TaskEditorPageState extends State<TaskEditorPage> {
                           fontSize: 20, fontWeight: FontWeight.bold),
                     ),
                   ),
-                  // ⭐ زرار الإعدادات
                   IconBtn(
                     icon: Icons.settings_rounded,
                     onTap: () => AutoFillBridge.openAccessibilitySettings(),
@@ -256,7 +290,8 @@ class _TaskEditorPageState extends State<TaskEditorPage> {
                       color: theme.colorScheme.onSurface.withOpacity(0.6)),
                   hintStyle: _noDeco.copyWith(
                       color: theme.colorScheme.onSurface.withOpacity(0.4)),
-                  prefixIcon: const Icon(Icons.drive_file_rename_outline_rounded),
+                  prefixIcon:
+                      const Icon(Icons.drive_file_rename_outline_rounded),
                 ),
               ),
               const SizedBox(height: 18),
@@ -404,7 +439,8 @@ class _TaskEditorPageState extends State<TaskEditorPage> {
                       overflow: TextOverflow.ellipsis,
                       style: _noDeco.copyWith(
                           fontSize: 12,
-                          color: theme.colorScheme.onSurface.withOpacity(0.75))),
+                          color:
+                              theme.colorScheme.onSurface.withOpacity(0.75))),
                 ],
                 const SizedBox(height: 2),
                 Text('انتظار: ${step.waitAfterMs} مللي',
@@ -614,6 +650,7 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
 
   late Map<String, TextEditingController> _ctrls;
   late int _waitAfter;
+  String? _selectedAppName;
 
   @override
   void initState() {
@@ -696,7 +733,6 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
     super.dispose();
   }
 
-  // ⭐ فتح picker التطبيقات
   Future<void> _pickApp() async {
     final app = await showModalBottomSheet<InstalledApp>(
       context: context,
@@ -707,6 +743,7 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
     if (app != null && mounted) {
       setState(() {
         _ctrls['package']?.text = app.package;
+        _selectedAppName = app.name;
       });
     }
   }
@@ -716,6 +753,7 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
     final theme = Theme.of(context);
     final label = widget.step.typeLabel;
     final isOpenApp = widget.step.type == TaskStepType.openApp;
+    final currentPkg = _ctrls['package']?.text ?? '';
 
     return Padding(
       padding:
@@ -759,7 +797,9 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
                       padding: const EdgeInsets.symmetric(
                           horizontal: 16, vertical: 14),
                       decoration: BoxDecoration(
-                        color: theme.colorScheme.primary.withOpacity(0.15),
+                        color: currentPkg.isEmpty
+                            ? theme.colorScheme.primary.withOpacity(0.15)
+                            : theme.colorScheme.surface.withOpacity(0.6),
                         borderRadius: BorderRadius.circular(14),
                         border: Border.all(
                             color:
@@ -771,11 +811,26 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
                               color: theme.colorScheme.primary, size: 22),
                           const SizedBox(width: 10),
                           Expanded(
-                            child: Text('اختر تطبيق من القائمة',
-                                style: _noDeco.copyWith(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.bold,
-                                    color: theme.colorScheme.primary)),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  currentPkg.isEmpty
+                                      ? 'اضغط لاختيار تطبيق من القائمة'
+                                      : (_selectedAppName ?? 'تطبيق مختار'),
+                                  style: _noDeco.copyWith(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.bold,
+                                      color: theme.colorScheme.primary),
+                                ),
+                                if (currentPkg.isNotEmpty)
+                                  Text(currentPkg,
+                                      style: _noDeco.copyWith(
+                                          fontSize: 10.5,
+                                          color: theme.colorScheme.onSurface
+                                              .withOpacity(0.5))),
+                              ],
+                            ),
                           ),
                           Icon(Icons.arrow_forward_ios_rounded,
                               size: 14, color: theme.colorScheme.primary),
@@ -785,27 +840,42 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
                   ),
                 ),
                 const SizedBox(height: 14),
+
+                // حقل الباكدج - بس عشان يشوفه
+                TextField(
+                  controller: _ctrls['package'],
+                  style: _noDeco.copyWith(fontSize: 15),
+                  decoration: InputDecoration(
+                    labelText: 'اسم الحزمة (أو اختار من فوق)',
+                    labelStyle: _noDeco.copyWith(
+                        color: theme.colorScheme.onSurface.withOpacity(0.6)),
+                    hintStyle: _noDeco.copyWith(
+                        color: theme.colorScheme.onSurface.withOpacity(0.4)),
+                    prefixIcon: const Icon(Icons.tag_rounded),
+                  ),
+                ),
               ],
 
-              ..._ctrls.entries.map((e) => Padding(
-                    padding: const EdgeInsets.only(bottom: 12),
-                    child: TextField(
-                      controller: e.value,
-                      style: _noDeco.copyWith(fontSize: 15),
-                      keyboardType: int.tryParse(e.value.text) != null
-                          ? TextInputType.number
-                          : TextInputType.text,
-                      decoration: InputDecoration(
-                        labelText: _labelFor(e.key),
-                        labelStyle: _noDeco.copyWith(
-                            color:
-                                theme.colorScheme.onSurface.withOpacity(0.6)),
-                        hintStyle: _noDeco.copyWith(
-                            color:
-                                theme.colorScheme.onSurface.withOpacity(0.4)),
+              if (!isOpenApp)
+                ..._ctrls.entries.map((e) => Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: TextField(
+                        controller: e.value,
+                        style: _noDeco.copyWith(fontSize: 15),
+                        keyboardType: int.tryParse(e.value.text) != null
+                            ? TextInputType.number
+                            : TextInputType.text,
+                        decoration: InputDecoration(
+                          labelText: _labelFor(e.key),
+                          labelStyle: _noDeco.copyWith(
+                              color: theme.colorScheme.onSurface
+                                  .withOpacity(0.6)),
+                          hintStyle: _noDeco.copyWith(
+                              color: theme.colorScheme.onSurface
+                                  .withOpacity(0.4)),
+                        ),
                       ),
-                    ),
-                  )),
+                    )),
 
               const SizedBox(height: 4),
               Text('الانتظار بعد الخطوة: $_waitAfter مللي',
