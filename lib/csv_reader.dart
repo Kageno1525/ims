@@ -4,68 +4,69 @@ import 'package:path_provider/path_provider.dart';
 import 'models.dart';
 
 class CsvReader {
-  /// بيرجع كل الأماكن المحتملة لمجلد ranges
-  static Future<List<Directory>> _candidateDirs() async {
-    final list = <Directory>[];
+  static Future<List<String>> _candidatePaths() async {
+    final list = <String>[];
     if (Platform.isAndroid) {
-      // 1) المسارات العامة (المستخدم شايفها)
-      for (final p in [
-        '/storage/emulated/0/Download/ranges',
-        '/sdcard/Download/ranges',
-        '/storage/emulated/0/Downloads/ranges',
-      ]) {
-        list.add(Directory(p));
-      }
-      // 2) مسار التطبيق الخارجي
-      try {
-        final ext = await getExternalStorageDirectory();
-        if (ext != null) list.add(Directory('${ext.path}/ranges'));
-      } catch (_) {}
-      // 3) Download من path_provider
-      try {
-        final dl = await getDownloadsDirectory();
-        if (dl != null) list.add(Directory('${dl.path}/ranges'));
-      } catch (_) {}
+      list.add('/storage/emulated/0/Download/ranges');
+      list.add('/sdcard/Download/ranges');
     }
-    // 4) مجلد التطبيق الداخلي
+    try {
+      final ext = await getExternalStorageDirectory();
+      if (ext != null) list.add('${ext.path}/ranges');
+    } catch (_) {}
+    try {
+      final dl = await getDownloadsDirectory();
+      if (dl != null) list.add('${dl.path}/ranges');
+    } catch (_) {}
     try {
       final app = await getApplicationDocumentsDirectory();
-      list.add(Directory('${app.path}/ranges'));
+      list.add('${app.path}/ranges');
     } catch (_) {}
     return list;
   }
 
-  /// أول مجلد موجود فعلاً من المرشحين
   static Future<Directory?> getRangesDir({bool createIfMissing = false}) async {
-    final candidates = await _candidateDirs();
-    for (final d in candidates) {
+    for (final p in await _candidatePaths()) {
       try {
+        final d = Directory(p);
         if (await d.exists()) return d;
       } catch (_) {}
     }
-    if (createIfMissing && candidates.isNotEmpty) {
-      try {
-        await candidates.first.create(recursive: true);
-        return candidates.first;
-      } catch (_) {}
+    if (createIfMissing) {
+      final list = await _candidatePaths();
+      if (list.isNotEmpty) {
+        try {
+          final d = Directory(list.first);
+          await d.create(recursive: true);
+          return d;
+        } catch (_) {}
+      }
     }
     return null;
   }
 
-  /// كل الملفات من كل المجلدات المحتملة
+  /// يقرأ كل الملفات بدون تكرار (dedupe بـ realpath)
   static Future<List<CsvFile>> listFiles() async {
-    final candidates = await _candidateDirs();
     final seen = <String>{};
     final files = <CsvFile>[];
+    final paths = await _candidatePaths();
 
-    for (final dir in candidates) {
+    for (final p in paths) {
       try {
+        final dir = Directory(p);
         if (!await dir.exists()) continue;
-        await for (final ent in dir.list()) {
+        await for (final ent in dir.list(followLinks: false)) {
           if (ent is! File) continue;
           if (!ent.path.toLowerCase().endsWith('.csv')) continue;
-          if (seen.contains(ent.path)) continue;
-          seen.add(ent.path);
+          // resolve symlinks عشان مفيش تكرار
+          String real;
+          try {
+            real = ent.resolveSymbolicLinksSync();
+          } catch (_) {
+            real = ent.absolute.path;
+          }
+          if (seen.contains(real)) continue;
+          seen.add(real);
           try {
             final nums = await readColumnC(ent.path);
             final name = ent.path
