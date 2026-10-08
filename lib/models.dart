@@ -6,3 +6,10 @@ class LogEntry {
   final LogLevel level;
   LogEntry(this.msg, this.time, this.level);
 }
+
+class CsvFile {
+  final String name;
+  final String path;
+  final int count;
+  CsvFile({required this.name, required this.path, required this.count});
+}
