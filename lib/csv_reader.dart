@@ -1,42 +1,86 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:path_provider/path_provider.dart';
 import 'models.dart';
 
 class CsvReader {
-  /// مجلد ملفات الـ CSV: Download/ranges
-  static Future<Directory?> getRangesDir() async {
-    if (!Platform.isAndroid) return null;
-    for (final p in ['/storage/emulated/0/Download', '/sdcard/Download']) {
+  /// بيرجع كل الأماكن المحتملة لمجلد ranges
+  static Future<List<Directory>> _candidateDirs() async {
+    final list = <Directory>[];
+    if (Platform.isAndroid) {
+      // 1) المسارات العامة (المستخدم شايفها)
+      for (final p in [
+        '/storage/emulated/0/Download/ranges',
+        '/sdcard/Download/ranges',
+        '/storage/emulated/0/Downloads/ranges',
+      ]) {
+        list.add(Directory(p));
+      }
+      // 2) مسار التطبيق الخارجي
       try {
-        final d = Directory(p);
-        if (await d.exists()) {
-          return Directory('${d.path}/ranges');
-        }
+        final ext = await getExternalStorageDirectory();
+        if (ext != null) list.add(Directory('${ext.path}/ranges'));
+      } catch (_) {}
+      // 3) Download من path_provider
+      try {
+        final dl = await getDownloadsDirectory();
+        if (dl != null) list.add(Directory('${dl.path}/ranges'));
+      } catch (_) {}
+    }
+    // 4) مجلد التطبيق الداخلي
+    try {
+      final app = await getApplicationDocumentsDirectory();
+      list.add(Directory('${app.path}/ranges'));
+    } catch (_) {}
+    return list;
+  }
+
+  /// أول مجلد موجود فعلاً من المرشحين
+  static Future<Directory?> getRangesDir({bool createIfMissing = false}) async {
+    final candidates = await _candidateDirs();
+    for (final d in candidates) {
+      try {
+        if (await d.exists()) return d;
+      } catch (_) {}
+    }
+    if (createIfMissing && candidates.isNotEmpty) {
+      try {
+        await candidates.first.create(recursive: true);
+        return candidates.first;
       } catch (_) {}
     }
     return null;
   }
 
-  /// يقرأ كل ملفات CSV الموجودة في المجلد ويرجع معلوماتها
+  /// كل الملفات من كل المجلدات المحتملة
   static Future<List<CsvFile>> listFiles() async {
-    final dir = await getRangesDir();
-    if (dir == null || !await dir.exists()) return [];
+    final candidates = await _candidateDirs();
+    final seen = <String>{};
     final files = <CsvFile>[];
-    await for (final ent in dir.list()) {
-      if (ent is! File) continue;
-      if (!ent.path.toLowerCase().endsWith('.csv')) continue;
+
+    for (final dir in candidates) {
       try {
-        final nums = await readColumnC(ent.path);
-        final name = ent.path.split(Platform.pathSeparator).last
-            .replaceAll(RegExp(r'\.csv$', caseSensitive: false), '');
-        files.add(CsvFile(name: name, path: ent.path, count: nums.length));
+        if (!await dir.exists()) continue;
+        await for (final ent in dir.list()) {
+          if (ent is! File) continue;
+          if (!ent.path.toLowerCase().endsWith('.csv')) continue;
+          if (seen.contains(ent.path)) continue;
+          seen.add(ent.path);
+          try {
+            final nums = await readColumnC(ent.path);
+            final name = ent.path
+                .split(Platform.pathSeparator)
+                .last
+                .replaceAll(RegExp(r'\.csv$', caseSensitive: false), '');
+            files.add(CsvFile(name: name, path: ent.path, count: nums.length));
+          } catch (_) {}
+        }
       } catch (_) {}
     }
     files.sort((a, b) => a.name.compareTo(b.name));
     return files;
   }
 
-  /// يقرأ العمود C (index=2) من الصف 2 لآخر الصف
   static Future<List<String>> readColumnC(String path) async {
     final file = File(path);
     if (!await file.exists()) return [];
@@ -59,7 +103,6 @@ class CsvReader {
     return numbers;
   }
 
-  /// CSV parser بسيط يدعم quotes
   static List<List<String>> _parse(String content) {
     final rows = <List<String>>[];
     final fields = <String>[];
