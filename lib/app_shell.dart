@@ -64,8 +64,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   bool _accessibilityOn = false;
   bool _overlayOn = false;
 
-  // ⭐ الجديد
-  bool _running = false; // ON/OFF الرئيسي
+  bool _running = false;
   Timer? _statsTimer;
 
   @override
@@ -88,15 +87,21 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       },
     );
 
-    Future.delayed(const Duration(milliseconds: 600), _refreshPermissions);
+    // ⭐ تحميل الملفات تلقائياً عند فتح التطبيق
+    Future.microtask(_bootstrap);
 
-    // ⭐ تحديث تلقائي كل ثانية للداشبورد
-    _statsTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+    // تحديث الإحصائيات كل 5 ثواني بدل ثانية (أسرع بكتير)
+    _statsTimer = Timer.periodic(const Duration(seconds: 5), (_) {
       if (!mounted) return;
       if (_stage == Stage.dashboard && !_busy) {
         _refresh(silent: true);
       }
     });
+  }
+
+  Future<void> _bootstrap() async {
+    await _refreshPermissions();
+    await _refreshFiles();
   }
 
   @override
@@ -246,6 +251,9 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     });
     _log('جاري فتح صفحة الأرقام…', LogLevel.wait);
 
+    // تحميل الملفات فوراً
+    await _refreshFiles();
+
     try {
       await _web?.loadUrl(urlRequest: URLRequest(url: WebUri(_kNumbersUrl)));
       final dl = DateTime.now().add(const Duration(seconds: 15));
@@ -257,7 +265,6 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       _log('اتفتحت صفحة الأرقام ✅', LogLevel.ok);
       await Future.delayed(const Duration(milliseconds: 1200));
       await _loadRanges();
-      await _refreshFiles();
     } catch (e) {
       _log('فشل فتح الصفحة: $e', LogLevel.error);
       setState(() => _loadingRanges = false);
@@ -423,6 +430,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
         _log('فشل حفظ الملف 😕', LogLevel.error);
       } else {
         _log('✅ اتحفظ: $saved', LogLevel.ok);
+        // ⭐ إعادة تحميل الملفات فوراً
         await _refreshFiles();
       }
     } catch (e) {
@@ -478,6 +486,11 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       _csvFiles = list;
       if (_selectedCsvName == null && list.isNotEmpty) {
         _selectedCsvName = list.first.name;
+      }
+      // لو الملف اللي كان مختار اتشال، اختر الأول
+      if (_selectedCsvName != null &&
+          !list.any((f) => f.name == _selectedCsvName)) {
+        _selectedCsvName = list.isEmpty ? null : list.first.name;
       }
     });
     if (_selectedCsvName != null && _currentNumbers.isEmpty) {
@@ -539,7 +552,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       if (ok) {
         _log('✅ الكتابة نجحت', LogLevel.ok);
       } else {
-        _log('⚠️ الكتابة فشلت (تأكد إن فيه حقل مفتوح)', LogLevel.error);
+        _log('⚠️ الكتابة فشلت (جرب تاني - الحقل ممكن يكون لسه مش جاهز)', LogLevel.error);
       }
     }
 
@@ -566,7 +579,6 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     _log(ok ? '✅ اكتب: $num' : '⚠️ فشل الكتابة', ok ? LogLevel.ok : LogLevel.error);
   }
 
-  // ⭐ ON/OFF الرئيسي
   Future<void> _toggleRunning() async {
     final newVal = !_running;
     setState(() => _running = newVal);
@@ -574,7 +586,6 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
         newVal ? LogLevel.ok : LogLevel.info);
   }
 
-  // ⭐ Reset
   Future<void> _resetCounter() async {
     setState(() {
       _currentIndex = 0;
