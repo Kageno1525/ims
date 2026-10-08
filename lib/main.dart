@@ -26,6 +26,17 @@ class _ImsAppState extends State<ImsApp> {
       themeMode: _mode,
       theme: _theme(Brightness.light),
       darkTheme: _theme(Brightness.dark),
+      // ⭐ اللف العام ده هو اللي بيقتل الخط الأصفر
+      builder: (context, child) {
+        return DefaultTextStyle(
+          style: const TextStyle(
+            decoration: TextDecoration.none,
+            decorationColor: Colors.transparent,
+            decorationStyle: TextDecorationStyle.solid,
+          ),
+          child: child!,
+        );
+      },
       home: AppShell(
         isDark: _mode == ThemeMode.dark,
         onToggleTheme: _toggle,
@@ -39,33 +50,20 @@ ThemeData _theme(Brightness b) {
     seedColor: const Color(0xFF6C5CE7),
     brightness: b,
   );
-  final base = ThemeData(useMaterial3: true, colorScheme: scheme, brightness: b);
+  final base =
+      ThemeData(useMaterial3: true, colorScheme: scheme, brightness: b);
 
-  // ⭐ textTheme نضيف بدون underline
-  final baseText = base.textTheme;
-  TextStyle clean(TextStyle? s) =>
-      (s ?? const TextStyle()).copyWith(decoration: TextDecoration.none);
+  // ⭐ نطبق decoration: none على كل الـ TextTheme
+  final cleanTextTheme = base.textTheme.apply(
+    decoration: TextDecoration.none,
+    decorationColor: Colors.transparent,
+  );
 
   return base.copyWith(
     scaffoldBackgroundColor:
         b == Brightness.dark ? const Color(0xFF0B0B14) : const Color(0xFFF5F6FB),
-    textTheme: baseText.copyWith(
-      displayLarge: clean(baseText.displayLarge),
-      displayMedium: clean(baseText.displayMedium),
-      displaySmall: clean(baseText.displaySmall),
-      headlineLarge: clean(baseText.headlineLarge),
-      headlineMedium: clean(baseText.headlineMedium),
-      headlineSmall: clean(baseText.headlineSmall),
-      titleLarge: clean(baseText.titleLarge),
-      titleMedium: clean(baseText.titleMedium),
-      titleSmall: clean(baseText.titleSmall),
-      bodyLarge: clean(baseText.bodyLarge),
-      bodyMedium: clean(baseText.bodyMedium),
-      bodySmall: clean(baseText.bodySmall),
-      labelLarge: clean(baseText.labelLarge),
-      labelMedium: clean(baseText.labelMedium),
-      labelSmall: clean(baseText.labelSmall),
-    ),
+    textTheme: cleanTextTheme,
+    primaryTextTheme: cleanTextTheme,
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
       fillColor: b == Brightness.dark
@@ -83,12 +81,24 @@ ThemeData _theme(Brightness b) {
         borderRadius: BorderRadius.circular(16),
         borderSide: BorderSide(color: scheme.primary, width: 1.5),
       ),
-      labelStyle: TextStyle(color: scheme.onSurface.withOpacity(0.6)),
+      labelStyle: TextStyle(
+          color: scheme.onSurface.withOpacity(0.6),
+          decoration: TextDecoration.none,
+          decorationColor: Colors.transparent),
+      hintStyle: TextStyle(
+          color: scheme.onSurface.withOpacity(0.4),
+          decoration: TextDecoration.none,
+          decorationColor: Colors.transparent),
     ),
     snackBarTheme: const SnackBarThemeData(
       behavior: SnackBarBehavior.floating,
       backgroundColor: Color(0xFF2C2C3E),
-      contentTextStyle: TextStyle(color: Colors.white, fontSize: 14),
+      contentTextStyle: TextStyle(
+        color: Colors.white,
+        fontSize: 14,
+        decoration: TextDecoration.none,
+        decorationColor: Colors.transparent,
+      ),
     ),
   );
 }
