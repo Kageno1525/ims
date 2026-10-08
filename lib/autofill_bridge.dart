@@ -151,7 +151,6 @@ class AutoFillBridge {
     }
   }
 
-  // ⭐ جديد: قائمة التطبيقات المثبتة
   static Future<List<InstalledApp>> listInstalledApps() async {
     try {
       final result = await _channel.invokeMethod('listApps');
@@ -165,6 +164,16 @@ class AutoFillBridge {
       }).toList();
     } catch (_) {
       return [];
+    }
+  }
+
+  // ⭐ جديد: حوّل اسم التطبيق → باكدج
+  static Future<String?> resolvePackage(String nameOrPackage) async {
+    try {
+      return await _channel.invokeMethod(
+          'resolvePackage', {'name': nameOrPackage});
+    } catch (_) {
+      return null;
     }
   }
 
