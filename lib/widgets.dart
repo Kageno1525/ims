@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'models.dart';
 
+// ═══════════════════ خلفية سريعة جداً ═══════════════════
 class AnimatedBackground extends StatefulWidget {
   final Widget child;
   const AnimatedBackground({super.key, required this.child});
@@ -16,10 +17,9 @@ class _AnimatedBackgroundState extends State<AnimatedBackground>
   @override
   void initState() {
     super.initState();
-    // حركة أبطأ شوية = حمل أقل على الـ GPU
     _c = AnimationController(
       vsync: this,
-      duration: const Duration(seconds: 18),
+      duration: const Duration(seconds: 30),
     )..repeat();
   }
 
@@ -37,69 +37,66 @@ class _AnimatedBackgroundState extends State<AnimatedBackground>
       color: theme.scaffoldBackgroundColor,
       child: Stack(
         children: [
-          // ⭐ الخلفية المتحركة معزولة في RepaintBoundary
-          // ومش بتأثر على المحتوى اللي فوقها
+          // الخلفية: RepaintBoundary يمنع إعادة الرسم
           Positioned.fill(
-            child: RepaintBoundary(
-              child: IgnorePointer(
-                child: AnimatedBuilder(
-                  animation: _c,
-                  builder: (context, _) {
-                    final t = _c.value * 2 * math.pi;
-                    return ClipRect(
-                      child: Stack(
-                        children: [
-                          _orb(
-                            theme.colorScheme.primary.withOpacity(0.35),
-                            340,
-                            -100 + 40 * math.sin(t),
-                            -80 + 60 * math.cos(t),
-                          ),
-                          _orb(
-                            theme.colorScheme.secondary.withOpacity(0.30),
-                            380,
-                            200 + 50 * math.sin(t + 1.5),
-                            400 + 60 * math.cos(t + 0.5),
-                          ),
-                          _orb(
-                            theme.colorScheme.tertiary.withOpacity(0.20),
-                            260,
-                            100 + 40 * math.cos(t * 0.8),
-                            200 + 50 * math.sin(t * 0.8),
-                          ),
-                        ],
-                      ),
-                    );
-                  },
+            child: IgnorePointer(
+              child: RepaintBoundary(
+                child: RotationTransition(
+                  // دوران بطيء جداً (30 ثانية للفة كاملة)
+                  turns: _c,
+                  alignment: Alignment.center,
+                  child: CustomPaint(
+                    painter: _BlobsPainter(
+                      c1: theme.colorScheme.primary.withOpacity(0.28),
+                      c2: theme.colorScheme.secondary.withOpacity(0.22),
+                      c3: theme.colorScheme.tertiary.withOpacity(0.16),
+                    ),
+                  ),
                 ),
               ),
             ),
           ),
-          // ⭐ المحتوى - sibling منفصل، مش بيتأثر بحركة الخلفية
           widget.child,
         ],
       ),
     );
   }
-
-  Widget _orb(Color color, double size, double dx, double dy) {
-    return Positioned(
-      left: dx,
-      top: dy,
-      child: Container(
-        width: size,
-        height: size,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          gradient: RadialGradient(colors: [color, color.withOpacity(0)]),
-        ),
-      ),
-    );
-  }
 }
 
-// ═══════════════════ Widgets مشتركة ═══════════════════
+// ═══════════════════ رسم البقع الثلاثة مرة واحدة فقط ═══════════════════
+class _BlobsPainter extends CustomPainter {
+  final Color c1, c2, c3;
+  _BlobsPainter({required this.c1, required this.c2, required this.c3});
 
+  @override
+  void paint(Canvas canvas, Size size) {
+    // نرسم في مربع أكبر عشان الدوران ميبانش فيه فراغ
+    final w = size.width * 1.8;
+    final h = size.height * 1.8;
+    final ox = -size.width * 0.4;
+    final oy = -size.height * 0.4;
+
+    _blob(canvas, Offset(ox + w * 0.25, oy + h * 0.2), 320, c1);
+    _blob(canvas, Offset(ox + w * 0.75, oy + h * 0.55), 360, c2);
+    _blob(canvas, Offset(ox + w * 0.5, oy + h * 0.85), 260, c3);
+  }
+
+  void _blob(Canvas canvas, Offset center, double radius, Color color) {
+    final rect = Rect.fromCircle(center: center, radius: radius);
+    final paint = Paint()
+      ..shader = RadialGradient(
+        colors: [color, color.withOpacity(0)],
+        stops: const [0.0, 1.0],
+      ).createShader(rect);
+    canvas.drawCircle(center, radius, paint);
+  }
+
+  @override
+  bool shouldRepaint(_BlobsPainter old) =>
+      old.c1 != c1 || old.c2 != c2 || old.c3 != c3;
+}
+
+// ═══════════════════ IconBtn ═══════════════════
 class IconBtn extends StatelessWidget {
   final IconData icon;
   final VoidCallback? onTap;
@@ -131,6 +128,7 @@ class IconBtn extends StatelessWidget {
   }
 }
 
+// ═══════════════════ ActionBtn ═══════════════════
 class ActionBtn extends StatelessWidget {
   final String label;
   final IconData icon;
@@ -147,8 +145,7 @@ class ActionBtn extends StatelessWidget {
   });
   @override
   Widget build(BuildContext context) {
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 250),
+    return Container(
       height: 52,
       decoration: BoxDecoration(
         gradient: LinearGradient(
@@ -197,7 +194,8 @@ class ActionBtn extends StatelessWidget {
   }
 }
 
-class StatCard extends StatelessWidget {
+// ═══════════════════ StatCard (بدون TweenAnimationBuilder دائم) ═══════════════════
+class StatCard extends StatefulWidget {
   final String title;
   final int value;
   final IconData icon;
@@ -212,77 +210,120 @@ class StatCard extends StatelessWidget {
     this.delay = 0,
   });
   @override
+  State<StatCard> createState() => _StatCardState();
+}
+
+class _StatCardState extends State<StatCard> {
+  bool _animated = false;
+
+  @override
+  void initState() {
+    super.initState();
+    Future.delayed(Duration(milliseconds: widget.delay), () {
+      if (mounted) setState(() => _animated = true);
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return TweenAnimationBuilder<double>(
-      tween: Tween(begin: 0, end: 1),
-      duration: Duration(milliseconds: 700 + delay),
+    return AnimatedSlide(
+      duration: const Duration(milliseconds: 500),
       curve: Curves.easeOutCubic,
-      builder: (context, t, child) => Transform.translate(
-        offset: Offset(0, 24 * (1 - t)),
-        child: Opacity(opacity: t, child: child),
-      ),
-      child: Container(
-        padding: const EdgeInsets.all(22),
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: colors,
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
+      offset: _animated ? Offset.zero : const Offset(0, 0.15),
+      child: AnimatedOpacity(
+        duration: const Duration(milliseconds: 500),
+        opacity: _animated ? 1 : 0,
+        child: Container(
+          padding: const EdgeInsets.all(22),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: widget.colors,
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(28),
+            boxShadow: [
+              BoxShadow(
+                color: widget.colors.first.withOpacity(0.4),
+                blurRadius: 28,
+                offset: const Offset(0, 14),
+              ),
+            ],
           ),
-          borderRadius: BorderRadius.circular(28),
-          boxShadow: [
-            BoxShadow(
-              color: colors.first.withOpacity(0.4),
-              blurRadius: 28,
-              offset: const Offset(0, 14),
-            ),
-          ],
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 60, height: 60,
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.2),
-                borderRadius: BorderRadius.circular(18),
-                border: Border.all(color: Colors.white.withOpacity(0.25)),
+          child: Row(
+            children: [
+              Container(
+                width: 60, height: 60,
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(color: Colors.white.withOpacity(0.25)),
+                ),
+                child: Icon(widget.icon, color: Colors.white, size: 30),
               ),
-              child: Icon(icon, color: Colors.white, size: 30),
-            ),
-            const SizedBox(width: 18),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(title,
-                      style: TextStyle(
-                        color: Colors.white.withOpacity(0.85),
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                      )),
-                  const SizedBox(height: 8),
-                  TweenAnimationBuilder<double>(
-                    tween: Tween(begin: 0, end: value.toDouble()),
-                    duration: const Duration(milliseconds: 1200),
-                    curve: Curves.easeOutExpo,
-                    builder: (_, v, __) => Text('${v.toInt()}',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 38,
-                          fontWeight: FontWeight.bold,
-                          height: 1,
+              const SizedBox(width: 18),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(widget.title,
+                        style: TextStyle(
+                          color: Colors.white.withOpacity(0.85),
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
                         )),
-                  ),
-                ],
+                    const SizedBox(height: 8),
+                    // عدّاد بسيط بدون TweenAnimationBuilder متكرر
+                    _AnimatedValue(
+                      value: widget.value,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 38,
+                        fontWeight: FontWeight.bold,
+                        height: 1,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
   }
 }
 
+class _AnimatedValue extends StatefulWidget {
+  final int value;
+  final TextStyle? style;
+  const _AnimatedValue({required this.value, this.style});
+  @override
+  State<_AnimatedValue> createState() => _AnimatedValueState();
+}
+
+class _AnimatedValueState extends State<_AnimatedValue> {
+  int _display = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _display = widget.value;
+  }
+
+  @override
+  void didUpdateWidget(_AnimatedValue old) {
+    super.didUpdateWidget(old);
+    if (old.value != widget.value) _display = widget.value;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Text('$_display', style: widget.style);
+  }
+}
+
+// ═══════════════════ LogPanel ═══════════════════
 class LogPanel extends StatelessWidget {
   final List<LogEntry> logs;
   final bool isDark;
