@@ -12,52 +12,93 @@ class AnimatedBackground extends StatefulWidget {
 class _AnimatedBackgroundState extends State<AnimatedBackground>
     with SingleTickerProviderStateMixin {
   late final AnimationController _c;
+
   @override
   void initState() {
     super.initState();
-    _c = AnimationController(vsync: this, duration: const Duration(seconds: 14))..repeat();
+    // حركة أبطأ شوية = حمل أقل على الـ GPU
+    _c = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 18),
+    )..repeat();
   }
+
   @override
-  void dispose() { _c.dispose(); super.dispose(); }
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+
     return Container(
       color: theme.scaffoldBackgroundColor,
-      child: AnimatedBuilder(
-        animation: _c,
-        builder: (context, _) {
-          final t = _c.value * 2 * math.pi;
-          return ClipRect(
-            child: Stack(
-              children: [
-                _orb(theme.colorScheme.primary.withOpacity(0.35), 340,
-                    -100 + 40 * math.sin(t), -80 + 60 * math.cos(t)),
-                _orb(theme.colorScheme.secondary.withOpacity(0.30), 380,
-                    200 + 50 * math.sin(t + 1.5), 400 + 60 * math.cos(t + 0.5)),
-                _orb(theme.colorScheme.tertiary.withOpacity(0.20), 260,
-                    100 + 40 * math.cos(t * 0.8), 200 + 50 * math.sin(t * 0.8)),
-                widget.child,
-              ],
+      child: Stack(
+        children: [
+          // ⭐ الخلفية المتحركة معزولة في RepaintBoundary
+          // ومش بتأثر على المحتوى اللي فوقها
+          Positioned.fill(
+            child: RepaintBoundary(
+              child: IgnorePointer(
+                child: AnimatedBuilder(
+                  animation: _c,
+                  builder: (context, _) {
+                    final t = _c.value * 2 * math.pi;
+                    return ClipRect(
+                      child: Stack(
+                        children: [
+                          _orb(
+                            theme.colorScheme.primary.withOpacity(0.35),
+                            340,
+                            -100 + 40 * math.sin(t),
+                            -80 + 60 * math.cos(t),
+                          ),
+                          _orb(
+                            theme.colorScheme.secondary.withOpacity(0.30),
+                            380,
+                            200 + 50 * math.sin(t + 1.5),
+                            400 + 60 * math.cos(t + 0.5),
+                          ),
+                          _orb(
+                            theme.colorScheme.tertiary.withOpacity(0.20),
+                            260,
+                            100 + 40 * math.cos(t * 0.8),
+                            200 + 50 * math.sin(t * 0.8),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ),
             ),
-          );
-        },
+          ),
+          // ⭐ المحتوى - sibling منفصل، مش بيتأثر بحركة الخلفية
+          widget.child,
+        ],
       ),
     );
   }
-  Widget _orb(Color color, double size, double dx, double dy) => Positioned(
-        left: dx, top: dy,
-        child: IgnorePointer(
-          child: Container(
-            width: size, height: size,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              gradient: RadialGradient(colors: [color, color.withOpacity(0)]),
-            ),
-          ),
+
+  Widget _orb(Color color, double size, double dx, double dy) {
+    return Positioned(
+      left: dx,
+      top: dy,
+      child: Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          gradient: RadialGradient(colors: [color, color.withOpacity(0)]),
         ),
-      );
+      ),
+    );
+  }
 }
+
+// ═══════════════════ Widgets مشتركة ═══════════════════
 
 class IconBtn extends StatelessWidget {
   final IconData icon;
@@ -76,8 +117,13 @@ class IconBtn extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.all(12),
           child: spinning
-              ? SizedBox(width: 20, height: 20,
-                  child: CircularProgressIndicator(strokeWidth: 2, color: theme.colorScheme.primary))
+              ? SizedBox(
+                  width: 20, height: 20,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: theme.colorScheme.primary,
+                  ),
+                )
               : Icon(icon, size: 20, color: theme.colorScheme.onSurface),
         ),
       ),
@@ -114,7 +160,8 @@ class ActionBtn extends StatelessWidget {
         boxShadow: [
           BoxShadow(
             color: gradient.first.withOpacity(onTap == null ? 0.1 : 0.4),
-            blurRadius: 20, offset: const Offset(0, 10),
+            blurRadius: 20,
+            offset: const Offset(0, 10),
           ),
         ],
       ),
@@ -128,13 +175,19 @@ class ActionBtn extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 if (busy)
-                  const SizedBox(width: 16, height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                  const SizedBox(
+                    width: 16, height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                  )
                 else
                   Icon(icon, color: Colors.white, size: 18),
                 const SizedBox(width: 8),
                 Text(label,
-                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                    )),
               ],
             ),
           ),
@@ -171,9 +224,19 @@ class StatCard extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(22),
         decoration: BoxDecoration(
-          gradient: LinearGradient(colors: colors, begin: Alignment.topLeft, end: Alignment.bottomRight),
+          gradient: LinearGradient(
+            colors: colors,
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
           borderRadius: BorderRadius.circular(28),
-          boxShadow: [BoxShadow(color: colors.first.withOpacity(0.4), blurRadius: 28, offset: const Offset(0, 14))],
+          boxShadow: [
+            BoxShadow(
+              color: colors.first.withOpacity(0.4),
+              blurRadius: 28,
+              offset: const Offset(0, 14),
+            ),
+          ],
         ),
         child: Row(
           children: [
@@ -191,14 +254,24 @@ class StatCard extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(title, style: TextStyle(color: Colors.white.withOpacity(0.85), fontSize: 14, fontWeight: FontWeight.w600)),
+                  Text(title,
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.85),
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                      )),
                   const SizedBox(height: 8),
                   TweenAnimationBuilder<double>(
                     tween: Tween(begin: 0, end: value.toDouble()),
                     duration: const Duration(milliseconds: 1200),
                     curve: Curves.easeOutExpo,
                     builder: (_, v, __) => Text('${v.toInt()}',
-                        style: const TextStyle(color: Colors.white, fontSize: 38, fontWeight: FontWeight.bold, height: 1)),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 38,
+                          fontWeight: FontWeight.bold,
+                          height: 1,
+                        )),
                   ),
                 ],
               ),
@@ -214,7 +287,12 @@ class LogPanel extends StatelessWidget {
   final List<LogEntry> logs;
   final bool isDark;
   final bool shrink;
-  const LogPanel({super.key, required this.logs, required this.isDark, this.shrink = false});
+  const LogPanel({
+    super.key,
+    required this.logs,
+    required this.isDark,
+    this.shrink = false,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -235,19 +313,31 @@ class LogPanel extends StatelessWidget {
               Icon(Icons.terminal_rounded, size: 14, color: theme.colorScheme.primary),
               const SizedBox(width: 6),
               Text('السجل',
-                  style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurface.withOpacity(0.6), fontWeight: FontWeight.bold)),
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: theme.colorScheme.onSurface.withOpacity(0.6),
+                    fontWeight: FontWeight.bold,
+                  )),
               const Spacer(),
               if (logs.isNotEmpty)
                 Text('${logs.length}',
-                    style: TextStyle(fontSize: 11, color: theme.colorScheme.onSurface.withOpacity(0.4))),
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: theme.colorScheme.onSurface.withOpacity(0.4),
+                    )),
             ],
           ),
           const SizedBox(height: 8),
           if (logs.isEmpty)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 12),
-              child: Center(child: Text('لا يوجد سجل بعد',
-                  style: TextStyle(color: theme.colorScheme.onSurface.withOpacity(0.3), fontSize: 12))),
+              child: Center(
+                child: Text('لا يوجد سجل بعد',
+                    style: TextStyle(
+                      color: theme.colorScheme.onSurface.withOpacity(0.3),
+                      fontSize: 12,
+                    )),
+              ),
             )
           else
             shrink
@@ -271,13 +361,20 @@ class LogPanel extends StatelessWidget {
     IconData icon;
     switch (l.level) {
       case LogLevel.ok:
-        color = const Color(0xFF00D68F); icon = Icons.check_circle_rounded; break;
+        color = const Color(0xFF00D68F);
+        icon = Icons.check_circle_rounded;
+        break;
       case LogLevel.error:
-        color = const Color(0xFFFF6B6B); icon = Icons.error_rounded; break;
+        color = const Color(0xFFFF6B6B);
+        icon = Icons.error_rounded;
+        break;
       case LogLevel.wait:
-        color = const Color(0xFFFFB84D); icon = Icons.hourglass_top_rounded; break;
+        color = const Color(0xFFFFB84D);
+        icon = Icons.hourglass_top_rounded;
+        break;
       default:
-        color = theme.colorScheme.primary; icon = Icons.info_rounded;
+        color = theme.colorScheme.primary;
+        icon = Icons.info_rounded;
     }
     final hh = l.time.hour.toString().padLeft(2, '0');
     final mm = l.time.minute.toString().padLeft(2, '0');
@@ -290,11 +387,19 @@ class LogPanel extends StatelessWidget {
           Icon(icon, size: 14, color: color),
           const SizedBox(width: 8),
           Text('$hh:$mm:$ss',
-              style: TextStyle(fontSize: 10, color: theme.colorScheme.onSurface.withOpacity(0.4), fontFamily: 'monospace')),
+              style: TextStyle(
+                fontSize: 10,
+                color: theme.colorScheme.onSurface.withOpacity(0.4),
+                fontFamily: 'monospace',
+              )),
           const SizedBox(width: 8),
           Expanded(
             child: Text(l.msg,
-                style: TextStyle(fontSize: 11.5, color: color, fontFamily: 'monospace')),
+                style: TextStyle(
+                  fontSize: 11.5,
+                  color: color,
+                  fontFamily: 'monospace',
+                )),
           ),
         ],
       ),
