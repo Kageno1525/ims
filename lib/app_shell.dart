@@ -58,7 +58,7 @@ class _AppShellState extends State<AppShell> {
     if (!mounted) return;
     setState(() {
       _logs.insert(0, LogEntry(msg, DateTime.now(), level));
-      if (_logs.length > 60) _logs.removeLast();
+      if (_logs.length > 80) _logs.removeLast();
     });
   }
 
@@ -274,7 +274,7 @@ class _AppShellState extends State<AppShell> {
     if (mounted) setState(() => _busy = false);
   }
 
-  // ═══════ تحميل CSV (العدد + النوع + CSV) ═══════
+  // ═══════ تحميل CSV ═══════
   Future<void> _downloadCsv() async {
     if (_selectedRange == null) {
       _log('اختار رنج الأول', LogLevel.error);
@@ -289,20 +289,46 @@ class _AppShellState extends State<AppShell> {
           .replaceAll('%COUNT%', _selectedCount.toString())
           .replaceAll('%TYPE%', _selectedType);
       final rOpt = await _eval(setJs);
-      final okOpt = rOpt.contains('c=1') && rOpt.contains('t=1');
-      _log('الخيارات: $rOpt', okOpt ? LogLevel.ok : LogLevel.error);
+      _log('إرسال الضبط: $rOpt', LogLevel.info);
 
-      if (!okOpt) {
+      // 2) استنى Vue يعمل re-render
+      await Future.delayed(const Duration(milliseconds: 800));
+
+      // 3) تحقق من القيم الحقيقية
+      final vRaw = await _eval(WebScripts.verifyFilters);
+      _log('تحقق: $vRaw', LogLevel.info);
+
+      bool cOk = false, tOk = false;
+      if (vRaw.startsWith('{')) {
+        try {
+          final m = jsonDecode(vRaw) as Map;
+          final c = (m['c'] ?? '').toString();
+          final t = (m['t'] ?? '').toString();
+          final wc = (m['wantC'] ?? '').toString();
+          final wt = (m['wantT'] ?? '').toString();
+          cOk = c == wc;
+          tOk = t == wt;
+          _log(
+            'العدد: $c (مطلوب $wc) ${cOk ? "✅" : "❌"} | النوع: $t (مطلوب $wt) ${tOk ? "✅" : "❌"}',
+            cOk && tOk ? LogLevel.ok : LogLevel.error,
+          );
+        } catch (e) {
+          _log('فشل تحليل التحقق', LogLevel.error);
+        }
+      }
+
+      if (!cOk || !tOk) {
         _log('مقدرناش نظبط العدد/النوع 😕', LogLevel.error);
         setState(() => _busy = false);
         return;
       }
-      await Future.delayed(const Duration(milliseconds: 900));
 
-      // 2) صفّر الـ blob القديم
+      await Future.delayed(const Duration(milliseconds: 400));
+
+      // 4) صفّر الـ blob القديم
       await _eval(WebScripts.clearBlob);
 
-      // 3) اضغط CSV
+      // 5) اضغط CSV
       final r = await _eval(WebScripts.clickCsv);
       _log('ضغط CSV: $r', r == 'ok' ? LogLevel.ok : LogLevel.error);
       if (r != 'ok') {
@@ -310,7 +336,7 @@ class _AppShellState extends State<AppShell> {
         return;
       }
 
-      // 4) استنى المحتوى
+      // 6) استنى المحتوى
       String? content;
       final dl = DateTime.now().add(const Duration(seconds: 25));
       while (DateTime.now().isBefore(dl)) {
@@ -331,7 +357,7 @@ class _AppShellState extends State<AppShell> {
       }
       _log('تم التقاط المحتوى (${content.length} حرف)', LogLevel.ok);
 
-      // 5) احفظ باسم الرنج
+      // 7) احفظ باسم الرنج
       final saved = await _saveCsv(_selectedRange!, content);
       if (saved == null) {
         _log('فشل حفظ الملف 😕', LogLevel.error);
