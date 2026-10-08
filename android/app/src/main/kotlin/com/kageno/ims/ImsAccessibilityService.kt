@@ -17,6 +17,8 @@ import android.view.KeyEvent
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.AccessibilityWindowInfo
+import org.json.JSONArray
+import org.json.JSONObject
 import java.lang.ref.WeakReference
 
 class ImsAccessibilityService : AccessibilityService() {
@@ -79,6 +81,10 @@ class ImsAccessibilityService : AccessibilityService() {
                 instance?.rootInActiveWindow?.packageName?.toString() ?: ""
             } catch (_: Exception) { "" }
         }
+
+        // ⭐ تفريغ الشاشة
+        fun dumpScreenStatic(): String =
+            instance?.dumpScreenInternal() ?: "[]"
     }
 
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -119,6 +125,99 @@ class ImsAccessibilityService : AccessibilityService() {
                         lastEditableRef = WeakReference(src)
                     }
                 }
+            }
+        } catch (_: Exception) {}
+    }
+
+    // ═══════════════ تفريغ الشاشة ═══════════════
+    private fun dumpScreenInternal(): String {
+        val arr = JSONArray()
+        val seen = mutableSetOf<String>()
+
+        try {
+            val roots = mutableListOf<AccessibilityNodeInfo>()
+            try {
+                val wins = windows
+                if (!wins.isNullOrEmpty()) {
+                    for (w in wins) {
+                        val r = w.root ?: continue
+                        roots.add(r)
+                    }
+                }
+            } catch (_: Exception) {}
+            if (roots.isEmpty()) {
+                rootInActiveWindow?.let { roots.add(it) }
+            }
+
+            for (root in roots) {
+                walkNode(root, 0, arr, seen)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "dump", e)
+        }
+
+        return arr.toString()
+    }
+
+    private fun walkNode(
+        node: AccessibilityNodeInfo?,
+        depth: Int,
+        arr: JSONArray,
+        seen: MutableSet<String>
+    ) {
+        if (node == null || depth > 40) return
+
+        try {
+            if (!node.refresh()) return
+
+            val text = node.text?.toString()?.trim() ?: ""
+            val desc = node.contentDescription?.toString()?.trim() ?: ""
+            val viewId = node.viewIdResourceName ?: ""
+            val cls = node.className?.toString() ?: ""
+            val hint = try {
+                if (android.os.Build.VERSION.SDK_INT >= 26) {
+                    node.hintText?.toString()?.trim() ?: ""
+                } else ""
+            } catch (_: Exception) { "" }
+            val isClickable = node.isClickable
+            val isEditable = node.isEditable
+            val isVisible = node.isVisibleToUser
+            val pkg = node.packageName?.toString() ?: ""
+
+            if (isVisible && (text.isNotEmpty() || desc.isNotEmpty() ||
+                        hint.isNotEmpty() || isEditable || isClickable)) {
+                val rect = Rect()
+                node.getBoundsInScreen(rect)
+                if (rect.width() > 0 && rect.height() > 0) {
+                    val key = "$viewId|$text|$desc|${rect.left}|${rect.top}|$cls"
+                    if (!seen.contains(key)) {
+                        seen.add(key)
+                        val obj = JSONObject()
+                        obj.put("text", text)
+                        obj.put("desc", desc)
+                        obj.put("id", viewId)
+                        obj.put("className", cls)
+                        obj.put("hint", hint)
+                        obj.put("clickable", isClickable)
+                        obj.put("editable", isEditable)
+                        obj.put("pkg", pkg)
+                        obj.put("x", rect.centerX())
+                        obj.put("y", rect.centerY())
+                        obj.put("left", rect.left)
+                        obj.put("top", rect.top)
+                        obj.put("right", rect.right)
+                        obj.put("bottom", rect.bottom)
+                        obj.put("depth", depth)
+                        arr.put(obj)
+                    }
+                }
+            }
+
+            val count = node.childCount
+            for (i in 0 until count) {
+                try {
+                    walkNode(node.getChild(i), depth + 1, arr, seen)
+                } catch (_: Exception) {}
             }
         } catch (_: Exception) {}
     }
@@ -253,13 +352,10 @@ class ImsAccessibilityService : AccessibilityService() {
 
             try { Thread.sleep(100) } catch (_: InterruptedException) {}
 
-            // ⭐ Paste على الـ node مباشرة
             var ok = false
             try {
                 ok = node.performAction(AccessibilityNodeInfo.ACTION_PASTE)
             } catch (_: Exception) {}
-
-            // لو فشل، جرّب على الحقل المركّز الحالي
             if (!ok) {
                 val focused = findFocusedInput()
                 if (focused != null) {
@@ -386,7 +482,6 @@ class ImsAccessibilityService : AccessibilityService() {
         } catch (_: Exception) { false }
     }
 
-    // ═══════════════ Gestures ═══════════════
     private fun clickAtInternal(x: Int, y: Int): Boolean {
         return try {
             val path = Path().apply { moveTo(x.toFloat(), y.toFloat()) }
@@ -411,7 +506,6 @@ class ImsAccessibilityService : AccessibilityService() {
         } catch (_: Exception) { false }
     }
 
-    // ═══════════════ البحث عن الحقول ═══════════════
     private fun resolveCached(): AccessibilityNodeInfo? {
         return try {
             val n = lastEditableRef?.get()
