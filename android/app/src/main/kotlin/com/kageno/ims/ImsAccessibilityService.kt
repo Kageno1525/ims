@@ -9,7 +9,6 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.Path
 import android.graphics.Rect
-import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -124,7 +123,7 @@ class ImsAccessibilityService : AccessibilityService() {
         } catch (_: Exception) {}
     }
 
-    // ═══════════════ التطبيقات ═══════════════
+    // ═══════════════ فتح التطبيقات ═══════════════
     private fun openAppInternal(pkg: String): Boolean {
         return try {
             val intent = packageManager.getLaunchIntentForPackage(pkg)
@@ -224,22 +223,6 @@ class ImsAccessibilityService : AccessibilityService() {
         return try { node.refresh() } catch (_: Exception) { false }
     }
 
-    // ⭐ بيستخدم global paste بس للـ API 26+، وإلا يعتمد على node paste
-    private fun pasteGlobalOrNode(node: AccessibilityNodeInfo?): Boolean {
-        var ok = false
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            try {
-                ok = performGlobalAction(GLOBAL_ACTION_PASTE)
-            } catch (_: Exception) {}
-        }
-        if (!ok && node != null) {
-            try {
-                ok = node.performAction(AccessibilityNodeInfo.ACTION_PASTE)
-            } catch (_: Exception) {}
-        }
-        return ok
-    }
-
     private fun gestureTapAndPaste(node: AccessibilityNodeInfo, text: String): Boolean {
         try {
             copyToClipboard(text)
@@ -270,7 +253,21 @@ class ImsAccessibilityService : AccessibilityService() {
 
             try { Thread.sleep(100) } catch (_: InterruptedException) {}
 
-            val ok = pasteGlobalOrNode(node)
+            // ⭐ Paste على الـ node مباشرة
+            var ok = false
+            try {
+                ok = node.performAction(AccessibilityNodeInfo.ACTION_PASTE)
+            } catch (_: Exception) {}
+
+            // لو فشل، جرّب على الحقل المركّز الحالي
+            if (!ok) {
+                val focused = findFocusedInput()
+                if (focused != null) {
+                    try {
+                        ok = focused.performAction(AccessibilityNodeInfo.ACTION_PASTE)
+                    } catch (_: Exception) {}
+                }
+            }
 
             try { Thread.sleep(80) } catch (_: InterruptedException) {}
 
