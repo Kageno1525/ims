@@ -200,53 +200,93 @@ class WebScripts {
 })()
 ''';
 
-  // ═══════ Selects (Vue 3) — محدّث ═══════
-  /// يحدد الـ select الصح حسب الـ options اللي جواه
+  // ═══════ Selects (Vue 3) — النسخة القوية ═══════
   static const setFilters = r'''
 (function(){
   try {
-    var count = String(%COUNT%), type = String(%TYPE%);
+    var count = String(%COUNT%);
+    var type  = String(%TYPE%);
     var cOk = 0, tOk = 0;
     var info = [];
 
-    function findByOptions(requiredVals){
-      var sels = document.querySelectorAll('select');
-      for (var i=0;i<sels.length;i++){
-        var ok = true;
-        for (var k=0;k<requiredVals.length;k++){
-          var found = false;
-          for (var j=0;j<sels[i].options.length;j++){
-            if (String(sels[i].options[j].value) === String(requiredVals[k])) { found = true; break; }
-          }
-          if (!found) { ok = false; break; }
+    var SEL_COUNT = '#app > div > div > main > div > div:nth-child(2) > div.card > div.classic-toolbar > div:nth-child(1) > div.classic-toolbar-records > label > select';
+    var SEL_TYPE  = '#app > div > div > main > div > div:nth-child(2) > div.card > div.classic-toolbar > div:nth-child(1) > div.classic-toolbar-lead > label > select';
+
+    function hasVals(sel, requiredVals){
+      if (!sel || sel.tagName !== 'SELECT') return false;
+      for (var k=0;k<requiredVals.length;k++){
+        var found = false;
+        for (var j=0;j<sel.options.length;j++){
+          if (String(sel.options[j].value) === String(requiredVals[k])) { found = true; break; }
         }
-        if (ok) return sels[i];
+        if (!found) return false;
+      }
+      return true;
+    }
+
+    function pick(primarySel, requiredVals){
+      // 1) السليكتور الدقيق
+      var el = document.querySelector(primarySel);
+      if (hasVals(el, requiredVals)) return el;
+      // 2) fallback: أول select فيه القيم دي
+      var all = document.querySelectorAll('select');
+      for (var i=0;i<all.length;i++){
+        if (hasVals(all[i], requiredVals)) return all[i];
       }
       return null;
     }
 
-    function setVal(sel, val){
-      var setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set;
-      try { setter.call(sel, String(val)); } catch(e){ sel.value = String(val); }
-      for (var k=0;k<sel.options.length;k++){
-        sel.options[k].selected = (String(sel.options[k].value) === String(val));
+    function setVal(el, val){
+      if (!el) return false;
+      val = String(val);
+
+      // 1) focus
+      try { el.focus(); } catch(e){}
+
+      // 2) native setter على selectedIndex (الأقوى مع Vue)
+      var idx = -1;
+      for (var k=0;k<el.options.length;k++){
+        if (String(el.options[k].value) === val){ idx = k; break; }
       }
-      sel.dispatchEvent(new Event('input', {bubbles:true}));
-      sel.dispatchEvent(new Event('change', {bubbles:true}));
-      sel.dispatchEvent(new Event('blur', {bubbles:true}));
-      return String(sel.value) === String(val);
+      if (idx < 0) return false;
+
+      try {
+        var idxSetter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'selectedIndex').set;
+        idxSetter.call(el, idx);
+      } catch(e){ el.selectedIndex = idx; }
+
+      // 3) native setter على value
+      try {
+        var vSetter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set;
+        vSetter.call(el, val);
+      } catch(e){ el.value = val; }
+
+      // 4) تأكيد يدوي
+      for (var m=0;m<el.options.length;m++){
+        el.options[m].selected = (m === idx);
+      }
+      try { el.selectedIndex = idx; } catch(e){}
+
+      // 5) أحداث بالشكل اللي Vue بيعترف بيه
+      try { el.dispatchEvent(new Event('focus', {bubbles:true})); } catch(e){}
+      try { el.dispatchEvent(new Event('input', {bubbles:true, cancelable:true})); } catch(e){}
+      try { el.dispatchEvent(new Event('change', {bubbles:true, cancelable:true})); } catch(e){}
+      try { el.dispatchEvent(new UIEvent('change', {bubbles:true})); } catch(e){}
+      try { el.dispatchEvent(new Event('blur', {bubbles:true})); } catch(e){}
+      try { el.dispatchEvent(new Event('focusout', {bubbles:true})); } catch(e){}
+      try { el.blur(); } catch(e){}
+
+      return String(el.value) === val;
     }
 
-    // العدد: فيه 5000 و 1000 و 10
-    var cSel = findByOptions(['5000','1000','10']);
-    // النوع: فيه full و local
-    var tSel = findByOptions(['full','local']);
+    var cSel = pick(SEL_COUNT, ['5000','1000','10','500']);
+    var tSel = pick(SEL_TYPE,  ['full','local']);
 
     info.push('cSel=' + (cSel ? 'yes' : 'no'));
     info.push('tSel=' + (tSel ? 'yes' : 'no'));
 
-    if (cSel) cOk = setVal(cSel, count) ? 1 : 0;
-    if (tSel) tOk = setVal(tSel, type) ? 1 : 0;
+    if (cSel) { cOk = setVal(cSel, count) ? 1 : 0; info.push('cVal=' + cSel.value + '|cReq=' + count); }
+    if (tSel) { tOk = setVal(tSel, type)  ? 1 : 0; info.push('tVal=' + tSel.value + '|tReq=' + type); }
 
     return 'ok|c=' + cOk + '|t=' + tOk + '|' + info.join(',');
   } catch(e){ return 'err:' + e.message; }
