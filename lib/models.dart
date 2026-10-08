@@ -13,3 +13,10 @@ class CsvFile {
   final int count;
   CsvFile({required this.name, required this.path, required this.count});
 }
+
+// ⭐ جديد - لتطبيقات المثبتة
+class InstalledApp {
+  final String package;
+  final String name;
+  InstalledApp({required this.package, required this.name});
+}
