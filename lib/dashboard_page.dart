@@ -10,6 +10,7 @@ class DashboardPage extends StatelessWidget {
   final Future<void> Function() onRefresh;
   final Future<void> Function() onLogout;
   final VoidCallback onOpenNumbers;
+  final VoidCallback onOpenTasks;
 
   const DashboardPage({
     super.key,
@@ -21,6 +22,7 @@ class DashboardPage extends StatelessWidget {
     required this.onRefresh,
     required this.onLogout,
     required this.onOpenNumbers,
+    required this.onOpenTasks,
   });
 
   @override
@@ -41,8 +43,8 @@ class DashboardPage extends StatelessWidget {
                       children: [
                         Text('مرحباً 👋',
                             style: theme.textTheme.bodyMedium?.copyWith(
-                                color: theme.colorScheme.onSurface
-                                    .withOpacity(0.6))),
+                                color:
+                                    theme.colorScheme.onSurface.withOpacity(0.6))),
                         const SizedBox(height: 2),
                         Text('لوحة الرسائل',
                             style: theme.textTheme.titleLarge
@@ -63,12 +65,10 @@ class DashboardPage extends StatelessWidget {
                     onTap: busy ? null : () => onRefresh(),
                   ),
                   const SizedBox(width: 8),
-                  IconBtn(
-                      icon: Icons.logout_rounded,
-                      onTap: () => onLogout()),
+                  IconBtn(icon: Icons.logout_rounded, onTap: () => onLogout()),
                 ],
               ),
-              const SizedBox(height: 28),
+              const SizedBox(height: 24),
               Expanded(
                 child: RefreshIndicator(
                   onRefresh: onRefresh,
@@ -81,31 +81,38 @@ class DashboardPage extends StatelessWidget {
                         title: 'رسائل اليوم',
                         value: today,
                         icon: Icons.today_rounded,
-                        colors: const [
-                          Color(0xFF6C5CE7),
-                          Color(0xFF8E7CFF)
-                        ],
+                        colors: const [Color(0xFF6C5CE7), Color(0xFF8E7CFF)],
                       ),
-                      const SizedBox(height: 18),
+                      const SizedBox(height: 16),
                       StatCard(
                         title: 'رسائل هذا الأسبوع',
                         value: week,
                         icon: Icons.calendar_view_week_rounded,
-                        colors: const [
-                          Color(0xFF00D2FF),
-                          Color(0xFF3A7BD5)
-                        ],
+                        colors: const [Color(0xFF00D2FF), Color(0xFF3A7BD5)],
                       ),
-                      const SizedBox(height: 18),
-                      _numbersCard(),
+                      const SizedBox(height: 16),
+                      _entryCard(
+                        title: 'الأرقام',
+                        subtitle: 'استعرض وحمّل الأرقام من الرنجات',
+                        icon: Icons.phone_android_rounded,
+                        colors: const [Color(0xFFFF6B6B), Color(0xFFFF8E53)],
+                        onTap: onOpenNumbers,
+                      ),
+                      const SizedBox(height: 16),
+                      _entryCard(
+                        title: 'المهام',
+                        subtitle: 'أتمتة التطبيقات خطوة بخطوة',
+                        icon: Icons.auto_awesome_rounded,
+                        colors: const [Color(0xFF6C5CE7), Color(0xFF00D2FF)],
+                        onTap: onOpenTasks,
+                      ),
                       const SizedBox(height: 24),
                       Center(
                         child: Text('اسحب للأسفل للتحديث',
                             style: TextStyle(
-                              color: theme.colorScheme.onSurface
-                                  .withOpacity(0.4),
-                              fontSize: 12,
-                            )),
+                                color:
+                                    theme.colorScheme.onSurface.withOpacity(0.4),
+                                fontSize: 12)),
                       ),
                     ],
                   ),
@@ -118,24 +125,30 @@ class DashboardPage extends StatelessWidget {
     );
   }
 
-  Widget _numbersCard() {
+  Widget _entryCard({
+    required String title,
+    required String subtitle,
+    required IconData icon,
+    required List<Color> colors,
+    required VoidCallback onTap,
+  }) {
     return Material(
       color: Colors.transparent,
       child: InkWell(
         borderRadius: BorderRadius.circular(28),
-        onTap: onOpenNumbers,
+        onTap: onTap,
         child: Container(
           padding: const EdgeInsets.all(22),
           decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              colors: [Color(0xFFFF6B6B), Color(0xFFFF8E53)],
+            gradient: LinearGradient(
+              colors: colors,
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
             ),
             borderRadius: BorderRadius.circular(28),
             boxShadow: [
               BoxShadow(
-                color: const Color(0xFFFF6B6B).withOpacity(0.4),
+                color: colors.first.withOpacity(0.4),
                 blurRadius: 28,
                 offset: const Offset(0, 14),
               ),
@@ -149,26 +162,23 @@ class DashboardPage extends StatelessWidget {
                 decoration: BoxDecoration(
                   color: Colors.white.withOpacity(0.2),
                   borderRadius: BorderRadius.circular(18),
-                  border:
-                      Border.all(color: Colors.white.withOpacity(0.25)),
+                  border: Border.all(color: Colors.white.withOpacity(0.25)),
                 ),
-                child: const Icon(Icons.phone_android_rounded,
-                    color: Colors.white, size: 30),
+                child: Icon(icon, color: Colors.white, size: 30),
               ),
               const SizedBox(width: 18),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
-                  children: const [
-                    Text('الأرقام',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        )),
-                    SizedBox(height: 4),
-                    Text('استعرض وحمّل الأرقام من الرنجات',
-                        style: TextStyle(
+                  children: [
+                    Text(title,
+                        style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 4),
+                    Text(subtitle,
+                        style: const TextStyle(
                             color: Colors.white70, fontSize: 13)),
                   ],
                 ),
