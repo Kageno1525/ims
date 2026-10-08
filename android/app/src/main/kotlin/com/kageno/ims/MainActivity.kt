@@ -100,26 +100,35 @@ class MainActivity : FlutterActivity() {
                 "globalRecents" -> runAsync(result) { ImsAccessibilityService.globalRecentsStatic() }
                 "currentPackage" -> result.success(ImsAccessibilityService.currentPackageStatic())
 
-                // ⭐ جديد: قائمة التطبيقات المثبتة
+                // ⭐ قائمة كل التطبيقات
                 "listApps" -> {
                     try {
                         val pm = packageManager
-                        val intent = Intent(Intent.ACTION_MAIN).apply {
+                        val mainIntent = Intent(Intent.ACTION_MAIN).apply {
                             addCategory(Intent.CATEGORY_LAUNCHER)
                         }
-                        @Suppress("DEPRECATION")
-                        val apps = pm.queryIntentActivities(intent, 0)
+                        val apps = pm.queryIntentActivities(mainIntent, 0)
                         val list = apps.mapNotNull { info ->
                             try {
                                 val pkg = info.activityInfo.packageName
                                 val name = info.loadLabel(pm).toString()
-                                mapOf("package" to pkg, "name" to name)
+                                // استبعد نفسنا
+                                if (pkg == packageName) null
+                                else mapOf("package" to pkg, "name" to name)
                             } catch (_: Exception) { null }
-                        }.sortedBy { (it["name"] ?: "").lowercase() }
+                        }
+                            .distinctBy { it["package"] }
+                            .sortedBy { (it["name"] ?: "").lowercase() }
                         result.success(list)
                     } catch (e: Exception) {
                         result.success(emptyList<Map<String, String>>())
                     }
+                }
+
+                // ⭐ تحويل الاسم → باكدج
+                "resolvePackage" -> {
+                    val name = call.argument<String>("name") ?: ""
+                    result.success(resolvePackageByName(name))
                 }
 
                 else -> result.notImplemented()
@@ -132,6 +141,48 @@ class MainActivity : FlutterActivity() {
         FloatingService.onClick = {
             runOnUiThread { methodChannel?.invokeMethod("onFloatingClick", null) }
         }
+    }
+
+    /// يدور على باكدج من الاسم أو الباكدج نفسه
+    private fun resolvePackageByName(query: String): String? {
+        if (query.isBlank()) return null
+        val q = query.trim()
+        val pm = packageManager
+
+        // 1) لو الإدخال باكدج فعلاً موجود
+        try {
+            pm.getPackageInfo(q, 0)
+            return q
+        } catch (_: Exception) {}
+
+        // 2) دوّر بالاسم - مطابقة تامة أولاً
+        try {
+            val mainIntent = Intent(Intent.ACTION_MAIN).apply {
+                addCategory(Intent.CATEGORY_LAUNCHER)
+            }
+            val apps = pm.queryIntentActivities(mainIntent, 0)
+            val candidates = apps.mapNotNull { info ->
+                try {
+                    val pkg = info.activityInfo.packageName
+                    val label = info.loadLabel(pm).toString()
+                    if (pkg == packageName) null
+                    else Triple(pkg, label, label.lowercase())
+                } catch (_: Exception) { null }
+            }
+
+            // مطابقة تامة
+            val exact = candidates.firstOrNull { it.third == q.lowercase() }
+            if (exact != null) return exact.first
+
+            // مطابقة جزئية
+            val partial = candidates.firstOrNull {
+                it.third.contains(q.lowercase()) ||
+                it.first.lowercase().contains(q.lowercase())
+            }
+            if (partial != null) return partial.first
+        } catch (_: Exception) {}
+
+        return null
     }
 
     private fun runAsync(result: MethodChannel.Result, block: () -> Boolean) {
