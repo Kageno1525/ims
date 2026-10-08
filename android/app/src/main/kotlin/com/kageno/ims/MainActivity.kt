@@ -1,6 +1,7 @@
 package com.kageno.ims
 
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
@@ -65,7 +66,6 @@ class MainActivity : FlutterActivity() {
                     FloatingService.updateText(text)
                     result.success(null)
                 }
-                // ═══════ الجديد: التحكم في التطبيقات ═══════
                 "openApp" -> {
                     val pkg = call.argument<String>("package") ?: ""
                     runAsync(result) { ImsAccessibilityService.openAppStatic(pkg) }
@@ -95,18 +95,33 @@ class MainActivity : FlutterActivity() {
                     val d = call.argument<Int>("duration") ?: 300
                     runAsync(result) { ImsAccessibilityService.swipeStatic(x1, y1, x2, y2, d) }
                 }
-                "globalBack" -> {
-                    runAsync(result) { ImsAccessibilityService.globalBackStatic() }
+                "globalBack" -> runAsync(result) { ImsAccessibilityService.globalBackStatic() }
+                "globalHome" -> runAsync(result) { ImsAccessibilityService.globalHomeStatic() }
+                "globalRecents" -> runAsync(result) { ImsAccessibilityService.globalRecentsStatic() }
+                "currentPackage" -> result.success(ImsAccessibilityService.currentPackageStatic())
+
+                // ⭐ جديد: قائمة التطبيقات المثبتة
+                "listApps" -> {
+                    try {
+                        val pm = packageManager
+                        val intent = Intent(Intent.ACTION_MAIN).apply {
+                            addCategory(Intent.CATEGORY_LAUNCHER)
+                        }
+                        @Suppress("DEPRECATION")
+                        val apps = pm.queryIntentActivities(intent, 0)
+                        val list = apps.mapNotNull { info ->
+                            try {
+                                val pkg = info.activityInfo.packageName
+                                val name = info.loadLabel(pm).toString()
+                                mapOf("package" to pkg, "name" to name)
+                            } catch (_: Exception) { null }
+                        }.sortedBy { (it["name"] ?: "").lowercase() }
+                        result.success(list)
+                    } catch (e: Exception) {
+                        result.success(emptyList<Map<String, String>>())
+                    }
                 }
-                "globalHome" -> {
-                    runAsync(result) { ImsAccessibilityService.globalHomeStatic() }
-                }
-                "globalRecents" -> {
-                    runAsync(result) { ImsAccessibilityService.globalRecentsStatic() }
-                }
-                "currentPackage" -> {
-                    result.success(ImsAccessibilityService.currentPackageStatic())
-                }
+
                 else -> result.notImplemented()
             }
         }
@@ -119,7 +134,6 @@ class MainActivity : FlutterActivity() {
         }
     }
 
-    /// يشغل العملية في thread منفصل عشان ميجمدش الـ UI
     private fun runAsync(result: MethodChannel.Result, block: () -> Boolean) {
         Thread {
             val ok = try { block() } catch (_: Exception) { false }
