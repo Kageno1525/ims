@@ -10,7 +10,7 @@ class LoginPage extends StatelessWidget {
   final bool busy;
   final String? error;
   final Future<void> Function() onSubmit;
-  final VoidCallback onToggleWeb;
+  final VoidCallback onBack;
 
   const LoginPage({
     super.key,
@@ -22,7 +22,7 @@ class LoginPage extends StatelessWidget {
     required this.busy,
     required this.error,
     required this.onSubmit,
-    required this.onToggleWeb,
+    required this.onBack,
   });
 
   @override
@@ -39,12 +39,13 @@ class LoginPage extends StatelessWidget {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
                     children: [
-                      IconBtn(icon: Icons.visibility_rounded, onTap: onToggleWeb),
-                      const SizedBox(width: 8),
+                      IconBtn(icon: Icons.arrow_back_rounded, onTap: onBack),
+                      const Spacer(),
                       IconBtn(
-                        icon: isDark ? Icons.dark_mode_rounded : Icons.light_mode_rounded,
+                        icon: isDark
+                            ? Icons.dark_mode_rounded
+                            : Icons.light_mode_rounded,
                         onTap: onToggleTheme,
                       ),
                     ],
@@ -55,10 +56,18 @@ class LoginPage extends StatelessWidget {
                   Container(
                     padding: const EdgeInsets.all(24),
                     decoration: BoxDecoration(
-                      color: theme.colorScheme.surface.withOpacity(isDark ? 0.55 : 0.85),
+                      color: theme.colorScheme.surface
+                          .withOpacity(isDark ? 0.55 : 0.85),
                       borderRadius: BorderRadius.circular(28),
-                      border: Border.all(color: theme.colorScheme.primary.withOpacity(0.15)),
-                      boxShadow: [BoxShadow(color: theme.colorScheme.primary.withOpacity(0.15), blurRadius: 40, offset: const Offset(0, 20))],
+                      border: Border.all(
+                          color: theme.colorScheme.primary.withOpacity(0.15)),
+                      boxShadow: [
+                        BoxShadow(
+                          color: theme.colorScheme.primary.withOpacity(0.15),
+                          blurRadius: 40,
+                          offset: const Offset(0, 20),
+                        ),
+                      ],
                     ),
                     child: Form(
                       key: formKey,
@@ -66,10 +75,13 @@ class LoginPage extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
                           Text('تسجيل الدخول',
-                              style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold)),
+                              style: theme.textTheme.headlineSmall
+                                  ?.copyWith(fontWeight: FontWeight.bold)),
                           const SizedBox(height: 6),
                           Text('ادخل بياناتك للوصول لإحصائيات الرسائل',
-                              style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurface.withOpacity(0.6))),
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                  color: theme.colorScheme.onSurface
+                                      .withOpacity(0.6))),
                           const SizedBox(height: 22),
                           TextFormField(
                             controller: userCtrl,
@@ -78,7 +90,9 @@ class LoginPage extends StatelessWidget {
                               labelText: 'اسم المستخدم',
                               prefixIcon: Icon(Icons.person_outline_rounded),
                             ),
-                            validator: (v) => (v == null || v.trim().isEmpty) ? 'من فضلك ادخل اسم المستخدم' : null,
+                            validator: (v) => (v == null || v.trim().isEmpty)
+                                ? 'من فضلك ادخل اسم المستخدم'
+                                : null,
                           ),
                           const SizedBox(height: 14),
                           TextFormField(
@@ -88,7 +102,9 @@ class LoginPage extends StatelessWidget {
                               labelText: 'كلمة المرور',
                               prefixIcon: Icon(Icons.lock_outline_rounded),
                             ),
-                            validator: (v) => (v == null || v.isEmpty) ? 'من فضلك ادخل كلمة المرور' : null,
+                            validator: (v) => (v == null || v.isEmpty)
+                                ? 'من فضلك ادخل كلمة المرور'
+                                : null,
                             onFieldSubmitted: (_) => onSubmit(),
                           ),
                           AnimatedSize(
@@ -98,18 +114,30 @@ class LoginPage extends StatelessWidget {
                                 : Padding(
                                     padding: const EdgeInsets.only(top: 14),
                                     child: Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 14, vertical: 12),
                                       decoration: BoxDecoration(
-                                        color: theme.colorScheme.error.withOpacity(0.12),
-                                        borderRadius: BorderRadius.circular(14),
-                                        border: Border.all(color: theme.colorScheme.error.withOpacity(0.35)),
+                                        color: theme.colorScheme.error
+                                            .withOpacity(0.12),
+                                        borderRadius:
+                                            BorderRadius.circular(14),
+                                        border: Border.all(
+                                            color: theme.colorScheme.error
+                                                .withOpacity(0.35)),
                                       ),
                                       child: Row(
                                         children: [
-                                          Icon(Icons.error_outline_rounded, color: theme.colorScheme.error, size: 20),
+                                          Icon(Icons.error_outline_rounded,
+                                              color: theme.colorScheme.error,
+                                              size: 20),
                                           const SizedBox(width: 10),
-                                          Expanded(child: Text(error!,
-                                              style: TextStyle(color: theme.colorScheme.error, fontSize: 13))),
+                                          Expanded(
+                                            child: Text(error!,
+                                                style: TextStyle(
+                                                    color: theme
+                                                        .colorScheme.error,
+                                                    fontSize: 13)),
+                                          ),
                                         ],
                                       ),
                                     ),
@@ -123,7 +151,10 @@ class LoginPage extends StatelessWidget {
                   ),
                   const SizedBox(height: 16),
                   Text('IMS SMS',
-                      style: TextStyle(color: theme.colorScheme.onSurface.withOpacity(0.4), fontSize: 12, letterSpacing: 2)),
+                      style: TextStyle(
+                          color: theme.colorScheme.onSurface.withOpacity(0.4),
+                          fontSize: 12,
+                          letterSpacing: 2)),
                 ],
               ),
             ),
@@ -136,24 +167,28 @@ class LoginPage extends StatelessWidget {
   Widget _logo(ThemeData theme) {
     return Column(
       children: [
-        TweenAnimationBuilder<double>(
-          tween: Tween(begin: 0.7, end: 1),
-          duration: const Duration(milliseconds: 900),
-          curve: Curves.elasticOut,
-          builder: (_, s, child) => Transform.scale(scale: s, child: child),
-          child: Container(
-            width: 88, height: 88,
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(colors: [Color(0xFF6C5CE7), Color(0xFF00D2FF)], begin: Alignment.topLeft, end: Alignment.bottomRight),
-              borderRadius: BorderRadius.circular(26),
-              boxShadow: [BoxShadow(color: const Color(0xFF6C5CE7).withOpacity(0.5), blurRadius: 30, offset: const Offset(0, 14))],
-            ),
-            child: const Icon(Icons.sms_rounded, color: Colors.white, size: 44),
+        Container(
+          width: 88,
+          height: 88,
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+                colors: [Color(0xFF6C5CE7), Color(0xFF00D2FF)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight),
+            borderRadius: BorderRadius.circular(26),
+            boxShadow: [
+              BoxShadow(
+                  color: const Color(0xFF6C5CE7).withOpacity(0.5),
+                  blurRadius: 30,
+                  offset: const Offset(0, 14)),
+            ],
           ),
+          child: const Icon(Icons.sms_rounded, color: Colors.white, size: 44),
         ),
         const SizedBox(height: 14),
         Text('لوحة تحكم الرسائل',
-            style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
+            style: theme.textTheme.titleLarge
+                ?.copyWith(fontWeight: FontWeight.bold)),
       ],
     );
   }
@@ -163,9 +198,15 @@ class LoginPage extends StatelessWidget {
       duration: const Duration(milliseconds: 250),
       height: 56,
       decoration: BoxDecoration(
-        gradient: const LinearGradient(colors: [Color(0xFF6C5CE7), Color(0xFF00D2FF)]),
+        gradient: const LinearGradient(
+            colors: [Color(0xFF6C5CE7), Color(0xFF00D2FF)]),
         borderRadius: BorderRadius.circular(16),
-        boxShadow: [BoxShadow(color: const Color(0xFF6C5CE7).withOpacity(0.45), blurRadius: 24, offset: const Offset(0, 12))],
+        boxShadow: [
+          BoxShadow(
+              color: const Color(0xFF6C5CE7).withOpacity(0.45),
+              blurRadius: 24,
+              offset: const Offset(0, 12)),
+        ],
       ),
       child: Material(
         color: Colors.transparent,
@@ -176,13 +217,27 @@ class LoginPage extends StatelessWidget {
             child: AnimatedSwitcher(
               duration: const Duration(milliseconds: 220),
               child: busy
-                  ? const SizedBox(key: ValueKey('spin'), width: 24, height: 24,
-                      child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white))
-                  : const Row(key: ValueKey('txt'), mainAxisSize: MainAxisSize.min, children: [
-                      Icon(Icons.login_rounded, color: Colors.white, size: 20),
-                      SizedBox(width: 10),
-                      Text('دخول', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
-                    ]),
+                  ? const SizedBox(
+                      key: ValueKey('spin'),
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2.5, color: Colors.white),
+                    )
+                  : const Row(
+                      key: ValueKey('txt'),
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.login_rounded,
+                            color: Colors.white, size: 20),
+                        SizedBox(width: 10),
+                        Text('دخول',
+                            style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16)),
+                      ],
+                    ),
             ),
           ),
         ),
