@@ -1,6 +1,70 @@
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'models.dart';
+
+class ScreenElement {
+  final String text;
+  final String desc;
+  final String id;
+  final String className;
+  final String hint;
+  final bool clickable;
+  final bool editable;
+  final String pkg;
+  final int x;
+  final int y;
+  final int left;
+  final int top;
+  final int right;
+  final int bottom;
+
+  ScreenElement({
+    required this.text,
+    required this.desc,
+    required this.id,
+    required this.className,
+    required this.hint,
+    required this.clickable,
+    required this.editable,
+    required this.pkg,
+    required this.x,
+    required this.y,
+    required this.left,
+    required this.top,
+    required this.right,
+    required this.bottom,
+  });
+
+  factory ScreenElement.fromMap(Map<String, dynamic> m) => ScreenElement(
+        text: m['text']?.toString() ?? '',
+        desc: m['desc']?.toString() ?? '',
+        id: m['id']?.toString() ?? '',
+        className: m['className']?.toString() ?? '',
+        hint: m['hint']?.toString() ?? '',
+        clickable: m['clickable'] == true,
+        editable: m['editable'] == true,
+        pkg: m['pkg']?.toString() ?? '',
+        x: (m['x'] as num?)?.toInt() ?? 0,
+        y: (m['y'] as num?)?.toInt() ?? 0,
+        left: (m['left'] as num?)?.toInt() ?? 0,
+        top: (m['top'] as num?)?.toInt() ?? 0,
+        right: (m['right'] as num?)?.toInt() ?? 0,
+        bottom: (m['bottom'] as num?)?.toInt() ?? 0,
+      );
+
+  bool get hasText => text.isNotEmpty;
+  bool get hasDesc => desc.isNotEmpty;
+  bool get hasId => id.isNotEmpty;
+
+  String get bestLabel {
+    if (text.isNotEmpty) return text;
+    if (desc.isNotEmpty) return desc;
+    if (hint.isNotEmpty) return hint;
+    if (id.isNotEmpty) return id.split('/').last;
+    return className.split('.').last;
+  }
+}
 
 class AutoFillBridge {
   static const _channel = MethodChannel('ims/autofill');
@@ -8,9 +72,7 @@ class AutoFillBridge {
   static Future<bool> isAccessibilityEnabled() async {
     try {
       return await _channel.invokeMethod('isAccessibilityEnabled') ?? false;
-    } catch (_) {
-      return false;
-    }
+    } catch (_) { return false; }
   }
 
   static Future<void> openAccessibilitySettings() async {
@@ -20,9 +82,7 @@ class AutoFillBridge {
   static Future<bool> hasOverlayPermission() async {
     try {
       return await _channel.invokeMethod('hasOverlayPermission') ?? false;
-    } catch (_) {
-      return false;
-    }
+    } catch (_) { return false; }
   }
 
   static Future<void> openOverlaySettings() async {
@@ -32,9 +92,7 @@ class AutoFillBridge {
   static Future<bool> typeText(String text) async {
     try {
       return await _channel.invokeMethod('typeText', {'text': text}) ?? false;
-    } catch (_) {
-      return false;
-    }
+    } catch (_) { return false; }
   }
 
   static Future<void> startVolumeListener() async {
@@ -48,9 +106,7 @@ class AutoFillBridge {
   static Future<bool> showFloating() async {
     try {
       return await _channel.invokeMethod('showFloating') ?? false;
-    } catch (_) {
-      return false;
-    }
+    } catch (_) { return false; }
   }
 
   static Future<void> hideFloating() async {
@@ -66,89 +122,59 @@ class AutoFillBridge {
   static Future<bool> openApp(String package) async {
     try {
       return await _channel.invokeMethod('openApp', {'package': package}) ?? false;
-    } catch (_) {
-      return false;
-    }
+    } catch (_) { return false; }
   }
 
   static Future<bool> clickByText(String text) async {
     try {
       return await _channel.invokeMethod('clickByText', {'text': text}) ?? false;
-    } catch (_) {
-      return false;
-    }
+    } catch (_) { return false; }
   }
 
   static Future<bool> clickByDesc(String desc) async {
     try {
       return await _channel.invokeMethod('clickByDesc', {'desc': desc}) ?? false;
-    } catch (_) {
-      return false;
-    }
+    } catch (_) { return false; }
   }
 
   static Future<bool> clickById(String viewId) async {
     try {
       return await _channel.invokeMethod('clickById', {'viewId': viewId}) ?? false;
-    } catch (_) {
-      return false;
-    }
+    } catch (_) { return false; }
   }
 
   static Future<bool> clickAt(int x, int y) async {
     try {
       return await _channel.invokeMethod('clickAt', {'x': x, 'y': y}) ?? false;
-    } catch (_) {
-      return false;
-    }
+    } catch (_) { return false; }
   }
 
-  static Future<bool> swipe(
-      int x1, int y1, int x2, int y2, int durationMs) async {
+  static Future<bool> swipe(int x1, int y1, int x2, int y2, int durationMs) async {
     try {
       return await _channel.invokeMethod('swipe', {
-            'x1': x1,
-            'y1': y1,
-            'x2': x2,
-            'y2': y2,
-            'duration': durationMs,
-          }) ??
-          false;
-    } catch (_) {
-      return false;
-    }
+        'x1': x1, 'y1': y1, 'x2': x2, 'y2': y2, 'duration': durationMs,
+      }) ?? false;
+    } catch (_) { return false; }
   }
 
   static Future<bool> globalBack() async {
-    try {
-      return await _channel.invokeMethod('globalBack') ?? false;
-    } catch (_) {
-      return false;
-    }
+    try { return await _channel.invokeMethod('globalBack') ?? false; }
+    catch (_) { return false; }
   }
 
   static Future<bool> globalHome() async {
-    try {
-      return await _channel.invokeMethod('globalHome') ?? false;
-    } catch (_) {
-      return false;
-    }
+    try { return await _channel.invokeMethod('globalHome') ?? false; }
+    catch (_) { return false; }
   }
 
   static Future<bool> globalRecents() async {
-    try {
-      return await _channel.invokeMethod('globalRecents') ?? false;
-    } catch (_) {
-      return false;
-    }
+    try { return await _channel.invokeMethod('globalRecents') ?? false; }
+    catch (_) { return false; }
   }
 
   static Future<String> currentPackage() async {
-    try {
-      return await _channel.invokeMethod('currentPackage') ?? '';
-    } catch (_) {
-      return '';
-    }
+    try { return await _channel.invokeMethod('currentPackage') ?? ''; }
+    catch (_) { return ''; }
   }
 
   static Future<List<InstalledApp>> listInstalledApps() async {
@@ -162,19 +188,27 @@ class AutoFillBridge {
           name: m['name']?.toString() ?? '',
         );
       }).toList();
-    } catch (_) {
-      return [];
-    }
+    } catch (_) { return []; }
   }
 
-  // ⭐ جديد: حوّل اسم التطبيق → باكدج
   static Future<String?> resolvePackage(String nameOrPackage) async {
     try {
-      return await _channel.invokeMethod(
-          'resolvePackage', {'name': nameOrPackage});
-    } catch (_) {
-      return null;
-    }
+      return await _channel.invokeMethod('resolvePackage', {'name': nameOrPackage});
+    } catch (_) { return null; }
+  }
+
+  // ⭐ جديد: قراءة كل عناصر الشاشة
+  static Future<List<ScreenElement>> dumpScreen() async {
+    try {
+      final raw = await _channel.invokeMethod('dumpScreen');
+      if (raw == null) return [];
+      final str = raw.toString();
+      if (str.isEmpty || str == '[]') return [];
+      final list = jsonDecode(str) as List;
+      return list
+          .map((e) => ScreenElement.fromMap(Map<String, dynamic>.from(e)))
+          .toList();
+    } catch (_) { return []; }
   }
 
   static void setListener({
