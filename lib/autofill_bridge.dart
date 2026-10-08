@@ -62,6 +62,96 @@ class AutoFillBridge {
     } catch (_) {}
   }
 
+  // ═══════ الجديد: دوال التحكم في التطبيقات ═══════
+
+  static Future<bool> openApp(String package) async {
+    try {
+      return await _channel.invokeMethod('openApp', {'package': package}) ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  static Future<bool> clickByText(String text) async {
+    try {
+      return await _channel.invokeMethod('clickByText', {'text': text}) ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  static Future<bool> clickByDesc(String desc) async {
+    try {
+      return await _channel.invokeMethod('clickByDesc', {'desc': desc}) ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  static Future<bool> clickById(String viewId) async {
+    try {
+      return await _channel.invokeMethod('clickById', {'viewId': viewId}) ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  static Future<bool> clickAt(int x, int y) async {
+    try {
+      return await _channel.invokeMethod('clickAt', {'x': x, 'y': y}) ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  static Future<bool> swipe(
+      int x1, int y1, int x2, int y2, int durationMs) async {
+    try {
+      return await _channel.invokeMethod('swipe', {
+            'x1': x1,
+            'y1': y1,
+            'x2': x2,
+            'y2': y2,
+            'duration': durationMs,
+          }) ??
+          false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  static Future<bool> globalBack() async {
+    try {
+      return await _channel.invokeMethod('globalBack') ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  static Future<bool> globalHome() async {
+    try {
+      return await _channel.invokeMethod('globalHome') ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  static Future<bool> globalRecents() async {
+    try {
+      return await _channel.invokeMethod('globalRecents') ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  static Future<String> currentPackage() async {
+    try {
+      return await _channel.invokeMethod('currentPackage') ?? '';
+    } catch (_) {
+      return '';
+    }
+  }
+
   static void setListener({
     required void Function(String action) onVolume,
     required VoidCallback onFloatingClick,
