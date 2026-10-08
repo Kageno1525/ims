@@ -3,6 +3,7 @@ import 'dart:collection';
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:path_provider/path_provider.dart';
 import 'login_page.dart';
@@ -10,6 +11,8 @@ import 'dashboard_page.dart';
 import 'numbers_page.dart';
 import 'models.dart';
 import 'web_scripts.dart';
+import 'csv_reader.dart';
+import 'autofill_bridge.dart';
 
 const String _kLoginUrl = 'https://imssms.org/login';
 const String _kNumbersUrl = 'https://imssms.org/numbers';
@@ -24,7 +27,7 @@ class AppShell extends StatefulWidget {
   State<AppShell> createState() => _AppShellState();
 }
 
-class _AppShellState extends State<AppShell> {
+class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   InAppWebViewController? _web;
   final _userCtrl = TextEditingController();
   final _passCtrl = TextEditingController();
@@ -39,7 +42,7 @@ class _AppShellState extends State<AppShell> {
   int _today = 0;
   int _week = 0;
 
-  // Numbers
+  // أرقام
   List<String> _ranges = [];
   String? _selectedRange;
   int _selectedCount = 10;
@@ -47,18 +50,73 @@ class _AppShellState extends State<AppShell> {
   bool _loadingRanges = false;
   final List<LogEntry> _logs = [];
 
+  // AutoFill
+  List<CsvFile> _csvFiles = [];
+  String? _selectedCsvName;
+  List<String> _currentNumbers = [];
+  int _currentIndex = 0;
+  bool _infinite = false;
+  int _repeatCount = 1;
+  int _completedRounds = 0;
+  bool _autoTypeEnabled = true;
+  bool _volumeEnabled = false;
+  bool _floatingEnabled = false;
+  bool _accessibilityOn = false;
+  bool _overlayOn = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+
+    AutoFillBridge.setListener(
+      onVolume: (action) async {
+        if (!_volumeEnabled) return;
+        if (action == 'vol_up') {
+          await _advanceNumber(forward: true, source: 'Volume Up');
+        } else if (action == 'vol_down') {
+          await _advanceNumber(forward: false, source: 'Volume Down');
+        }
+      },
+      onFloatingClick: () async {
+        if (!_floatingEnabled) return;
+        await _advanceNumber(forward: true, source: 'أيقونة عائمة');
+      },
+    );
+
+    Future.delayed(const Duration(milliseconds: 600), _refreshPermissions);
+  }
+
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _userCtrl.dispose();
     _passCtrl.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _refreshPermissions();
+    }
+  }
+
+  Future<void> _refreshPermissions() async {
+    final a = await AutoFillBridge.isAccessibilityEnabled();
+    final o = await AutoFillBridge.hasOverlayPermission();
+    if (!mounted) return;
+    setState(() {
+      _accessibilityOn = a;
+      _overlayOn = o;
+    });
   }
 
   void _log(String msg, [LogLevel level = LogLevel.info]) {
     if (!mounted) return;
     setState(() {
       _logs.insert(0, LogEntry(msg, DateTime.now(), level));
-      if (_logs.length > 80) _logs.removeLast();
+      if (_logs.length > 100) _logs.removeLast();
     });
   }
 
@@ -181,6 +239,7 @@ class _AppShellState extends State<AppShell> {
       _log('اتفتحت صفحة الأرقام ✅', LogLevel.ok);
       await Future.delayed(const Duration(milliseconds: 1200));
       await _loadRanges();
+      await _refreshFiles();
     } catch (e) {
       _log('فشل فتح الصفحة: $e', LogLevel.error);
       setState(() => _loadingRanges = false);
@@ -245,7 +304,6 @@ class _AppShellState extends State<AppShell> {
     return false;
   }
 
-  // ═══════ تطبيق الفلتر (الرنج بس) ═══════
   Future<void> _applyFilter() async {
     if (_selectedRange == null) {
       _log('اختار رنج الأول', LogLevel.error);
@@ -267,14 +325,13 @@ class _AppShellState extends State<AppShell> {
       _log('Filter: $r', r == 'ok' ? LogLevel.ok : LogLevel.error);
       await Future.delayed(const Duration(milliseconds: 2500));
 
-      _log('الفلتر اتطبق ✅ دلوقتي حدد العدد والنوع واضغط تحميل', LogLevel.ok);
+      _log('الفلتر اتطبق ✅', LogLevel.ok);
     } catch (e) {
       _log('خطأ: $e', LogLevel.error);
     }
     if (mounted) setState(() => _busy = false);
   }
 
-  // ═══════ تحميل CSV ═══════
   Future<void> _downloadCsv() async {
     if (_selectedRange == null) {
       _log('اختار رنج الأول', LogLevel.error);
@@ -284,17 +341,14 @@ class _AppShellState extends State<AppShell> {
     _log('جاري تجهيز التحميل…', LogLevel.wait);
 
     try {
-      // 1) اضبط العدد والنوع
       final setJs = WebScripts.setFilters
           .replaceAll('%COUNT%', _selectedCount.toString())
           .replaceAll('%TYPE%', _selectedType);
       final rOpt = await _eval(setJs);
       _log('إرسال الضبط: $rOpt', LogLevel.info);
 
-      // 2) استنى Vue يعمل re-render
       await Future.delayed(const Duration(milliseconds: 800));
 
-      // 3) تحقق من القيم الحقيقية
       final vRaw = await _eval(WebScripts.verifyFilters);
       _log('تحقق: $vRaw', LogLevel.info);
 
@@ -308,13 +362,9 @@ class _AppShellState extends State<AppShell> {
           final wt = (m['wantT'] ?? '').toString();
           cOk = c == wc;
           tOk = t == wt;
-          _log(
-            'العدد: $c (مطلوب $wc) ${cOk ? "✅" : "❌"} | النوع: $t (مطلوب $wt) ${tOk ? "✅" : "❌"}',
-            cOk && tOk ? LogLevel.ok : LogLevel.error,
-          );
-        } catch (e) {
-          _log('فشل تحليل التحقق', LogLevel.error);
-        }
+          _log('العدد: $c (مطلوب $wc) ${cOk ? "✅" : "❌"} | النوع: $t (مطلوب $wt) ${tOk ? "✅" : "❌"}',
+              cOk && tOk ? LogLevel.ok : LogLevel.error);
+        } catch (_) {}
       }
 
       if (!cOk || !tOk) {
@@ -324,19 +374,12 @@ class _AppShellState extends State<AppShell> {
       }
 
       await Future.delayed(const Duration(milliseconds: 400));
-
-      // 4) صفّر الـ blob القديم
       await _eval(WebScripts.clearBlob);
 
-      // 5) اضغط CSV
       final r = await _eval(WebScripts.clickCsv);
       _log('ضغط CSV: $r', r == 'ok' ? LogLevel.ok : LogLevel.error);
-      if (r != 'ok') {
-        setState(() => _busy = false);
-        return;
-      }
+      if (r != 'ok') { setState(() => _busy = false); return; }
 
-      // 6) استنى المحتوى
       String? content;
       final dl = DateTime.now().add(const Duration(seconds: 25));
       while (DateTime.now().isBefore(dl)) {
@@ -357,12 +400,12 @@ class _AppShellState extends State<AppShell> {
       }
       _log('تم التقاط المحتوى (${content.length} حرف)', LogLevel.ok);
 
-      // 7) احفظ باسم الرنج
       final saved = await _saveCsv(_selectedRange!, content);
       if (saved == null) {
         _log('فشل حفظ الملف 😕', LogLevel.error);
       } else {
         _log('✅ اتحفظ: $saved', LogLevel.ok);
+        await _refreshFiles();
       }
     } catch (e) {
       _log('خطأ: $e', LogLevel.error);
@@ -396,20 +439,179 @@ class _AppShellState extends State<AppShell> {
 
       final safe = name.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_').trim();
       final file = File('${dir.path}/$safe.csv');
+
+      // استبدال لو موجود
+      if (await file.exists()) {
+        try { await file.delete(); } catch (_) {}
+      }
+
       final bytes = <int>[0xEF, 0xBB, 0xBF, ...utf8.encode(content)];
-      await file.writeAsBytes(bytes);
+      await file.writeAsBytes(bytes, flush: true);
       return file.path;
     } catch (e) {
       return null;
     }
   }
 
+  // ═══════ AutoFill ═══════
+  Future<void> _refreshFiles() async {
+    final list = await CsvReader.listFiles();
+    if (!mounted) return;
+    setState(() {
+      _csvFiles = list;
+      if (_selectedCsvName == null && list.isNotEmpty) {
+        _selectedCsvName = list.first.name;
+      }
+    });
+    if (_selectedCsvName != null && _currentNumbers.isEmpty) {
+      await _loadCsvNumbers(_selectedCsvName!);
+    }
+  }
+
+  Future<void> _loadCsvNumbers(String name) async {
+    final file = _csvFiles.firstWhere(
+      (f) => f.name == name,
+      orElse: () => CsvFile(name: '', path: '', count: 0),
+    );
+    if (file.path.isEmpty) return;
+    final numbers = await CsvReader.readColumnC(file.path);
+    if (!mounted) return;
+    setState(() {
+      _currentNumbers = numbers;
+      _currentIndex = 0;
+      _completedRounds = 0;
+    });
+    _log('تحميل "$name": ${numbers.length} رقم ✅', LogLevel.ok);
+    if (_floatingEnabled) {
+      await AutoFillBridge.updateFloatingText(_currentDisplay);
+    }
+  }
+
+  String get _currentDisplay {
+    if (_currentNumbers.isEmpty) return '—';
+    if (_currentIndex < 0 || _currentIndex >= _currentNumbers.length) return '—';
+    return _currentNumbers[_currentIndex];
+  }
+
+  Future<void> _advanceNumber({required bool forward, required String source}) async {
+    if (_currentNumbers.isEmpty) return;
+
+    int next = _currentIndex + (forward ? 1 : -1);
+
+    if (next >= _currentNumbers.length) {
+      if (_infinite || _completedRounds < _repeatCount - 1) {
+        next = 0;
+        _completedRounds++;
+        _log('🔁 دورة جديدة ($_completedRounds)', LogLevel.info);
+      } else {
+        _log('⏹️ خلصنا كل الدورات ($_repeatCount)', LogLevel.ok);
+        return;
+      }
+    } else if (next < 0) {
+      next = _currentNumbers.length - 1;
+    }
+
+    setState(() => _currentIndex = next);
+
+    final num = _currentNumbers[next];
+    _log('$source → $num', LogLevel.ok);
+
+    // اكتب في الحقل المفتوح
+    if (_autoTypeEnabled) {
+      final ok = await AutoFillBridge.typeText(num);
+      if (ok) {
+        _log('✅ الكتابة نجحت', LogLevel.ok);
+      } else {
+        _log('⚠️ الكتابة فشلت (تأكد إن فيه حقل مفتوح)', LogLevel.error);
+      }
+    }
+
+    // حدّث الأيقونة العائمة
+    if (_floatingEnabled) {
+      await AutoFillBridge.updateFloatingText(num);
+    }
+  }
+
+  Future<void> _prevNumber() => _advanceNumber(forward: false, source: 'السابق');
+
+  Future<void> _nextNumber() => _advanceNumber(forward: true, source: 'التالي');
+
+  Future<void> _copyCurrent() async {
+    if (_currentNumbers.isEmpty) return;
+    final num = _currentNumbers[_currentIndex];
+    await Clipboard.setData(ClipboardData(text: num));
+    _log('📋 اتنسخ: $num', LogLevel.ok);
+  }
+
+  Future<void> _typeCurrent() async {
+    if (_currentNumbers.isEmpty) return;
+    final num = _currentNumbers[_currentIndex];
+    final ok = await AutoFillBridge.typeText(num);
+    _log(ok ? '✅ اكتب: $num' : '⚠️ فشل الكتابة', ok ? LogLevel.ok : LogLevel.error);
+  }
+
+  Future<void> _toggleAutoType(bool v) async {
+    setState(() => _autoTypeEnabled = v);
+  }
+
+  Future<void> _toggleVolume(bool v) async {
+    if (v && !_accessibilityOn) {
+      _log('فعّل Accessibility الأول', LogLevel.error);
+      await AutoFillBridge.openAccessibilitySettings();
+      return;
+    }
+    setState(() => _volumeEnabled = v);
+    if (v) {
+      await AutoFillBridge.startVolumeListener();
+      _log('🎚️ أزرار الصوت اتفعّلت', LogLevel.ok);
+    } else {
+      await AutoFillBridge.stopVolumeListener();
+      _log('🎚️ أزرار الصوت اتقفلت', LogLevel.info);
+    }
+  }
+
+  Future<void> _toggleFloating(bool v) async {
+    if (v && !_overlayOn) {
+      _log('فعّل صلاحية الأيقونة العائمة', LogLevel.error);
+      await AutoFillBridge.openOverlaySettings();
+      return;
+    }
+    if (v) {
+      final ok = await AutoFillBridge.showFloating();
+      if (ok) {
+        setState(() => _floatingEnabled = true);
+        await AutoFillBridge.updateFloatingText(_currentDisplay);
+        _log('🔵 الأيقونة العائمة ظهرت', LogLevel.ok);
+      } else {
+        _log('فشل ظهور الأيقونة', LogLevel.error);
+      }
+    } else {
+      await AutoFillBridge.hideFloating();
+      setState(() => _floatingEnabled = false);
+      _log('🔵 الأيقونة العائمة اتقفلت', LogLevel.info);
+    }
+  }
+
+  Future<void> _openAccessibility() async {
+    await AutoFillBridge.openAccessibilitySettings();
+  }
+
+  Future<void> _openOverlay() async {
+    await AutoFillBridge.openOverlaySettings();
+  }
+
   Future<void> _backToDashboard() async {
+    // اقفل الأتمتة لو شغالة
+    if (_volumeEnabled) await AutoFillBridge.stopVolumeListener();
+    if (_floatingEnabled) await AutoFillBridge.hideFloating();
+
     setState(() {
       _stage = Stage.dashboard;
       _logs.clear();
       _ranges.clear();
       _selectedRange = null;
+      _volumeEnabled = false;
+      _floatingEnabled = false;
     });
     try {
       await _web?.loadUrl(urlRequest: URLRequest(url: WebUri('https://imssms.org/')));
@@ -512,14 +714,41 @@ class _AppShellState extends State<AppShell> {
           selectedType: _selectedType,
           loadingRanges: _loadingRanges,
           busy: _busy,
-          logs: _logs,
-          onBack: _backToDashboard,
           onRefreshRanges: _loadRanges,
           onSelectRange: (r) => setState(() => _selectedRange = r),
           onSelectCount: (c) => setState(() => _selectedCount = c),
           onSelectType: (t) => setState(() => _selectedType = t),
           onApplyFilter: _applyFilter,
           onDownloadCsv: _downloadCsv,
+          csvFiles: _csvFiles,
+          selectedCsvName: _selectedCsvName,
+          currentNumbers: _currentNumbers,
+          currentIndex: _currentIndex,
+          infinite: _infinite,
+          repeatCount: _repeatCount,
+          autoTypeEnabled: _autoTypeEnabled,
+          volumeEnabled: _volumeEnabled,
+          floatingEnabled: _floatingEnabled,
+          accessibilityOn: _accessibilityOn,
+          overlayOn: _overlayOn,
+          onRefreshFiles: _refreshFiles,
+          onSelectCsv: (name) async {
+            setState(() => _selectedCsvName = name);
+            await _loadCsvNumbers(name);
+          },
+          onPrevNumber: _prevNumber,
+          onNextNumber: _nextNumber,
+          onCopyCurrent: _copyCurrent,
+          onTypeCurrent: _typeCurrent,
+          onToggleInfinite: (v) => setState(() => _infinite = v),
+          onSetRepeat: (v) => setState(() => _repeatCount = v),
+          onToggleAutoType: _toggleAutoType,
+          onToggleVolume: _toggleVolume,
+          onToggleFloating: _toggleFloating,
+          onOpenAccessibility: _openAccessibility,
+          onOpenOverlay: _openOverlay,
+          logs: _logs,
+          onBack: _backToDashboard,
         );
       case Stage.dashboard:
         return DashboardPage(
