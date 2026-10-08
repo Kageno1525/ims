@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models.dart';
 import '../widgets.dart';
+import '../autofill_bridge.dart';
 import 'task_model.dart';
 import 'task_storage.dart';
 import 'task_editor_page.dart';
@@ -25,6 +26,11 @@ class TasksPage extends StatefulWidget {
 }
 
 class _TasksPageState extends State<TasksPage> {
+  static const _noDeco = TextStyle(
+    decoration: TextDecoration.none,
+    decorationColor: Colors.transparent,
+  );
+
   List<Task> _tasks = [];
   bool _loading = true;
   Task? _runningTask;
@@ -103,17 +109,20 @@ class _TasksPageState extends State<TasksPage> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('حذف المهمة'),
-        content: Text('متأكد إنك عايز تحذف "${task.name}"؟'),
+        title: Text('حذف المهمة',
+            style: _noDeco.copyWith(fontWeight: FontWeight.bold)),
+        content: Text('متأكد إنك عايز تحذف "${task.name}"؟',
+            style: _noDeco.copyWith(fontSize: 14)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('إلغاء'),
+            child: Text('إلغاء', style: _noDeco),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
             style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: const Text('حذف'),
+            child: Text('حذف',
+                style: _noDeco.copyWith(fontWeight: FontWeight.bold)),
           ),
         ],
       ),
@@ -153,15 +162,22 @@ class _TasksPageState extends State<TasksPage> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text('المهام',
-                            style: theme.textTheme.titleLarge
-                                ?.copyWith(fontWeight: FontWeight.bold)),
+                            style: _noDeco.copyWith(
+                                fontSize: 20, fontWeight: FontWeight.bold)),
                         Text('${_tasks.length} مهمة محفوظة',
-                            style: theme.textTheme.bodySmall?.copyWith(
-                                color:
-                                    theme.colorScheme.onSurface.withOpacity(0.5))),
+                            style: _noDeco.copyWith(
+                                fontSize: 12,
+                                color: theme.colorScheme.onSurface
+                                    .withOpacity(0.5))),
                       ],
                     ),
                   ),
+                  // ⭐ زرار إعدادات الوصول
+                  IconBtn(
+                    icon: Icons.settings_rounded,
+                    onTap: () => AutoFillBridge.openAccessibilitySettings(),
+                  ),
+                  const SizedBox(width: 8),
                   IconBtn(
                     icon: widget.isDark
                         ? Icons.dark_mode_rounded
@@ -236,7 +252,7 @@ class _TasksPageState extends State<TasksPage> {
           Expanded(
             child: Text(
               'جاري تشغيل: ${_runningTask?.name ?? ""}',
-              style: const TextStyle(
+              style: _noDeco.copyWith(
                   color: Colors.white, fontWeight: FontWeight.bold),
             ),
           ),
@@ -246,15 +262,17 @@ class _TasksPageState extends State<TasksPage> {
             child: InkWell(
               borderRadius: BorderRadius.circular(10),
               onTap: () => _runner.stop(),
-              child: const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              child: Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.stop_rounded, color: Colors.white, size: 16),
-                    SizedBox(width: 4),
+                    const Icon(Icons.stop_rounded,
+                        color: Colors.white, size: 16),
+                    const SizedBox(width: 4),
                     Text('إيقاف',
-                        style: TextStyle(
+                        style: _noDeco.copyWith(
                             color: Colors.white,
                             fontWeight: FontWeight.bold,
                             fontSize: 12)),
@@ -277,11 +295,13 @@ class _TasksPageState extends State<TasksPage> {
               size: 80, color: theme.colorScheme.primary.withOpacity(0.3)),
           const SizedBox(height: 16),
           Text('مفيش مهام بعد',
-              style: theme.textTheme.titleLarge?.copyWith(
+              style: _noDeco.copyWith(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
                   color: theme.colorScheme.onSurface.withOpacity(0.5))),
           const SizedBox(height: 8),
           Text('اضغط "مهمة جديدة" وابدأ تبني أول أتمتة',
-              style: TextStyle(
+              style: _noDeco.copyWith(
                   color: theme.colorScheme.onSurface.withOpacity(0.4),
                   fontSize: 13)),
         ],
@@ -294,10 +314,10 @@ class _TasksPageState extends State<TasksPage> {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: theme.colorScheme.surface.withOpacity(widget.isDark ? 0.55 : 0.85),
+        color:
+            theme.colorScheme.surface.withOpacity(widget.isDark ? 0.55 : 0.85),
         borderRadius: BorderRadius.circular(18),
-        border:
-            Border.all(color: theme.colorScheme.primary.withOpacity(0.2)),
+        border: Border.all(color: theme.colorScheme.primary.withOpacity(0.2)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -321,12 +341,12 @@ class _TasksPageState extends State<TasksPage> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(task.name,
-                        style: const TextStyle(
+                        style: _noDeco.copyWith(
                             fontWeight: FontWeight.bold, fontSize: 15)),
                     const SizedBox(height: 2),
                     Text(
                       '${task.steps.length} خطوة',
-                      style: TextStyle(
+                      style: _noDeco.copyWith(
                           fontSize: 11,
                           color:
                               theme.colorScheme.onSurface.withOpacity(0.5)),
@@ -372,7 +392,7 @@ class _TasksPageState extends State<TasksPage> {
                       BoxDecoration(color: c, shape: BoxShape.circle),
                   child: Center(
                     child: Text('${i + 1}',
-                        style: const TextStyle(
+                        style: _noDeco.copyWith(
                             color: Colors.white,
                             fontSize: 10,
                             fontWeight: FontWeight.bold)),
@@ -430,7 +450,7 @@ class _TasksPageState extends State<TasksPage> {
               Icon(icon, size: 14, color: color),
               const SizedBox(width: 4),
               Text(label,
-                  style: TextStyle(
+                  style: _noDeco.copyWith(
                       color: color,
                       fontSize: 11,
                       fontWeight: FontWeight.bold)),
