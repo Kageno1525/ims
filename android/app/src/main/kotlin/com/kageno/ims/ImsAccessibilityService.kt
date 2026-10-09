@@ -50,6 +50,11 @@ class ImsAccessibilityService : AccessibilityService() {
             className: String, index: Int
         ): Boolean = instance?.smartTypeInternal(value, viewId, hint, className, index) ?: false
 
+        fun findElementStatic(
+            text: String, desc: String, viewId: String,
+            className: String, index: Int
+        ): Boolean = instance?.findElementInternal(text, desc, viewId, className, index) ?: false
+
         fun openAppStatic(pkg: String): Boolean = instance?.openAppInternal(pkg) ?: false
         fun clickAtStatic(x: Int, y: Int): Boolean = instance?.clickAtInternal(x, y) ?: false
         fun swipeStatic(x1: Int, y1: Int, x2: Int, y2: Int, d: Int): Boolean =
@@ -80,7 +85,11 @@ class ImsAccessibilityService : AccessibilityService() {
         } catch (e: Exception) { Log.e(TAG, "config", e) }
     }
 
-    override fun onDestroy() { instance = null; super.onDestroy() }
+    override fun onDestroy() {
+        instance = null
+        super.onDestroy()
+    }
+
     override fun onInterrupt() {}
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
@@ -108,7 +117,10 @@ class ImsAccessibilityService : AccessibilityService() {
             try {
                 val wins = windows
                 if (!wins.isNullOrEmpty()) {
-                    for (w in wins) { val r = w.root ?: continue; roots.add(r) }
+                    for (w in wins) {
+                        val r = w.root ?: continue
+                        roots.add(r)
+                    }
                 }
             } catch (_: Exception) {}
             if (roots.isEmpty()) rootInActiveWindow?.let { roots.add(it) }
@@ -154,6 +166,7 @@ class ImsAccessibilityService : AccessibilityService() {
                     val key = "$viewId|$text|$desc|${rect.left},${rect.top}|$cls"
                     if (!seen.contains(key)) {
                         seen.add(key)
+
                         var clickableParent = false
                         try {
                             var p = node.parent
@@ -201,12 +214,6 @@ class ImsAccessibilityService : AccessibilityService() {
     }
 
     // ═══════════════ SMART CLICK ═══════════════
-    /**
-     * يدور على العنصر بالشروط المحددة ويرجّع اللي عنده أعلى score.
-     * - مطابقة كل الحقول المتاحة
-     * - ترتيب حسب: clickable > clickableParent > editable > أي
-     * - index: لو فيه أكثر من عنصر بنفس المواصفات
-     */
     private fun smartClickInternal(
         text: String, desc: String, viewId: String,
         className: String, index: Int, preferClickable: Boolean
@@ -220,7 +227,6 @@ class ImsAccessibilityService : AccessibilityService() {
             return false
         }
 
-        // رتب حسب الأولوية
         val scored = matches.map { node ->
             Pair(node, scoreNode(node, preferClickable))
         }.sortedByDescending { it.second }
@@ -231,6 +237,20 @@ class ImsAccessibilityService : AccessibilityService() {
             scored.first().first
 
         return performClickOnNode(target)
+    }
+
+    // ⭐ جديد: دوّر على العنصر بدون ضغط
+    private fun findElementInternal(
+        text: String, desc: String, viewId: String,
+        className: String, index: Int
+    ): Boolean {
+        val all = collectAllNodes()
+        val matches = all.filter { node ->
+            matchesQuery(node, text, desc, viewId, className)
+        }
+        if (matches.isEmpty()) return false
+        val idx = if (index >= 0 && index < matches.size) index else 0
+        return try { matches[idx].refresh() } catch (_: Exception) { false }
     }
 
     private fun matchesQuery(
@@ -293,7 +313,10 @@ class ImsAccessibilityService : AccessibilityService() {
         return list
     }
 
-    private fun walkCollect(node: AccessibilityNodeInfo?, list: MutableList<AccessibilityNodeInfo>) {
+    private fun walkCollect(
+        node: AccessibilityNodeInfo?,
+        list: MutableList<AccessibilityNodeInfo>
+    ) {
         if (node == null || list.size > 2000) return
         try {
             node.refresh()
@@ -317,7 +340,8 @@ class ImsAccessibilityService : AccessibilityService() {
 
                 if (viewId.isNotEmpty()) {
                     val id = node.viewIdResourceName ?: ""
-                    if (!(id == viewId || id.endsWith("/$viewId") || id.contains(viewId))) return@filter false
+                    if (!(id == viewId || id.endsWith("/$viewId") || id.contains(viewId)))
+                        return@filter false
                 }
                 if (hint.isNotEmpty()) {
                     val h = try {
@@ -466,7 +490,10 @@ class ImsAccessibilityService : AccessibilityService() {
                 if (now.contains(text)) return true
             }
             return ok
-        } catch (e: Exception) { Log.e(TAG, "gesture paste", e); return false }
+        } catch (e: Exception) {
+            Log.e(TAG, "gesture paste", e)
+            return false
+        }
     }
 
     private fun copyToClipboard(text: String) {
@@ -592,8 +619,14 @@ class ImsAccessibilityService : AccessibilityService() {
         if (!volumeEnabled) return false
         if (event.action != KeyEvent.ACTION_DOWN) return false
         when (event.keyCode) {
-            KeyEvent.KEYCODE_VOLUME_UP -> { onVolumeKey?.invoke("vol_up"); return true }
-            KeyEvent.KEYCODE_VOLUME_DOWN -> { onVolumeKey?.invoke("vol_down"); return true }
+            KeyEvent.KEYCODE_VOLUME_UP -> {
+                onVolumeKey?.invoke("vol_up")
+                return true
+            }
+            KeyEvent.KEYCODE_VOLUME_DOWN -> {
+                onVolumeKey?.invoke("vol_down")
+                return true
+            }
         }
         return false
     }
