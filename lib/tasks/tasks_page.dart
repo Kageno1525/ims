@@ -172,7 +172,6 @@ class _TasksPageState extends State<TasksPage> {
                       ],
                     ),
                   ),
-                  // ⭐ زرار إعدادات الوصول
                   IconBtn(
                     icon: Icons.settings_rounded,
                     onTap: () => AutoFillBridge.openAccessibilitySettings(),
@@ -209,8 +208,7 @@ class _TasksPageState extends State<TasksPage> {
                         : ListView.separated(
                             padding: const EdgeInsets.only(bottom: 20),
                             itemCount: _tasks.length,
-                            separatorBuilder: (_, __) =>
-                                const SizedBox(height: 10),
+                            separatorBuilder: (_, __) => const SizedBox(height: 10),
                             itemBuilder: (_, i) => _taskCard(theme, _tasks[i]),
                           ),
               ),
@@ -243,10 +241,8 @@ class _TasksPageState extends State<TasksPage> {
       child: Row(
         children: [
           const SizedBox(
-            width: 18,
-            height: 18,
-            child: CircularProgressIndicator(
-                strokeWidth: 2, color: Colors.white),
+            width: 18, height: 18,
+            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -263,13 +259,11 @@ class _TasksPageState extends State<TasksPage> {
               borderRadius: BorderRadius.circular(10),
               onTap: () => _runner.stop(),
               child: Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(Icons.stop_rounded,
-                        color: Colors.white, size: 16),
+                    const Icon(Icons.stop_rounded, color: Colors.white, size: 16),
                     const SizedBox(width: 4),
                     Text('إيقاف',
                         style: _noDeco.copyWith(
@@ -314,8 +308,7 @@ class _TasksPageState extends State<TasksPage> {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color:
-            theme.colorScheme.surface.withOpacity(widget.isDark ? 0.55 : 0.85),
+        color: theme.colorScheme.surface.withOpacity(widget.isDark ? 0.55 : 0.85),
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: theme.colorScheme.primary.withOpacity(0.2)),
       ),
@@ -325,8 +318,7 @@ class _TasksPageState extends State<TasksPage> {
           Row(
             children: [
               Container(
-                width: 44,
-                height: 44,
+                width: 44, height: 44,
                 decoration: BoxDecoration(
                   gradient: const LinearGradient(
                       colors: [Color(0xFF6C5CE7), Color(0xFF00D2FF)]),
@@ -348,8 +340,7 @@ class _TasksPageState extends State<TasksPage> {
                       '${task.steps.length} خطوة',
                       style: _noDeco.copyWith(
                           fontSize: 11,
-                          color:
-                              theme.colorScheme.onSurface.withOpacity(0.5)),
+                          color: theme.colorScheme.onSurface.withOpacity(0.5)),
                     ),
                   ],
                 ),
@@ -368,34 +359,44 @@ class _TasksPageState extends State<TasksPage> {
               runSpacing: 6,
               children: List.generate(task.steps.length, (i) {
                 Color c;
+                IconData? ic;
                 if (i >= status.length) {
                   c = theme.colorScheme.onSurface.withOpacity(0.2);
+                  ic = null;
                 } else {
                   switch (status[i].status) {
                     case StepStatus.ok:
                       c = const Color(0xFF00D68F);
+                      ic = null;
                       break;
                     case StepStatus.failed:
                       c = const Color(0xFFFF6B6B);
+                      ic = Icons.close_rounded;
+                      break;
+                    case StepStatus.skipped:
+                      c = const Color(0xFFFFB84D);
+                      ic = Icons.skip_next_rounded;
                       break;
                     case StepStatus.running:
-                      c = const Color(0xFFFFB84D);
+                      c = const Color(0xFF6C5CE7);
+                      ic = null;
                       break;
                     default:
                       c = theme.colorScheme.onSurface.withOpacity(0.2);
+                      ic = null;
                   }
                 }
                 return Container(
-                  width: 20,
-                  height: 20,
-                  decoration:
-                      BoxDecoration(color: c, shape: BoxShape.circle),
+                  width: 22, height: 22,
+                  decoration: BoxDecoration(color: c, shape: BoxShape.circle),
                   child: Center(
-                    child: Text('${i + 1}',
-                        style: _noDeco.copyWith(
-                            color: Colors.white,
-                            fontSize: 10,
-                            fontWeight: FontWeight.bold)),
+                    child: ic != null
+                        ? Icon(ic, size: 12, color: Colors.white)
+                        : Text('${i + 1}',
+                            style: _noDeco.copyWith(
+                                color: Colors.white,
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold)),
                   ),
                 );
               }),
