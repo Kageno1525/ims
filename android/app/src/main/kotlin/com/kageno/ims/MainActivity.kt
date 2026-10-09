@@ -11,7 +11,6 @@ import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
-
     private val CHANNEL = "ims/autofill"
     private var methodChannel: MethodChannel? = null
 
@@ -28,37 +27,24 @@ class MainActivity : FlutterActivity() {
                 }
                 "hasOverlayPermission" -> result.success(Settings.canDrawOverlays(this))
                 "openOverlaySettings" -> {
-                    try {
-                        startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
-                    } catch (_: Exception) {}
+                    try { startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName"))) } catch (_: Exception) {}
                     result.success(null)
                 }
                 "typeText" -> {
                     val text = call.argument<String>("text") ?: ""
                     runAsync(result) { ImsAccessibilityService.typeTextStatic(text) }
                 }
-                "startVolume" -> {
-                    ImsAccessibilityService.volumeEnabled = true
-                    result.success(null)
-                }
-                "stopVolume" -> {
-                    ImsAccessibilityService.volumeEnabled = false
-                    result.success(null)
-                }
+                "startVolume" -> { ImsAccessibilityService.volumeEnabled = true; result.success(null) }
+                "stopVolume" -> { ImsAccessibilityService.volumeEnabled = false; result.success(null) }
                 "showFloating" -> {
-                    if (!Settings.canDrawOverlays(this)) {
-                        result.success(false)
-                    } else {
-                        try {
-                            startService(Intent(this, FloatingService::class.java).apply { action = "SHOW" })
-                            result.success(true)
-                        } catch (_: Exception) { result.success(false) }
-                    }
+                    if (!Settings.canDrawOverlays(this)) result.success(false)
+                    else try {
+                        startService(Intent(this, FloatingService::class.java).apply { action = "SHOW" })
+                        result.success(true)
+                    } catch (_: Exception) { result.success(false) }
                 }
                 "hideFloating" -> {
-                    try {
-                        startService(Intent(this, FloatingService::class.java).apply { action = "HIDE" })
-                    } catch (_: Exception) {}
+                    try { startService(Intent(this, FloatingService::class.java).apply { action = "HIDE" }) } catch (_: Exception) {}
                     result.success(null)
                 }
                 "updateFloatingText" -> {
@@ -70,17 +56,45 @@ class MainActivity : FlutterActivity() {
                     val pkg = call.argument<String>("package") ?: ""
                     runAsync(result) { ImsAccessibilityService.openAppStatic(pkg) }
                 }
+
+                // ⭐ SMART CLICK
+                "smartClick" -> {
+                    val text = call.argument<String>("text") ?: ""
+                    val desc = call.argument<String>("desc") ?: ""
+                    val viewId = call.argument<String>("viewId") ?: ""
+                    val className = call.argument<String>("className") ?: ""
+                    val index = call.argument<Int>("index") ?: 0
+                    val preferClickable = call.argument<Boolean>("preferClickable") ?: true
+                    runAsync(result) {
+                        ImsAccessibilityService.smartClickStatic(
+                            text, desc, viewId, className, index, preferClickable
+                        )
+                    }
+                }
+
+                // ⭐ SMART TYPE
+                "smartType" -> {
+                    val value = call.argument<String>("value") ?: ""
+                    val viewId = call.argument<String>("viewId") ?: ""
+                    val hint = call.argument<String>("hint") ?: ""
+                    val className = call.argument<String>("className") ?: ""
+                    val index = call.argument<Int>("index") ?: 0
+                    runAsync(result) {
+                        ImsAccessibilityService.smartTypeStatic(value, viewId, hint, className, index)
+                    }
+                }
+
                 "clickByText" -> {
                     val t = call.argument<String>("text") ?: ""
-                    runAsync(result) { ImsAccessibilityService.clickByTextStatic(t) }
+                    runAsync(result) { ImsAccessibilityService.smartClickStatic(t, "", "", "", 0, true) }
                 }
                 "clickByDesc" -> {
                     val d = call.argument<String>("desc") ?: ""
-                    runAsync(result) { ImsAccessibilityService.clickByDescStatic(d) }
+                    runAsync(result) { ImsAccessibilityService.smartClickStatic("", d, "", "", 0, true) }
                 }
                 "clickById" -> {
                     val v = call.argument<String>("viewId") ?: ""
-                    runAsync(result) { ImsAccessibilityService.clickByIdStatic(v) }
+                    runAsync(result) { ImsAccessibilityService.smartClickStatic("", "", v, "", 0, true) }
                 }
                 "clickAt" -> {
                     val x = call.argument<Int>("x") ?: 0
@@ -100,21 +114,14 @@ class MainActivity : FlutterActivity() {
                 "globalRecents" -> runAsync(result) { ImsAccessibilityService.globalRecentsStatic() }
                 "currentPackage" -> result.success(ImsAccessibilityService.currentPackageStatic())
 
-                // ⭐ تفريغ الشاشة
                 "dumpScreen" -> {
-                    try {
-                        result.success(ImsAccessibilityService.dumpScreenStatic())
-                    } catch (e: Exception) {
-                        result.success("[]")
-                    }
+                    try { result.success(ImsAccessibilityService.dumpScreenStatic()) }
+                    catch (e: Exception) { result.success("[]") }
                 }
 
                 "listApps" -> {
-                    try {
-                        result.success(listInstalledApps())
-                    } catch (e: Exception) {
-                        result.success(emptyList<Map<String, String>>())
-                    }
+                    try { result.success(listInstalledApps()) }
+                    catch (e: Exception) { result.success(emptyList<Map<String, String>>()) }
                 }
 
                 "resolvePackage" -> {
@@ -137,28 +144,22 @@ class MainActivity : FlutterActivity() {
     private fun listInstalledApps(): List<Map<String, String>> {
         val pm = packageManager
         val map = mutableMapOf<String, String>()
-
         try {
             @Suppress("DEPRECATION")
-            val allApps = pm.getInstalledApplications(0)
-            for (app in allApps) {
+            for (app in pm.getInstalledApplications(0)) {
                 try {
                     val pkg = app.packageName
                     if (pkg == packageName) continue
-                    val launch = pm.getLaunchIntentForPackage(pkg) ?: continue
+                    if (pm.getLaunchIntentForPackage(pkg) == null) continue
                     val label = pm.getApplicationLabel(app).toString()
                     if (label.isNotBlank()) map[pkg] = label
                 } catch (_: Exception) {}
             }
         } catch (_: Exception) {}
-
         try {
-            val mainIntent = Intent(Intent.ACTION_MAIN).apply {
-                addCategory(Intent.CATEGORY_LAUNCHER)
-            }
+            val mainIntent = Intent(Intent.ACTION_MAIN).apply { addCategory(Intent.CATEGORY_LAUNCHER) }
             @Suppress("DEPRECATION")
-            val launchers = pm.queryIntentActivities(mainIntent, 0)
-            for (info in launchers) {
+            for (info in pm.queryIntentActivities(mainIntent, 0)) {
                 try {
                     val pkg = info.activityInfo.packageName
                     if (pkg == packageName) continue
@@ -167,7 +168,6 @@ class MainActivity : FlutterActivity() {
                 } catch (_: Exception) {}
             }
         } catch (_: Exception) {}
-
         return map.entries
             .map { mapOf("package" to it.key, "name" to it.value) }
             .sortedBy { (it["name"] ?: "").lowercase() }
@@ -176,19 +176,13 @@ class MainActivity : FlutterActivity() {
     private fun resolvePackageByName(query: String): String? {
         if (query.isBlank()) return null
         val q = query.trim()
-        val pm = packageManager
-        try {
-            @Suppress("DEPRECATION")
-            pm.getPackageInfo(q, 0)
-            return q
-        } catch (_: Exception) {}
+        try { @Suppress("DEPRECATION") packageManager.getPackageInfo(q, 0); return q } catch (_: Exception) {}
         val apps = listInstalledApps()
         val ql = q.lowercase()
         apps.firstOrNull { (it["name"] ?: "").lowercase() == ql }?.let { return it["package"] }
         apps.firstOrNull {
-            val n = (it["name"] ?: "").lowercase()
-            val p = (it["package"] ?: "").lowercase()
-            n.contains(ql) || p.contains(ql)
+            (it["name"] ?: "").lowercase().contains(ql) ||
+            (it["package"] ?: "").lowercase().contains(ql)
         }?.let { return it["package"] }
         return null
     }
