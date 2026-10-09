@@ -24,6 +24,9 @@ class TaskEditorPage extends StatefulWidget {
 class _TaskEditorPageState extends State<TaskEditorPage> {
   late TextEditingController _nameCtrl;
   late List<TaskStep> _steps;
+  late int _taskRepeat;
+  late bool _autoIncrement;
+  late TextEditingController _taskRepeatCtrl;
 
   static const _noDeco = TextStyle(
     decoration: TextDecoration.none,
@@ -36,11 +39,15 @@ class _TaskEditorPageState extends State<TaskEditorPage> {
     _nameCtrl = TextEditingController(
         text: widget.initialTask?.name ?? '');
     _steps = List.from(widget.initialTask?.steps ?? []);
+    _taskRepeat = widget.initialTask?.repeatCount ?? 1;
+    _autoIncrement = widget.initialTask?.autoIncrement ?? false;
+    _taskRepeatCtrl = TextEditingController(text: _taskRepeat.toString());
   }
 
   @override
   void dispose() {
     _nameCtrl.dispose();
+    _taskRepeatCtrl.dispose();
     super.dispose();
   }
 
@@ -86,11 +93,10 @@ class _TaskEditorPageState extends State<TaskEditorPage> {
     setState(() => _steps.removeAt(index));
   }
 
-  void _moveStep(int index, int delta) {
-    final newIndex = index + delta;
-    if (newIndex < 0 || newIndex >= _steps.length) return;
+  void _onReorder(int oldIndex, int newIndex) {
     setState(() {
-      final s = _steps.removeAt(index);
+      if (newIndex > oldIndex) newIndex--;
+      final s = _steps.removeAt(oldIndex);
       _steps.insert(newIndex, s);
     });
   }
@@ -176,6 +182,8 @@ class _TaskEditorPageState extends State<TaskEditorPage> {
       steps: fixedSteps,
       createdAt: widget.initialTask?.createdAt ?? DateTime.now(),
       lastRunAt: widget.initialTask?.lastRunAt,
+      repeatCount: _taskRepeat,
+      autoIncrement: _autoIncrement,
     );
     if (mounted) Navigator.pop(context, task);
   }
@@ -220,7 +228,7 @@ class _TaskEditorPageState extends State<TaskEditorPage> {
                   ),
                 ],
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 12),
               TextField(
                 controller: _nameCtrl,
                 style: _noDeco.copyWith(fontSize: 15),
@@ -237,7 +245,9 @@ class _TaskEditorPageState extends State<TaskEditorPage> {
                       Icons.drive_file_rename_outline_rounded),
                 ),
               ),
-              const SizedBox(height: 18),
+              const SizedBox(height: 12),
+              _buildTaskLoopSection(theme),
+              const SizedBox(height: 12),
               Row(
                 children: [
                   Icon(Icons.list_alt_rounded,
@@ -269,15 +279,25 @@ class _TaskEditorPageState extends State<TaskEditorPage> {
                       ),
                     ),
                   ),
+                  const Spacer(),
+                  if (_steps.length > 1)
+                    Text(
+                      'اسحب الخطوة للتحريك',
+                      style: _noDeco.copyWith(
+                        fontSize: 10,
+                        color:
+                            theme.colorScheme.onSurface.withOpacity(0.4),
+                      ),
+                    ),
                 ],
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: 8),
               Expanded(
                 child: _steps.isEmpty
                     ? _emptyView(theme)
                     : _stepsList(),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 10),
               Row(
                 children: [
                   Expanded(
@@ -314,6 +334,143 @@ class _TaskEditorPageState extends State<TaskEditorPage> {
     );
   }
 
+  // ⭐ قسم loop المهمة
+  Widget _buildTaskLoopSection(ThemeData theme) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            const Color(0xFF6C5CE7).withOpacity(0.12),
+            const Color(0xFF00D2FF).withOpacity(0.12),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+            color: const Color(0xFF6C5CE7).withOpacity(0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.repeat_rounded,
+                  size: 18, color: Color(0xFF6C5CE7)),
+              const SizedBox(width: 6),
+              Text(
+                'تكرار المهمة كلها',
+                style: _noDeco.copyWith(
+                  fontSize: 13,
+                  fontWeight: FontWeight.bold,
+                  color: const Color(0xFF6C5CE7),
+                ),
+              ),
+              const Spacer(),
+              SizedBox(
+                width: 60,
+                child: TextField(
+                  controller: _taskRepeatCtrl,
+                  textAlign: TextAlign.center,
+                  keyboardType: TextInputType.number,
+                  style: _noDeco.copyWith(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: const Color(0xFF6C5CE7),
+                  ),
+                  decoration: const InputDecoration(
+                    isDense: true,
+                    contentPadding: EdgeInsets.symmetric(vertical: 8),
+                  ),
+                  onChanged: (v) {
+                    final n = int.tryParse(v) ?? 1;
+                    if (n >= 1) setState(() => _taskRepeat = n);
+                  },
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            _taskRepeat == 1
+                ? 'هتتنفذ مرة واحدة'
+                : 'هتتنفذ $_taskRepeat مرة',
+            style: _noDeco.copyWith(
+              fontSize: 10.5,
+              color: theme.colorScheme.onSurface.withOpacity(0.6),
+            ),
+          ),
+          if (_taskRepeat > 1) ...[
+            const SizedBox(height: 8),
+            Material(
+              color: Colors.transparent,
+              child: InkWell(
+                borderRadius: BorderRadius.circular(10),
+                onTap: () =>
+                    setState(() => _autoIncrement = !_autoIncrement),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 10, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: _autoIncrement
+                        ? const Color(0xFF00D68F).withOpacity(0.15)
+                        : theme.colorScheme.surface.withOpacity(0.4),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: _autoIncrement
+                          ? const Color(0xFF00D68F)
+                          : theme.colorScheme.primary.withOpacity(0.15),
+                      width: _autoIncrement ? 1.5 : 1,
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        _autoIncrement
+                            ? Icons.check_box_rounded
+                            : Icons.check_box_outline_blank_rounded,
+                        color: _autoIncrement
+                            ? const Color(0xFF00D68F)
+                            : theme.colorScheme.onSurface
+                                .withOpacity(0.4),
+                        size: 20,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'الرقم يتقدم مع كل دورة',
+                              style: _noDeco.copyWith(
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                                color: _autoIncrement
+                                    ? const Color(0xFF00D68F)
+                                    : theme.colorScheme.onSurface,
+                              ),
+                            ),
+                            Text(
+                              '{num} هياخد رقم جديد كل دورة',
+                              style: _noDeco.copyWith(
+                                fontSize: 10,
+                                color: theme.colorScheme.onSurface
+                                    .withOpacity(0.5),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
   Widget _emptyView(ThemeData theme) {
     return Center(
       child: Column(
@@ -345,25 +502,38 @@ class _TaskEditorPageState extends State<TaskEditorPage> {
   }
 
   Widget _stepsList() {
-    return ListView.separated(
+    return ReorderableListView.builder(
+      buildDefaultDragHandles: false,
+      padding: const EdgeInsets.only(bottom: 20),
       itemCount: _steps.length,
-      separatorBuilder: (_, __) => const SizedBox(height: 10),
-      itemBuilder: (_, i) => _StepCard(
-        index: i,
-        total: _steps.length,
-        step: _steps[i],
-        isDark: widget.isDark,
-        onEdit: () => _editStep(i),
-        onDelete: () => _removeStep(i),
-        onMoveUp: i == 0 ? null : () => _moveStep(i, -1),
-        onMoveDown:
-            i == _steps.length - 1 ? null : () => _moveStep(i, 1),
+      onReorder: _onReorder,
+      proxyDecorator: (child, index, animation) {
+        return Material(
+          color: Colors.transparent,
+          elevation: 8,
+          shadowColor: const Color(0xFF6C5CE7).withOpacity(0.4),
+          borderRadius: BorderRadius.circular(18),
+          child: child,
+        );
+      },
+      itemBuilder: (context, i) => Padding(
+        key: ValueKey(_steps[i].id),
+        padding: const EdgeInsets.only(bottom: 10),
+        child: _StepCard(
+          index: i,
+          total: _steps.length,
+          step: _steps[i],
+          isDark: widget.isDark,
+          onEdit: () => _editStep(i),
+          onDelete: () => _removeStep(i),
+          dragIndex: i,
+        ),
       ),
     );
   }
 }
 
-// ═══════════════ Step Card (تصميم مختلف لكل نوع) ═══════════════
+// ═══════════ Step Card ═══════════
 class _StepCard extends StatelessWidget {
   final int index;
   final int total;
@@ -371,8 +541,7 @@ class _StepCard extends StatelessWidget {
   final bool isDark;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
-  final VoidCallback? onMoveUp;
-  final VoidCallback? onMoveDown;
+  final int dragIndex;
 
   const _StepCard({
     required this.index,
@@ -381,8 +550,7 @@ class _StepCard extends StatelessWidget {
     required this.isDark,
     required this.onEdit,
     required this.onDelete,
-    required this.onMoveUp,
-    required this.onMoveDown,
+    required this.dragIndex,
   });
 
   static const _noDeco = TextStyle(
@@ -544,7 +712,26 @@ class _StepCard extends StatelessWidget {
                   color: _accent,
                 ),
               ),
-              if (step.onFail == FailureAction.skip) ...[
+              if (step.hasLoop) ...[
+                const SizedBox(height: 2),
+                Row(
+                  children: [
+                    const Icon(Icons.repeat_rounded,
+                        size: 10, color: Color(0xFF6C5CE7)),
+                    const SizedBox(width: 3),
+                    Text(
+                      'يكرر ${step.repeatCount} مرات',
+                      style: _noDeco.copyWith(
+                        fontSize: 9.5,
+                        color: const Color(0xFF6C5CE7),
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+              if (step.onFail == FailureAction.skip &&
+                  !step.isWaitStep) ...[
                 const SizedBox(height: 2),
                 Text(
                   'عند الفشل: تخطى ${step.skipCount + 1} خطوة',
@@ -811,9 +998,7 @@ class _StepCard extends StatelessWidget {
     final t = step.params['text']?.toString() ?? '';
     final d = step.params['desc']?.toString() ?? '';
     final id = step.params['viewId']?.toString() ?? '';
-    final onAppear =
-        step.params['onAppear']?.toString() ?? 'none';
-    final appearText = step.params['appearText']?.toString() ?? '';
+    final appearText = step.appearText;
 
     String target = '';
     String chipLabel = '';
@@ -835,14 +1020,42 @@ class _StepCard extends StatelessWidget {
       target = '(بدون هدف)';
     }
 
-    String action = '';
-    IconData actionIcon = Icons.check_circle_outline_rounded;
-    if (onAppear == 'click') {
-      action = 'ثم اضغط عليه';
-      actionIcon = Icons.touch_app_rounded;
-    } else if (onAppear == 'type') {
-      action = 'ثم اكتب: $appearText';
-      actionIcon = Icons.keyboard_rounded;
+    String appear = '';
+    IconData appearIcon = Icons.check_circle_outline_rounded;
+    if (step.onAppear == OnAppearAction.click) {
+      appear = 'ثم اضغط عليه';
+      appearIcon = Icons.touch_app_rounded;
+    } else if (step.onAppear == OnAppearAction.type) {
+      appear = 'ثم اكتب: $appearText';
+      appearIcon = Icons.keyboard_rounded;
+    }
+
+    String notFoundLabel = '';
+    Color notFoundColor = const Color(0xFFFF6B6B);
+    switch (step.onNotFound) {
+      case NotFoundAction.skip:
+        notFoundLabel = 'لو ما ظهرش: تخطي';
+        notFoundColor = const Color(0xFFFFB84D);
+        break;
+      case NotFoundAction.stop:
+        notFoundLabel = 'لو ما ظهرش: وقف';
+        break;
+      case NotFoundAction.clickAlt:
+        notFoundLabel = 'لو ما ظهرش: اضغط بديل';
+        notFoundColor = const Color(0xFF00D2FF);
+        break;
+      case NotFoundAction.typeAlt:
+        notFoundLabel = 'لو ما ظهرش: اكتب';
+        notFoundColor = const Color(0xFF6C5CE7);
+        break;
+      case NotFoundAction.back:
+        notFoundLabel = 'لو ما ظهرش: رجوع';
+        notFoundColor = const Color(0xFFE17055);
+        break;
+      case NotFoundAction.home:
+        notFoundLabel = 'لو ما ظهرش: الرئيسية';
+        notFoundColor = const Color(0xFF95A5A6);
+        break;
     }
 
     return Column(
@@ -881,15 +1094,15 @@ class _StepCard extends StatelessWidget {
             ),
           ],
         ),
-        if (action.isNotEmpty) ...[
+        if (appear.isNotEmpty) ...[
           const SizedBox(height: 6),
           Row(
             children: [
-              Icon(actionIcon, size: 11, color: _accent),
+              Icon(appearIcon, size: 11, color: _accent),
               const SizedBox(width: 4),
               Expanded(
                 child: Text(
-                  action,
+                  appear,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: _noDeco.copyWith(
@@ -902,6 +1115,26 @@ class _StepCard extends StatelessWidget {
             ],
           ),
         ],
+        const SizedBox(height: 6),
+        Row(
+          children: [
+            Icon(Icons.help_outline_rounded,
+                size: 11, color: notFoundColor),
+            const SizedBox(width: 4),
+            Expanded(
+              child: Text(
+                notFoundLabel,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: _noDeco.copyWith(
+                  fontSize: 10.5,
+                  color: notFoundColor,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        ),
       ],
     );
   }
@@ -1002,54 +1235,67 @@ class _StepCard extends StatelessWidget {
     );
   }
 
+  // ⭐ أزرار جنب بعض + Drag handle
   Widget _buildControls(ThemeData theme) {
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 2),
+      padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 4),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         mainAxisSize: MainAxisSize.min,
         children: [
-          IconButton(
-            iconSize: 16,
-            padding: EdgeInsets.zero,
-            constraints:
-                const BoxConstraints(minWidth: 30, minHeight: 26),
-            icon: const Icon(Icons.keyboard_arrow_up_rounded),
-            color: onMoveUp == null
-                ? theme.colorScheme.onSurface.withOpacity(0.2)
-                : theme.colorScheme.onSurface.withOpacity(0.7),
-            onPressed: onMoveUp,
+          // Drag handle
+          ReorderableDragStartListener(
+            index: dragIndex,
+            child: Container(
+              padding: const EdgeInsets.symmetric(
+                  horizontal: 6, vertical: 8),
+              child: Icon(
+                Icons.drag_indicator_rounded,
+                size: 22,
+                color: theme.colorScheme.primary.withOpacity(0.7),
+              ),
+            ),
           ),
-          IconButton(
-            iconSize: 16,
-            padding: EdgeInsets.zero,
-            constraints:
-                const BoxConstraints(minWidth: 30, minHeight: 26),
-            icon: const Icon(Icons.keyboard_arrow_down_rounded),
-            color: onMoveDown == null
-                ? theme.colorScheme.onSurface.withOpacity(0.2)
-                : theme.colorScheme.onSurface.withOpacity(0.7),
-            onPressed: onMoveDown,
-          ),
-          IconButton(
-            iconSize: 16,
-            padding: EdgeInsets.zero,
-            constraints:
-                const BoxConstraints(minWidth: 30, minHeight: 26),
-            icon: const Icon(Icons.edit_rounded),
-            color: const Color(0xFF00D2FF),
-            onPressed: onEdit,
-          ),
-          IconButton(
-            iconSize: 16,
-            padding: EdgeInsets.zero,
-            constraints:
-                const BoxConstraints(minWidth: 30, minHeight: 26),
-            icon: const Icon(Icons.close_rounded),
-            color: const Color(0xFFFF6B6B),
-            onPressed: onDelete,
+          // Edit + Delete جنب بعض
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _actionBtn(
+                icon: Icons.edit_rounded,
+                color: const Color(0xFF00D2FF),
+                onTap: onEdit,
+              ),
+              const SizedBox(width: 4),
+              _actionBtn(
+                icon: Icons.close_rounded,
+                color: const Color(0xFFFF6B6B),
+                onTap: onDelete,
+              ),
+            ],
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _actionBtn({
+    required IconData icon,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(8),
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.all(6),
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.12),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Icon(icon, size: 16, color: color),
+        ),
       ),
     );
   }
