@@ -7,6 +7,7 @@ enum TaskStepType {
   clickById,
   clickAt,
   waitForElement,
+  clearAppData,
   swipe,
   back,
   home,
@@ -89,6 +90,8 @@ class TaskStep {
 
   bool get isSearchStep => isClickStep || isWaitStep;
 
+  bool get isTextInputStep => type == TaskStepType.typeText;
+
   String get typeLabel {
     switch (type) {
       case TaskStepType.openApp:
@@ -107,6 +110,8 @@ class TaskStep {
         return 'ضغط بإحداثيات';
       case TaskStepType.waitForElement:
         return 'انتظار ظهور عنصر';
+      case TaskStepType.clearAppData:
+        return 'مسح بيانات تطبيق';
       case TaskStepType.swipe:
         return 'سحب (Swipe)';
       case TaskStepType.back:
@@ -140,13 +145,27 @@ class TaskStep {
       case TaskStepType.clickAt:
         return '(${params['x'] ?? 0}, ${params['y'] ?? 0})';
       case TaskStepType.waitForElement:
+        final onAppear = params['onAppear']?.toString() ?? 'none';
         final t = params['text']?.toString() ?? '';
         final d = params['desc']?.toString() ?? '';
         final id = params['viewId']?.toString() ?? '';
-        if (t.isNotEmpty) return 'نص: $t';
-        if (d.isNotEmpty) return 'وصف: $d';
-        if (id.isNotEmpty) return 'id: $id';
-        return '(بدون شرط)';
+        String target = '';
+        if (t.isNotEmpty) {
+          target = 'نص: $t';
+        } else if (d.isNotEmpty) {
+          target = 'وصف: $d';
+        } else if (id.isNotEmpty) {
+          target = 'id: $id';
+        } else {
+          target = '(بدون شرط)';
+        }
+        if (onAppear == 'click') return '$target → اضغط';
+        if (onAppear == 'type') {
+          return '$target → اكتب "${params['appearText'] ?? ''}"';
+        }
+        return '$target → متابعة';
+      case TaskStepType.clearAppData:
+        return params['package']?.toString() ?? '';
       case TaskStepType.swipe:
         return '(${params['x1']},${params['y1']}) → (${params['x2']},${params['y2']})';
       case TaskStepType.back:
