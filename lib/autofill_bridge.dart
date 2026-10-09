@@ -124,13 +124,13 @@ class AutoFillBridge {
   }) async {
     try {
       return await _channel.invokeMethod('smartClick', {
-        'text': text,
-        'desc': desc,
-        'viewId': viewId,
-        'className': className,
-        'index': index,
-        'preferClickable': preferClickable,
-      }) ??
+            'text': text,
+            'desc': desc,
+            'viewId': viewId,
+            'className': className,
+            'index': index,
+            'preferClickable': preferClickable,
+          }) ??
           false;
     } catch (_) {
       return false;
@@ -146,19 +146,18 @@ class AutoFillBridge {
   }) async {
     try {
       return await _channel.invokeMethod('smartType', {
-        'value': value,
-        'viewId': viewId,
-        'hint': hint,
-        'className': className,
-        'index': index,
-      }) ??
+            'value': value,
+            'viewId': viewId,
+            'hint': hint,
+            'className': className,
+            'index': index,
+          }) ??
           false;
     } catch (_) {
       return false;
     }
   }
 
-  /// جديد: البحث عن عنصر بدون الضغط عليه
   static Future<bool> findElement({
     String text = '',
     String desc = '',
@@ -168,12 +167,23 @@ class AutoFillBridge {
   }) async {
     try {
       return await _channel.invokeMethod('findElement', {
-        'text': text,
-        'desc': desc,
-        'viewId': viewId,
-        'className': className,
-        'index': index,
-      }) ??
+            'text': text,
+            'desc': desc,
+            'viewId': viewId,
+            'className': className,
+            'index': index,
+          }) ??
+          false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// جديد: مسح بيانات تطبيق
+  static Future<bool> clearAppData(String package) async {
+    try {
+      return await _channel
+              .invokeMethod('clearAppData', {'package': package}) ??
           false;
     } catch (_) {
       return false;
@@ -218,7 +228,8 @@ class AutoFillBridge {
 
   static Future<bool> openApp(String package) async {
     try {
-      return await _channel.invokeMethod('openApp', {'package': package}) ??
+      return await _channel
+              .invokeMethod('openApp', {'package': package}) ??
           false;
     } catch (_) {
       return false;
@@ -227,7 +238,8 @@ class AutoFillBridge {
 
   static Future<bool> clickAt(int x, int y) async {
     try {
-      return await _channel.invokeMethod('clickAt', {'x': x, 'y': y}) ?? false;
+      return await _channel.invokeMethod('clickAt', {'x': x, 'y': y}) ??
+          false;
     } catch (_) {
       return false;
     }
@@ -299,8 +311,8 @@ class AutoFillBridge {
 
   static Future<String?> resolvePackage(String nameOrPackage) async {
     try {
-      return await _channel
-          .invokeMethod('resolvePackage', {'name': nameOrPackage});
+      return await _channel.invokeMethod(
+          'resolvePackage', {'name': nameOrPackage});
     } catch (_) {
       return null;
     }
