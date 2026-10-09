@@ -4,7 +4,6 @@ import 'task_model.dart';
 import '../autofill_bridge.dart';
 import '../models.dart';
 
-// ⭐ ضفنا skipped
 enum StepStatus { pending, running, ok, failed, skipped }
 
 class StepResult {
@@ -42,19 +41,27 @@ class TaskRunner extends ChangeNotifier {
         break;
       }
       _currentIndex = i;
-      _results[i] = StepResult(stepId: task.steps[i].id, status: StepStatus.running);
+      _results[i] = StepResult(
+          stepId: task.steps[i].id, status: StepStatus.running);
       notifyListeners();
 
       final step = task.steps[i];
-      onLog(LogEntry('▶️ خطوة ${i + 1}/${task.steps.length}: ${step.typeLabel}',
-          DateTime.now(), LogLevel.info));
+      onLog(LogEntry(
+        '▶️ خطوة ${i + 1}/${task.steps.length}: ${step.typeLabel}',
+        DateTime.now(),
+        LogLevel.info,
+      ));
 
       final ok = await _executeStepWithTimeout(step, onLog);
 
       if (ok) {
         _results[i] = StepResult(stepId: step.id, status: StepStatus.ok);
         notifyListeners();
-        onLog(LogEntry('✅ خطوة ${i + 1} نجحت', DateTime.now(), LogLevel.ok));
+        onLog(LogEntry(
+          '✅ خطوة ${i + 1} نجحت',
+          DateTime.now(),
+          LogLevel.ok,
+        ));
 
         if (step.waitAfterMs > 0) {
           await Future.delayed(Duration(milliseconds: step.waitAfterMs));
@@ -68,7 +75,11 @@ class TaskRunner extends ChangeNotifier {
             message: 'اتخطت',
           );
           notifyListeners();
-          onLog(LogEntry('⏭️ تخطي الخطوة ${i + 1} والاستمرار', LogLevel.wait));
+          onLog(LogEntry(
+            '⏭️ تخطي الخطوة ${i + 1} والاستمرار',
+            DateTime.now(),
+            LogLevel.wait,
+          ));
           if (step.waitAfterMs > 0) {
             await Future.delayed(Duration(milliseconds: step.waitAfterMs));
           }
@@ -80,7 +91,11 @@ class TaskRunner extends ChangeNotifier {
             message: 'فشل',
           );
           notifyListeners();
-          onLog(LogEntry('❌ فشل الخطوة ${i + 1} - وقف المهمة', LogLevel.error));
+          onLog(LogEntry(
+            '❌ فشل الخطوة ${i + 1} - وقف المهمة',
+            DateTime.now(),
+            LogLevel.error,
+          ));
           allOk = false;
           break;
         }
@@ -109,7 +124,8 @@ class TaskRunner extends ChangeNotifier {
       return await _executeStep(step, onLog);
     }
 
-    final deadline = DateTime.now().add(Duration(milliseconds: step.timeoutMs));
+    final deadline =
+        DateTime.now().add(Duration(milliseconds: step.timeoutMs));
     int attempt = 0;
 
     while (DateTime.now().isBefore(deadline)) {
@@ -117,13 +133,21 @@ class TaskRunner extends ChangeNotifier {
       attempt++;
 
       if (attempt > 1) {
-        onLog(LogEntry('🔄 محاولة $attempt…', LogLevel.wait));
+        onLog(LogEntry(
+          '🔄 محاولة $attempt…',
+          DateTime.now(),
+          LogLevel.wait,
+        ));
       }
 
       final ok = await _executeStep(step, onLog);
       if (ok) {
         if (attempt > 1) {
-          onLog(LogEntry('✅ نجحت بعد $attempt محاولة', LogLevel.ok));
+          onLog(LogEntry(
+            '✅ نجحت بعد $attempt محاولة',
+            DateTime.now(),
+            LogLevel.ok,
+          ));
         }
         return true;
       }
@@ -136,6 +160,7 @@ class TaskRunner extends ChangeNotifier {
 
     onLog(LogEntry(
       '⏱️ انتهت المهلة (${step.timeoutMs} مللي، $attempt محاولة)',
+      DateTime.now(),
       LogLevel.error,
     ));
     return false;
@@ -150,7 +175,8 @@ class TaskRunner extends ChangeNotifier {
           return await AutoFillBridge.openApp(pkg);
 
         case TaskStepType.wait:
-          final ms = int.tryParse(step.params['ms']?.toString() ?? '1000') ?? 1000;
+          final ms =
+              int.tryParse(step.params['ms']?.toString() ?? '1000') ?? 1000;
           await Future.delayed(Duration(milliseconds: ms));
           return true;
 
@@ -183,7 +209,9 @@ class TaskRunner extends ChangeNotifier {
           final y1 = int.tryParse(step.params['y1']?.toString() ?? '0') ?? 0;
           final x2 = int.tryParse(step.params['x2']?.toString() ?? '0') ?? 0;
           final y2 = int.tryParse(step.params['y2']?.toString() ?? '0') ?? 0;
-          final d = int.tryParse(step.params['duration']?.toString() ?? '300') ?? 300;
+          final d = int.tryParse(
+                  step.params['duration']?.toString() ?? '300') ??
+              300;
           return await AutoFillBridge.swipe(x1, y1, x2, y2, d);
 
         case TaskStepType.back:
