@@ -39,10 +39,15 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
   late int _timeoutMs;
   late FailureAction _onFail;
   late int _skipCount;
-  late String _onAppear;
+  late OnAppearAction _onAppear;
+  late NotFoundAction _onNotFound;
   late TextEditingController _timeoutCtrl;
   late TextEditingController _skipCountCtrl;
   late TextEditingController _appearTextCtrl;
+  late TextEditingController _altTextCtrl;
+  late TextEditingController _altDescCtrl;
+  late TextEditingController _altViewIdCtrl;
+  late TextEditingController _altTypeCtrl;
   String? _selectedAppName;
   String? _lastHint;
 
@@ -55,13 +60,18 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
     _timeoutMs = widget.step.timeoutMs;
     _onFail = widget.step.onFail;
     _skipCount = widget.step.skipCount;
-    _onAppear =
-        widget.step.params['onAppear']?.toString() ?? 'none';
+    _onAppear = widget.step.onAppear;
+    _onNotFound = widget.step.onNotFound;
     _timeoutCtrl = TextEditingController(text: _timeoutMs.toString());
     _skipCountCtrl = TextEditingController(text: _skipCount.toString());
-    _appearTextCtrl = TextEditingController(
-      text: widget.step.params['appearText']?.toString() ?? '',
-    );
+    _appearTextCtrl =
+        TextEditingController(text: widget.step.appearText);
+    _altTextCtrl = TextEditingController(text: widget.step.altText);
+    _altDescCtrl = TextEditingController(text: widget.step.altDesc);
+    _altViewIdCtrl =
+        TextEditingController(text: widget.step.altViewId);
+    _altTypeCtrl =
+        TextEditingController(text: widget.step.altTypeText);
 
     final keys = _fieldKeysFor(_currentType);
     for (final k in keys) {
@@ -75,7 +85,6 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
   List<String> _fieldKeysFor(TaskStepType t) {
     switch (t) {
       case TaskStepType.openApp:
-        return ['package'];
       case TaskStepType.clearAppData:
         return ['package'];
       case TaskStepType.typeText:
@@ -111,6 +120,10 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
     _timeoutCtrl.dispose();
     _skipCountCtrl.dispose();
     _appearTextCtrl.dispose();
+    _altTextCtrl.dispose();
+    _altDescCtrl.dispose();
+    _altViewIdCtrl.dispose();
+    _altTypeCtrl.dispose();
     super.dispose();
   }
 
@@ -129,7 +142,6 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
         await showStepTypePicker(context, isDark: widget.isDark);
     if (newType == null || !mounted) return;
 
-    // احتفظ بالقيم القديمة
     final oldValues = <String, String>{};
     for (final e in _ctrls.entries) {
       oldValues[e.key] = e.value.text;
@@ -183,7 +195,6 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
   }
 
   void _applyPickedElement(ScreenElement picked, int sameIdx) {
-    // نوع typeText — الكتابة في الحقل
     if (_currentType == TaskStepType.typeText) {
       setState(() {
         if (picked.hasId) _ctrls['viewId']?.text = picked.id;
@@ -197,9 +208,7 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
       return;
     }
 
-    // أنواع الضغط — نحول النوع تلقائياً لو مش مناسب
     TaskStepType newType = _currentType;
-
     if (_currentType == TaskStepType.clickByText && !picked.hasText) {
       if (picked.hasDesc) {
         newType = TaskStepType.clickByDesc;
@@ -302,13 +311,6 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
     for (final e in _ctrls.entries) {
       params[e.key] = e.value.text;
     }
-    if (_isWaitForElement) {
-      params['onAppear'] = _onAppear;
-      if (_onAppear == 'type') {
-        params['appearText'] = _appearTextCtrl.text;
-      }
-    }
-
     Navigator.pop(
       context,
       widget.step.copyWith(
@@ -318,6 +320,13 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
         timeoutMs: _timeoutMs,
         onFail: _onFail,
         skipCount: _skipCount,
+        onAppear: _onAppear,
+        onNotFound: _onNotFound,
+        appearText: _appearTextCtrl.text,
+        altText: _altTextCtrl.text,
+        altDesc: _altDescCtrl.text,
+        altViewId: _altViewIdCtrl.text,
+        altTypeText: _altTypeCtrl.text,
       ),
     );
   }
@@ -384,6 +393,14 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
               _buildWaitSlider(theme),
 
               if (_isSearchStep) ..._buildTimeoutSection(theme),
+
+              // ⭐ قسم onAppear / onNotFound بس للـ waitForElement
+              if (_isWaitForElement) ...[
+                const SizedBox(height: 16),
+                _buildOnAppearSection(theme),
+                const SizedBox(height: 16),
+                _buildOnNotFoundSection(theme),
+              ],
 
               const SizedBox(height: 16),
               ActionBtn(
@@ -524,7 +541,6 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
     }
   }
 
-  // ═══════ App / ClearAppData ═══════
   List<Widget> _buildAppSection(ThemeData theme,
       {required bool warn}) {
     final pkg = _ctrls['package']?.text ?? '';
@@ -548,7 +564,7 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  'سيتم مسح كل بيانات التطبيق — رجع بيانات الإعدادات تلقائياً',
+                  'سيتم مسح كل بيانات التطبيق — الطريقة تختلف حسب الجهاز',
                   style: _noDeco.copyWith(
                       fontSize: 11,
                       color: const Color(0xFFFF6B6B),
@@ -624,7 +640,6 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
     ];
   }
 
-  // ═══════ Wait (ms) ═══════
   Widget _buildMsField(ThemeData theme) {
     return TextField(
       controller: _ctrls['ms'],
@@ -644,7 +659,6 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
     );
   }
 
-  // ═══════ Type Text Fields ═══════
   List<Widget> _buildTypeTextFields(ThemeData theme) {
     return [
       TextField(
@@ -656,7 +670,7 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
               color: theme.colorScheme.onSurface.withOpacity(0.6)),
           prefixIcon: const Icon(Icons.keyboard_rounded),
           helperText:
-              'يدعم: {num} = الرقم الحالي • {num:0} = أول رقم • {num:5} = الرقم السادس • {date} • {time}',
+              'يدعم: {num} = الرقم الحالي • {num:0} = أول رقم • {num:5} = السادس • {date} • {time}',
           helperStyle: TextStyle(
             fontSize: 10,
             color: theme.colorScheme.primary.withOpacity(0.7),
@@ -746,7 +760,6 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
     ];
   }
 
-  // ═══════ Click Fields ═══════
   List<Widget> _buildClickFields(ThemeData theme) {
     return [
       TextField(
@@ -823,82 +836,97 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
           ),
         ],
       ),
-      if (_isWaitForElement) ..._buildOnAppearSection(theme),
     ];
   }
 
   // ═══════ onAppear Section ═══════
-  List<Widget> _buildOnAppearSection(ThemeData theme) {
-    return [
-      const SizedBox(height: 16),
-      Divider(color: theme.colorScheme.primary.withOpacity(0.15)),
-      const SizedBox(height: 8),
-      Row(
-        children: [
-          Icon(Icons.play_circle_outline_rounded,
-              size: 16, color: theme.colorScheme.primary),
-          const SizedBox(width: 6),
-          Text(
-            'عند ظهور العنصر',
-            style: _noDeco.copyWith(
-              fontSize: 13,
-              fontWeight: FontWeight.bold,
-              color: theme.colorScheme.primary,
-            ),
+  Widget _buildOnAppearSection(ThemeData theme) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: const Color(0xFF00B894).withOpacity(0.08),
+            borderRadius: BorderRadius.circular(14),
+            border:
+                Border.all(color: const Color(0xFF00B894).withOpacity(0.3)),
           ),
-        ],
-      ),
-      const SizedBox(height: 10),
-      _onAppearChoice(
-        theme,
-        value: 'none',
-        icon: Icons.check_circle_outline_rounded,
-        label: 'متابعة عادية',
-        subtitle: 'يكمل للخطوة التالية',
-        color: const Color(0xFF00B894),
-      ),
-      const SizedBox(height: 8),
-      _onAppearChoice(
-        theme,
-        value: 'click',
-        icon: Icons.touch_app_rounded,
-        label: 'اضغط عليه',
-        subtitle: 'يضغط على العنصر أوتوماتيك',
-        color: const Color(0xFF00D2FF),
-      ),
-      const SizedBox(height: 8),
-      _onAppearChoice(
-        theme,
-        value: 'type',
-        icon: Icons.keyboard_rounded,
-        label: 'اكتب فيه',
-        subtitle: 'يكتب نص في العنصر',
-        color: const Color(0xFF6C5CE7),
-      ),
-      if (_onAppear == 'type') ...[
-        const SizedBox(height: 12),
-        TextField(
-          controller: _appearTextCtrl,
-          style: _noDeco.copyWith(fontSize: 15),
-          decoration: InputDecoration(
-            labelText: 'النص اللي هيتكتب',
-            labelStyle: _noDeco.copyWith(
-                color: theme.colorScheme.onSurface.withOpacity(0.6)),
-            prefixIcon: const Icon(Icons.edit_rounded, size: 18),
-            helperText: 'يدعم: {num} • {date} • {time}',
-            helperStyle: TextStyle(
-              fontSize: 10,
-              color: theme.colorScheme.primary.withOpacity(0.7),
-            ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.check_circle_outline_rounded,
+                      size: 18, color: Color(0xFF00B894)),
+                  const SizedBox(width: 6),
+                  Text(
+                    'لو العنصر ظهر',
+                    style: _noDeco.copyWith(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: const Color(0xFF00B894),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              _appearChoice(
+                theme,
+                value: OnAppearAction.none,
+                icon: Icons.arrow_forward_rounded,
+                label: 'متابعة عادية',
+                subtitle: 'يكمل للخطوة التالية',
+                color: const Color(0xFF00B894),
+              ),
+              const SizedBox(height: 6),
+              _appearChoice(
+                theme,
+                value: OnAppearAction.click,
+                icon: Icons.touch_app_rounded,
+                label: 'اضغط عليه',
+                subtitle: 'يضغط على العنصر أوتوماتيك',
+                color: const Color(0xFF00D2FF),
+              ),
+              const SizedBox(height: 6),
+              _appearChoice(
+                theme,
+                value: OnAppearAction.type,
+                icon: Icons.keyboard_rounded,
+                label: 'اكتب فيه',
+                subtitle: 'يكتب نص في العنصر',
+                color: const Color(0xFF6C5CE7),
+              ),
+              if (_onAppear == OnAppearAction.type) ...[
+                const SizedBox(height: 10),
+                TextField(
+                  controller: _appearTextCtrl,
+                  style: _noDeco.copyWith(fontSize: 15),
+                  decoration: InputDecoration(
+                    labelText: 'النص اللي هيتكتب',
+                    labelStyle: _noDeco.copyWith(
+                        color: theme.colorScheme.onSurface
+                            .withOpacity(0.6)),
+                    prefixIcon:
+                        const Icon(Icons.edit_rounded, size: 18),
+                    helperText: 'يدعم: {num} • {date} • {time}',
+                    helperStyle: TextStyle(
+                      fontSize: 10,
+                      color: theme.colorScheme.primary.withOpacity(0.7),
+                    ),
+                  ),
+                ),
+              ],
+            ],
           ),
         ),
       ],
-    ];
+    );
   }
 
-  Widget _onAppearChoice(
+  Widget _appearChoice(
     ThemeData theme, {
-    required String value,
+    required OnAppearAction value,
     required IconData icon,
     required String label,
     required String subtitle,
@@ -975,7 +1003,309 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
     );
   }
 
-  // ═══════ XY Row ═══════
+  // ═══════ onNotFound Section ═══════
+  Widget _buildOnNotFoundSection(ThemeData theme) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: const Color(0xFFFF6B6B).withOpacity(0.08),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+                color: const Color(0xFFFF6B6B).withOpacity(0.3)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.help_outline_rounded,
+                      size: 18, color: Color(0xFFFF6B6B)),
+                  const SizedBox(width: 6),
+                  Text(
+                    'لو العنصر ما ظهرش',
+                    style: _noDeco.copyWith(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: const Color(0xFFFF6B6B),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              _notFoundChoice(
+                theme,
+                value: NotFoundAction.skip,
+                icon: Icons.skip_next_rounded,
+                label: 'تخطي خطوات',
+                subtitle: 'يتخطى N خطوة ويكمل',
+                color: const Color(0xFFFFB84D),
+              ),
+              const SizedBox(height: 6),
+              _notFoundChoice(
+                theme,
+                value: NotFoundAction.clickAlt,
+                icon: Icons.touch_app_rounded,
+                label: 'اضغط على عنصر بديل',
+                subtitle: 'اضغط عنصر تاني تحدد',
+                color: const Color(0xFF00D2FF),
+              ),
+              const SizedBox(height: 6),
+              _notFoundChoice(
+                theme,
+                value: NotFoundAction.typeAlt,
+                icon: Icons.keyboard_rounded,
+                label: 'اكتب نص',
+                subtitle: 'يكتب نص في أي حقل',
+                color: const Color(0xFF6C5CE7),
+              ),
+              const SizedBox(height: 6),
+              _notFoundChoice(
+                theme,
+                value: NotFoundAction.back,
+                icon: Icons.arrow_back_rounded,
+                label: 'رجوع',
+                subtitle: 'يرجع للخلف',
+                color: const Color(0xFFE17055),
+              ),
+              const SizedBox(height: 6),
+              _notFoundChoice(
+                theme,
+                value: NotFoundAction.home,
+                icon: Icons.home_rounded,
+                label: 'الرئيسية',
+                subtitle: 'يروح للشاشة الرئيسية',
+                color: const Color(0xFF95A5A6),
+              ),
+              const SizedBox(height: 6),
+              _notFoundChoice(
+                theme,
+                value: NotFoundAction.stop,
+                icon: Icons.stop_rounded,
+                label: 'وقف المهمة',
+                subtitle: 'يوقف كل حاجة',
+                color: const Color(0xFFFF6B6B),
+              ),
+
+              // إعدادات حسب الاختيار
+              if (_onNotFound == NotFoundAction.skip) ...[
+                const SizedBox(height: 12),
+                _buildSkipCount(theme),
+              ],
+
+              if (_onNotFound == NotFoundAction.clickAlt) ...[
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _altTextCtrl,
+                  style: _noDeco.copyWith(fontSize: 14),
+                  decoration: InputDecoration(
+                    labelText: 'نص العنصر البديل',
+                    labelStyle: _noDeco.copyWith(
+                        color: theme.colorScheme.onSurface
+                            .withOpacity(0.6)),
+                    isDense: true,
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 12),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: _altDescCtrl,
+                  style: _noDeco.copyWith(fontSize: 14),
+                  decoration: InputDecoration(
+                    labelText: 'وصف العنصر البديل (اختياري)',
+                    labelStyle: _noDeco.copyWith(
+                        color: theme.colorScheme.onSurface
+                            .withOpacity(0.6)),
+                    isDense: true,
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 12),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: _altViewIdCtrl,
+                  style: _noDeco.copyWith(fontSize: 14),
+                  decoration: InputDecoration(
+                    labelText: 'id العنصر البديل (اختياري)',
+                    labelStyle: _noDeco.copyWith(
+                        color: theme.colorScheme.onSurface
+                            .withOpacity(0.6)),
+                    isDense: true,
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 12),
+                  ),
+                ),
+              ],
+
+              if (_onNotFound == NotFoundAction.typeAlt) ...[
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _altTypeCtrl,
+                  style: _noDeco.copyWith(fontSize: 14),
+                  decoration: InputDecoration(
+                    labelText: 'النص اللي هيتكتب',
+                    labelStyle: _noDeco.copyWith(
+                        color: theme.colorScheme.onSurface
+                            .withOpacity(0.6)),
+                    isDense: true,
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 12),
+                    helperText: 'يدعم: {num} • {date} • {time}',
+                    helperStyle: TextStyle(
+                      fontSize: 10,
+                      color: theme.colorScheme.primary.withOpacity(0.7),
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSkipCount(ThemeData theme) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface.withOpacity(0.5),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+            color: const Color(0xFFFFB84D).withOpacity(0.35)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.skip_next_rounded,
+              size: 16, color: Color(0xFFFFB84D)),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'خطوات إضافية للتخطي',
+                  style: _noDeco.copyWith(
+                      fontSize: 12, fontWeight: FontWeight.bold),
+                ),
+                Text(
+                  '0 = تخطى الخطوة دي بس',
+                  style: _noDeco.copyWith(
+                    fontSize: 10,
+                    color: theme.colorScheme.onSurface.withOpacity(0.5),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          SizedBox(
+            width: 60,
+            child: TextField(
+              controller: _skipCountCtrl,
+              textAlign: TextAlign.center,
+              keyboardType: TextInputType.number,
+              style: _noDeco.copyWith(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: const Color(0xFFFFB84D),
+              ),
+              decoration: const InputDecoration(
+                isDense: true,
+                contentPadding: EdgeInsets.symmetric(vertical: 8),
+              ),
+              onChanged: (v) {
+                final n = int.tryParse(v) ?? 0;
+                if (n >= 0) setState(() => _skipCount = n);
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _notFoundChoice(
+    ThemeData theme, {
+    required NotFoundAction value,
+    required IconData icon,
+    required String label,
+    required String subtitle,
+    required Color color,
+  }) {
+    final selected = _onNotFound == value;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () => setState(() => _onNotFound = value),
+        child: Container(
+          padding:
+              const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            color: selected
+                ? color.withOpacity(0.15)
+                : theme.colorScheme.surface.withOpacity(0.4),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: selected
+                  ? color
+                  : theme.colorScheme.primary.withOpacity(0.15),
+              width: selected ? 1.5 : 1,
+            ),
+          ),
+          child: Row(
+            children: [
+              Icon(
+                selected
+                    ? Icons.radio_button_checked_rounded
+                    : Icons.radio_button_unchecked_rounded,
+                color: selected
+                    ? color
+                    : theme.colorScheme.onSurface.withOpacity(0.4),
+                size: 20,
+              ),
+              const SizedBox(width: 10),
+              Icon(icon,
+                  size: 18,
+                  color: selected
+                      ? color
+                      : theme.colorScheme.onSurface.withOpacity(0.5)),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      label,
+                      style: _noDeco.copyWith(
+                        fontSize: 13,
+                        fontWeight: FontWeight.bold,
+                        color: selected
+                            ? color
+                            : theme.colorScheme.onSurface,
+                      ),
+                    ),
+                    Text(
+                      subtitle,
+                      style: _noDeco.copyWith(
+                        fontSize: 10,
+                        color: theme.colorScheme.onSurface
+                            .withOpacity(0.5),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildXYRow(ThemeData theme) {
     return Row(
       children: [
@@ -1010,7 +1340,6 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
     );
   }
 
-  // ═══════ Swipe Fields ═══════
   List<Widget> _buildSwipeFields(ThemeData theme) {
     return [
       Row(
@@ -1099,7 +1428,6 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
     ];
   }
 
-  // ═══════ Wait Slider ═══════
   Widget _buildWaitSlider(ThemeData theme) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1121,7 +1449,6 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
     );
   }
 
-  // ═══════ Timeout Section ═══════
   List<Widget> _buildTimeoutSection(ThemeData theme) {
     return [
       Divider(color: theme.colorScheme.primary.withOpacity(0.15)),
@@ -1203,111 +1530,114 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
           color: theme.colorScheme.onSurface.withOpacity(0.55),
         ),
       ),
-      const SizedBox(height: 12),
-      Row(
-        children: [
-          Icon(Icons.error_outline_rounded,
-              size: 16, color: theme.colorScheme.primary),
-          const SizedBox(width: 6),
-          Text(
-            'لو فشلت الخطوة',
-            style: _noDeco.copyWith(
-              fontSize: 13,
-              fontWeight: FontWeight.bold,
-              color: theme.colorScheme.primary,
-            ),
-          ),
-        ],
-      ),
-      const SizedBox(height: 10),
-      Row(
-        children: [
-          Expanded(
-            child: _actionChoice(
-              theme,
-              label: 'وقف المهمة',
-              icon: Icons.stop_rounded,
-              selected: _onFail == FailureAction.stop,
-              color: const Color(0xFFFF6B6B),
-              onTap: () =>
-                  setState(() => _onFail = FailureAction.stop),
-            ),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: _actionChoice(
-              theme,
-              label: 'تخطى',
-              icon: Icons.skip_next_rounded,
-              selected: _onFail == FailureAction.skip,
-              color: const Color(0xFFFFB84D),
-              onTap: () =>
-                  setState(() => _onFail = FailureAction.skip),
-            ),
-          ),
-        ],
-      ),
-      if (_onFail == FailureAction.skip) ...[
-        const SizedBox(height: 10),
-        Container(
-          padding:
-              const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          decoration: BoxDecoration(
-            color: theme.colorScheme.surface.withOpacity(0.5),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-                color: const Color(0xFFFFB84D).withOpacity(0.35)),
-          ),
-          child: Row(
-            children: [
-              const Icon(Icons.skip_next_rounded,
-                  size: 16, color: Color(0xFFFFB84D)),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'خطوات إضافية للتخطي',
-                      style: _noDeco.copyWith(
-                          fontSize: 12, fontWeight: FontWeight.bold),
-                    ),
-                    Text(
-                      '0 = تخطى الخطوة دي بس',
-                      style: _noDeco.copyWith(
-                        fontSize: 10,
-                        color: theme.colorScheme.onSurface
-                            .withOpacity(0.5),
-                      ),
-                    ),
-                  ],
-                ),
+      // onFail مش هيظهر في waitForElement — لأن onNotFound بيحل مكانه
+      if (!_isWaitForElement) ...[
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Icon(Icons.error_outline_rounded,
+                size: 16, color: theme.colorScheme.primary),
+            const SizedBox(width: 6),
+            Text(
+              'لو فشلت الخطوة',
+              style: _noDeco.copyWith(
+                fontSize: 13,
+                fontWeight: FontWeight.bold,
+                color: theme.colorScheme.primary,
               ),
-              SizedBox(
-                width: 60,
-                child: TextField(
-                  controller: _skipCountCtrl,
-                  textAlign: TextAlign.center,
-                  keyboardType: TextInputType.number,
-                  style: _noDeco.copyWith(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: const Color(0xFFFFB84D),
-                  ),
-                  decoration: const InputDecoration(
-                    isDense: true,
-                    contentPadding:
-                        EdgeInsets.symmetric(vertical: 8),
-                  ),
-                  onChanged: (v) {
-                    final n = int.tryParse(v) ?? 0;
-                    if (n >= 0) setState(() => _skipCount = n);
-                  },
-                ),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            Expanded(
+              child: _actionChoice(
+                theme,
+                label: 'وقف المهمة',
+                icon: Icons.stop_rounded,
+                selected: _onFail == FailureAction.stop,
+                color: const Color(0xFFFF6B6B),
+                onTap: () =>
+                    setState(() => _onFail = FailureAction.stop),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: _actionChoice(
+                theme,
+                label: 'تخطى',
+                icon: Icons.skip_next_rounded,
+                selected: _onFail == FailureAction.skip,
+                color: const Color(0xFFFFB84D),
+                onTap: () =>
+                    setState(() => _onFail = FailureAction.skip),
+              ),
+            ),
+          ],
+        ),
+        if (_onFail == FailureAction.skip) ...[
+          const SizedBox(height: 10),
+          Container(
+            padding:
+                const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: theme.colorScheme.surface.withOpacity(0.5),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                  color: const Color(0xFFFFB84D).withOpacity(0.35)),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.skip_next_rounded,
+                    size: 16, color: Color(0xFFFFB84D)),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'خطوات إضافية للتخطي',
+                        style: _noDeco.copyWith(
+                            fontSize: 12, fontWeight: FontWeight.bold),
+                      ),
+                      Text(
+                        '0 = تخطى الخطوة دي بس',
+                        style: _noDeco.copyWith(
+                          fontSize: 10,
+                          color: theme.colorScheme.onSurface
+                              .withOpacity(0.5),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                SizedBox(
+                  width: 60,
+                  child: TextField(
+                    controller: _skipCountCtrl,
+                    textAlign: TextAlign.center,
+                    keyboardType: TextInputType.number,
+                    style: _noDeco.copyWith(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: const Color(0xFFFFB84D),
+                    ),
+                    decoration: const InputDecoration(
+                      isDense: true,
+                      contentPadding:
+                          EdgeInsets.symmetric(vertical: 8),
+                    ),
+                    onChanged: (v) {
+                      final n = int.tryParse(v) ?? 0;
+                      if (n >= 0) setState(() => _skipCount = n);
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ],
     ];
   }
