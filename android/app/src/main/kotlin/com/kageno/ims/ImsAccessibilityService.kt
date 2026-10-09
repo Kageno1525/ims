@@ -38,53 +38,28 @@ class ImsAccessibilityService : AccessibilityService() {
         @Volatile
         private var lastEditableRef: WeakReference<AccessibilityNodeInfo>? = null
 
-        fun typeTextStatic(text: String): Boolean {
-            return instance?.typeTextInternal(text) ?: false
-        }
+        fun typeTextStatic(text: String): Boolean =
+            instance?.typeTextInternal(text) ?: false
 
-        fun hasCachedEditable(): Boolean {
-            return try {
-                val n = lastEditableRef?.get()
-                n != null && n.refresh() && n.isEditable
-            } catch (_: Exception) { false }
-        }
+        fun hasCachedEditable(): Boolean = try {
+            val n = lastEditableRef?.get()
+            n != null && n.refresh() && n.isEditable
+        } catch (_: Exception) { false }
 
-        fun openAppStatic(pkg: String): Boolean =
-            instance?.openAppInternal(pkg) ?: false
-
-        fun clickByTextStatic(text: String): Boolean =
-            instance?.clickByTextInternal(text) ?: false
-
-        fun clickByDescStatic(desc: String): Boolean =
-            instance?.clickByDescInternal(desc) ?: false
-
-        fun clickByIdStatic(viewId: String): Boolean =
-            instance?.clickByIdInternal(viewId) ?: false
-
-        fun clickAtStatic(x: Int, y: Int): Boolean =
-            instance?.clickAtInternal(x, y) ?: false
-
-        fun swipeStatic(x1: Int, y1: Int, x2: Int, y2: Int, duration: Int): Boolean =
-            instance?.swipeInternal(x1, y1, x2, y2, duration) ?: false
-
-        fun globalBackStatic(): Boolean =
-            instance?.performGlobalAction(GLOBAL_ACTION_BACK) ?: false
-
-        fun globalHomeStatic(): Boolean =
-            instance?.performGlobalAction(GLOBAL_ACTION_HOME) ?: false
-
-        fun globalRecentsStatic(): Boolean =
-            instance?.performGlobalAction(GLOBAL_ACTION_RECENTS) ?: false
-
-        fun currentPackageStatic(): String {
-            return try {
-                instance?.rootInActiveWindow?.packageName?.toString() ?: ""
-            } catch (_: Exception) { "" }
-        }
-
-        // ⭐ تفريغ الشاشة
-        fun dumpScreenStatic(): String =
-            instance?.dumpScreenInternal() ?: "[]"
+        fun openAppStatic(pkg: String): Boolean = instance?.openAppInternal(pkg) ?: false
+        fun clickByTextStatic(text: String): Boolean = instance?.clickByTextInternal(text) ?: false
+        fun clickByDescStatic(desc: String): Boolean = instance?.clickByDescInternal(desc) ?: false
+        fun clickByIdStatic(viewId: String): Boolean = instance?.clickByIdInternal(viewId) ?: false
+        fun clickAtStatic(x: Int, y: Int): Boolean = instance?.clickAtInternal(x, y) ?: false
+        fun swipeStatic(x1: Int, y1: Int, x2: Int, y2: Int, d: Int): Boolean =
+            instance?.swipeInternal(x1, y1, x2, y2, d) ?: false
+        fun globalBackStatic(): Boolean = instance?.performGlobalAction(GLOBAL_ACTION_BACK) ?: false
+        fun globalHomeStatic(): Boolean = instance?.performGlobalAction(GLOBAL_ACTION_HOME) ?: false
+        fun globalRecentsStatic(): Boolean = instance?.performGlobalAction(GLOBAL_ACTION_RECENTS) ?: false
+        fun currentPackageStatic(): String = try {
+            instance?.rootInActiveWindow?.packageName?.toString() ?: ""
+        } catch (_: Exception) { "" }
+        fun dumpScreenStatic(): String = instance?.dumpScreenInternal() ?: "[]"
     }
 
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -129,11 +104,10 @@ class ImsAccessibilityService : AccessibilityService() {
         } catch (_: Exception) {}
     }
 
-    // ═══════════════ تفريغ الشاشة ═══════════════
+    // ═══════════════ تفريغ الشاشة — نسخة موسّعة ═══════════════
     private fun dumpScreenInternal(): String {
         val arr = JSONArray()
         val seen = mutableSetOf<String>()
-
         try {
             val roots = mutableListOf<AccessibilityNodeInfo>()
             try {
@@ -145,17 +119,11 @@ class ImsAccessibilityService : AccessibilityService() {
                     }
                 }
             } catch (_: Exception) {}
-            if (roots.isEmpty()) {
-                rootInActiveWindow?.let { roots.add(it) }
-            }
-
-            for (root in roots) {
-                walkNode(root, 0, arr, seen)
-            }
+            if (roots.isEmpty()) rootInActiveWindow?.let { roots.add(it) }
+            for (root in roots) walkNode(root, 0, arr, seen)
         } catch (e: Exception) {
             Log.e(TAG, "dump", e)
         }
-
         return arr.toString()
     }
 
@@ -165,7 +133,7 @@ class ImsAccessibilityService : AccessibilityService() {
         arr: JSONArray,
         seen: MutableSet<String>
     ) {
-        if (node == null || depth > 40) return
+        if (node == null || depth > 50) return
 
         try {
             if (!node.refresh()) return
@@ -175,23 +143,46 @@ class ImsAccessibilityService : AccessibilityService() {
             val viewId = node.viewIdResourceName ?: ""
             val cls = node.className?.toString() ?: ""
             val hint = try {
-                if (android.os.Build.VERSION.SDK_INT >= 26) {
-                    node.hintText?.toString()?.trim() ?: ""
-                } else ""
+                if (android.os.Build.VERSION.SDK_INT >= 26)
+                    node.hintText?.toString()?.trim() ?: "" else ""
             } catch (_: Exception) { "" }
             val isClickable = node.isClickable
+            val isLongClickable = node.isLongClickable
+            val isFocusable = node.isFocusable
             val isEditable = node.isEditable
             val isVisible = node.isVisibleToUser
+            val isEnabled = node.isEnabled
             val pkg = node.packageName?.toString() ?: ""
 
-            if (isVisible && (text.isNotEmpty() || desc.isNotEmpty() ||
-                        hint.isNotEmpty() || isEditable || isClickable)) {
-                val rect = Rect()
-                node.getBoundsInScreen(rect)
-                if (rect.width() > 0 && rect.height() > 0) {
-                    val key = "$viewId|$text|$desc|${rect.left}|${rect.top}|$cls"
+            val rect = Rect()
+            node.getBoundsInScreen(rect)
+
+            val childCount = try { node.childCount } catch (_: Exception) { 0 }
+            val indexInParent = try { node.indexInParent } catch (_: Exception) { -1 }
+
+            // ⭐ الفلتر الجديد - أوسع بكتير
+            if (isVisible && rect.width() > 0 && rect.height() > 0 && arr.length() < 800) {
+                val hasContent = text.isNotEmpty() || desc.isNotEmpty() || hint.isNotEmpty()
+                val isInteractive = isClickable || isLongClickable || isEditable || isFocusable
+                val hasId = viewId.isNotEmpty()
+
+                if (hasContent || isInteractive || hasId) {
+                    val key = "$viewId|$text|$desc|${rect.left},${rect.top}|$cls|$indexInParent"
                     if (!seen.contains(key)) {
                         seen.add(key)
+
+                        // ⭐ ابحث عن أب قابل للضغط
+                        var clickableParent = false
+                        try {
+                            var p = node.parent
+                            var d = 0
+                            while (p != null && d < 8) {
+                                if (p.isClickable) { clickableParent = true; break }
+                                p = p.parent
+                                d++
+                            }
+                        } catch (_: Exception) {}
+
                         val obj = JSONObject()
                         obj.put("text", text)
                         obj.put("desc", desc)
@@ -199,7 +190,11 @@ class ImsAccessibilityService : AccessibilityService() {
                         obj.put("className", cls)
                         obj.put("hint", hint)
                         obj.put("clickable", isClickable)
+                        obj.put("longClickable", isLongClickable)
+                        obj.put("focusable", isFocusable)
                         obj.put("editable", isEditable)
+                        obj.put("enabled", isEnabled)
+                        obj.put("clickableParent", clickableParent)
                         obj.put("pkg", pkg)
                         obj.put("x", rect.centerX())
                         obj.put("y", rect.centerY())
@@ -207,17 +202,20 @@ class ImsAccessibilityService : AccessibilityService() {
                         obj.put("top", rect.top)
                         obj.put("right", rect.right)
                         obj.put("bottom", rect.bottom)
+                        obj.put("width", rect.width())
+                        obj.put("height", rect.height())
                         obj.put("depth", depth)
+                        obj.put("childCount", childCount)
+                        obj.put("indexInParent", indexInParent)
                         arr.put(obj)
                     }
                 }
             }
 
-            val count = node.childCount
+            val count = try { node.childCount } catch (_: Exception) { 0 }
             for (i in 0 until count) {
-                try {
-                    walkNode(node.getChild(i), depth + 1, arr, seen)
-                } catch (_: Exception) {}
+                try { walkNode(node.getChild(i), depth + 1, arr, seen) }
+                catch (_: Exception) {}
             }
         } catch (_: Exception) {}
     }
@@ -226,26 +224,18 @@ class ImsAccessibilityService : AccessibilityService() {
     private fun openAppInternal(pkg: String): Boolean {
         return try {
             val intent = packageManager.getLaunchIntentForPackage(pkg)
-            if (intent == null) {
-                Log.w(TAG, "no launch intent for $pkg")
-                return false
-            }
+            if (intent == null) { Log.w(TAG, "no launch intent for $pkg"); return false }
             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             startActivity(intent)
             true
-        } catch (e: Exception) {
-            Log.e(TAG, "openApp", e)
-            false
-        }
+        } catch (e: Exception) { Log.e(TAG, "openApp", e); false }
     }
 
     // ═══════════════ الكتابة ═══════════════
     private fun typeTextInternal(text: String): Boolean {
         val delays = longArrayOf(0L, 120L, 220L, 350L)
         for (delay in delays) {
-            if (delay > 0) {
-                try { Thread.sleep(delay) } catch (_: InterruptedException) { return false }
-            }
+            if (delay > 0) try { Thread.sleep(delay) } catch (_: InterruptedException) { return false }
             if (tryOnce(text)) return true
         }
         return false
@@ -353,16 +343,12 @@ class ImsAccessibilityService : AccessibilityService() {
             try { Thread.sleep(100) } catch (_: InterruptedException) {}
 
             var ok = false
-            try {
-                ok = node.performAction(AccessibilityNodeInfo.ACTION_PASTE)
-            } catch (_: Exception) {}
+            try { ok = node.performAction(AccessibilityNodeInfo.ACTION_PASTE) } catch (_: Exception) {}
             if (!ok) {
                 val focused = findFocusedInput()
-                if (focused != null) {
-                    try {
-                        ok = focused.performAction(AccessibilityNodeInfo.ACTION_PASTE)
-                    } catch (_: Exception) {}
-                }
+                if (focused != null) try {
+                    ok = focused.performAction(AccessibilityNodeInfo.ACTION_PASTE)
+                } catch (_: Exception) {}
             }
 
             try { Thread.sleep(80) } catch (_: InterruptedException) {}
@@ -372,10 +358,7 @@ class ImsAccessibilityService : AccessibilityService() {
                 if (now.contains(text)) return true
             }
             return ok
-        } catch (e: Exception) {
-            Log.e(TAG, "gesture paste", e)
-            return false
-        }
+        } catch (e: Exception) { Log.e(TAG, "gesture paste", e); return false }
     }
 
     private fun copyToClipboard(text: String) {
@@ -454,17 +437,14 @@ class ImsAccessibilityService : AccessibilityService() {
     }
 
     private fun performClickOnNode(node: AccessibilityNodeInfo): Boolean {
-        try {
-            if (node.performAction(AccessibilityNodeInfo.ACTION_CLICK)) return true
-        } catch (_: Exception) {}
+        try { if (node.performAction(AccessibilityNodeInfo.ACTION_CLICK)) return true }
+        catch (_: Exception) {}
 
         try {
             var p = node.parent
             var depth = 0
             while (p != null && depth < 6) {
-                if (p.isClickable && p.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
-                    return true
-                }
+                if (p.isClickable && p.performAction(AccessibilityNodeInfo.ACTION_CLICK)) return true
                 p = p.parent
                 depth++
             }
