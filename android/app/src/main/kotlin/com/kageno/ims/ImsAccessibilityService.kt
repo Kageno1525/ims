@@ -104,7 +104,7 @@ class ImsAccessibilityService : AccessibilityService() {
         } catch (_: Exception) {}
     }
 
-    // ═══════════════ تفريغ الشاشة — نسخة موسّعة ═══════════════
+    // ═══════════════ تفريغ الشاشة ═══════════════
     private fun dumpScreenInternal(): String {
         val arr = JSONArray()
         val seen = mutableSetOf<String>()
@@ -158,20 +158,17 @@ class ImsAccessibilityService : AccessibilityService() {
             node.getBoundsInScreen(rect)
 
             val childCount = try { node.childCount } catch (_: Exception) { 0 }
-            val indexInParent = try { node.indexInParent } catch (_: Exception) { -1 }
 
-            // ⭐ الفلتر الجديد - أوسع بكتير
             if (isVisible && rect.width() > 0 && rect.height() > 0 && arr.length() < 800) {
                 val hasContent = text.isNotEmpty() || desc.isNotEmpty() || hint.isNotEmpty()
                 val isInteractive = isClickable || isLongClickable || isEditable || isFocusable
                 val hasId = viewId.isNotEmpty()
 
                 if (hasContent || isInteractive || hasId) {
-                    val key = "$viewId|$text|$desc|${rect.left},${rect.top}|$cls|$indexInParent"
+                    val key = "$viewId|$text|$desc|${rect.left},${rect.top}|$cls"
                     if (!seen.contains(key)) {
                         seen.add(key)
 
-                        // ⭐ ابحث عن أب قابل للضغط
                         var clickableParent = false
                         try {
                             var p = node.parent
@@ -206,7 +203,6 @@ class ImsAccessibilityService : AccessibilityService() {
                         obj.put("height", rect.height())
                         obj.put("depth", depth)
                         obj.put("childCount", childCount)
-                        obj.put("indexInParent", indexInParent)
                         arr.put(obj)
                     }
                 }
