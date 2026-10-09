@@ -165,7 +165,6 @@ class ImsAccessibilityService : AccessibilityService() {
         if (node == null || depth > 50) return
         try {
             if (!node.refresh()) return
-
             val text = node.text?.toString()?.trim() ?: ""
             val desc = node.contentDescription?.toString()?.trim() ?: ""
             val viewId = node.viewIdResourceName ?: ""
@@ -197,7 +196,6 @@ class ImsAccessibilityService : AccessibilityService() {
                     val key = "$viewId|$text|$desc|${rect.left},${rect.top}|$cls"
                     if (!seen.contains(key)) {
                         seen.add(key)
-
                         var clickableParent = false
                         try {
                             var p = node.parent
@@ -289,7 +287,6 @@ class ImsAccessibilityService : AccessibilityService() {
         try {
             if (!node.refresh()) return false
             if (!node.isVisibleToUser) return false
-
             if (text.isNotEmpty()) {
                 val t = node.text?.toString() ?: ""
                 if (!t.contains(text)) return false
@@ -597,61 +594,152 @@ class ImsAccessibilityService : AccessibilityService() {
         try {
             if (pkg.isEmpty()) return false
 
+            Log.d(TAG, "clearAppData: starting for $pkg")
+
             // 1) افتح صفحة التطبيق في الإعدادات
             val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
             intent.data = Uri.parse("package:$pkg")
             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             startActivity(intent)
 
-            // 2) استنى الصفحة تفتح
-            try { Thread.sleep(1500) } catch (_: Exception) {}
+            try { Thread.sleep(1800) } catch (_: Exception) {}
 
-            // 3) دوّر على "Storage" / "التخزين"
+            // 2) دوّر على "Storage" / "التخزين" — كل الاحتمالات
             val storageClicked = clickByAnyText(
-                timeoutMs = 3000,
-                maxAttempts = 15,
+                timeoutMs = 5000,
+                maxAttempts = 25,
                 keywords = arrayOf(
+                    // English — Stock Android
                     "Storage & cache",
+                    "Storage and cache",
+                    "Storage & cache usage",
+                    "Storage usage",
                     "Storage",
+                    "App storage",
+                    "Memory",
+                    // English — Samsung
+                    "Storage",
+                    "Storage and cache",
+                    // English — Xiaomi/MIUI
+                    "Storage",
+                    "Storage usage",
+                    "Manage storage",
+                    // English — OnePlus/Oppo/Realme
+                    "Storage",
+                    "App storage",
+                    "Storage usage",
+                    // English — Huawei
+                    "Storage",
+                    "Storage & cache",
+                    // Arabic — Stock
                     "التخزين والذاكرة",
-                    "التخزين"
+                    "التخزين والذاكرة المؤقتة",
+                    "التخزين",
+                    "مساحة التخزين",
+                    "ذاكرة التخزين",
+                    "استخدام التخزين",
+                    "إدارة التخزين",
+                    "التخزين المؤقت",
+                    "الذاكرة والتخزين",
+                    "المساحة والتخزين",
+                    "التخزين و التخزين المؤقت",
+                    "التخزين والتخزين المؤقت",
                 )
             )
-            if (!storageClicked) return false
+            Log.d(TAG, "clearAppData: storage click = $storageClicked")
+            if (!storageClicked) {
+                // في بعض الأجهزة لازم ندوس "Storage & cache" من تاب تاني
+                // نجرّب ندوس على أي حاجة فيها "Storage" أو "تخزين"
+                clickByAnyText(
+                    timeoutMs = 2000,
+                    maxAttempts = 10,
+                    keywords = arrayOf(
+                        "Storage", "التخزين", "ذاكرة"
+                    )
+                )
+            }
 
-            try { Thread.sleep(1000) } catch (_: Exception) {}
+            try { Thread.sleep(1200) } catch (_: Exception) {}
 
-            // 4) دوّر على "Clear data" / "Clear storage" / "مسح البيانات"
+            // 3) دوّر على "Clear data" / "Clear storage" / "محو" — كل الاحتمالات
             val clearClicked = clickByAnyText(
-                timeoutMs = 3000,
-                maxAttempts = 15,
+                timeoutMs = 5000,
+                maxAttempts = 25,
                 keywords = arrayOf(
+                    // English — Stock
                     "Clear storage",
                     "Clear data",
                     "Clear app data",
+                    "Clear all data",
+                    "Clear all",
+                    "Clear cache and data",
+                    "Clear user data",
+                    "Reset app",
+                    "Erase data",
+                    "Delete data",
+                    "Delete app data",
+                    "Delete all data",
+                    // Arabic — كل الصيغ
                     "مسح التخزين",
-                    "مسح البيانات"
+                    "مسح البيانات",
+                    "مسح بيانات التطبيق",
+                    "مسح كل البيانات",
+                    "مسح الكل",
+                    "محو التخزين",
+                    "محو البيانات",
+                    "محو كل البيانات",
+                    "محو الكل",
+                    "محو",
+                    "مسح",
+                    "حذف التخزين",
+                    "حذف البيانات",
+                    "حذف كل البيانات",
+                    "حذف الكل",
+                    "إعادة تعيين التطبيق",
+                    "إعادة التعيين",
+                    "تفريغ التخزين",
+                    "تفريغ البيانات",
+                    "إزالة البيانات",
+                    "إزالة التخزين",
                 )
             )
+            Log.d(TAG, "clearAppData: clear click = $clearClicked")
             if (!clearClicked) return false
 
-            try { Thread.sleep(800) } catch (_: Exception) {}
+            try { Thread.sleep(900) } catch (_: Exception) {}
 
-            // 5) أكد الحوار
+            // 4) أكد الحوار — كل الاحتمالات
             clickByAnyText(
-                timeoutMs = 2000,
-                maxAttempts = 10,
+                timeoutMs = 3000,
+                maxAttempts = 15,
                 keywords = arrayOf(
                     "Clear all data",
+                    "Clear data",
                     "Delete",
+                    "Erase",
                     "OK",
+                    "Ok",
                     "Yes",
+                    "Yes, clear",
                     "Confirm",
+                    "Confirm clear",
+                    "Continue",
+                    "Reset",
                     "مسح الكل",
+                    "مسح",
+                    "محو الكل",
+                    "محو",
                     "حذف",
                     "موافق",
                     "نعم",
-                    "تأكيد"
+                    "تأكيد",
+                    "متابعة",
+                    "استمرار",
+                    "إعادة تعيين",
+                    "الموافقة",
+                    "أوافق",
+                    "تمام",
+                    "طيب",
                 )
             )
 
@@ -662,7 +750,7 @@ class ImsAccessibilityService : AccessibilityService() {
         }
     }
 
-    /// دوّر على عنصر ب أي نص من الكلمات المفتاحية واضغط عليه
+    /// دوّر على عنصر بأي كلمة من الكلمات المفتاحية واضغط عليه
     private fun clickByAnyText(
         timeoutMs: Long,
         maxAttempts: Int,
@@ -689,7 +777,11 @@ class ImsAccessibilityService : AccessibilityService() {
                                 desc.equals(kw, ignoreCase = true) ||
                                 desc.contains(kw, ignoreCase = true)
                             ) {
-                                if (performClickOnNode(node)) return true
+                                // نجرّب click على العنصر أو الأب
+                                if (performClickOnNode(node)) {
+                                    Log.d(TAG, "clicked: $text / $desc")
+                                    return true
+                                }
                             }
                         }
                     } catch (_: Exception) {}
