@@ -706,192 +706,243 @@ class ImsAccessibilityService : AccessibilityService() {
 
     // ═══════════════ مسح بيانات تطبيق ═══════════════
     private fun clearAppDataInternal(pkg: String): Boolean {
-        try {
-            if (pkg.isEmpty()) return false
+    try {
+        if (pkg.isEmpty()) return false
 
-            Log.d(TAG, "clearAppData: starting for $pkg")
+        Log.d(TAG, "clearAppData: starting for $pkg")
 
-            // 1) افتح صفحة التطبيق في الإعدادات
-            val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
-            intent.data = Uri.parse("package:$pkg")
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            startActivity(intent)
+        // 1) افتح صفحة التطبيق في الإعدادات
+        val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+        intent.data = Uri.parse("package:$pkg")
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        startActivity(intent)
 
-            try {
-                Thread.sleep(1800)
-            } catch (_: Exception) {
-            }
+        try { Thread.sleep(2000) } catch (_: Exception) {}
 
-            // 2) فتح صفحة التخزين
-            clickByAnyText(
-                timeoutMs = 5000,
-                maxAttempts = 25,
-                keywords = arrayOf(
-                    "Storage & cache",
-                    "Storage and cache",
-                    "Storage & cache usage",
-                    "Storage usage",
-                    "Storage",
-                    "App storage",
-                    "Manage storage",
-                    "Memory",
-                    "التخزين والذاكرة",
-                    "التخزين والذاكرة المؤقتة",
-                    "التخزين",
-                    "مساحة التخزين",
-                    "ذاكرة التخزين",
-                    "استخدام التخزين",
-                    "إدارة التخزين",
-                    "التخزين المؤقت",
-                    "الذاكرة والتخزين",
-                    "المساحة والتخزين",
-                    "التخزين و التخزين المؤقت",
-                    "التخزين والتخزين المؤقت"
-                )
+        // 2) فتح صفحة التخزين
+        val storageOpened = clickByAnyText(
+            timeoutMs = 6000,
+            maxAttempts = 30,
+            keywords = arrayOf(
+                "Storage & cache",
+                "Storage and cache",
+                "Storage & cache usage",
+                "Storage usage",
+                "Storage",
+                "App storage",
+                "Manage storage",
+                "Memory",
+                "التخزين والذاكرة",
+                "التخزين والذاكرة المؤقتة",
+                "التخزين",
+                "مساحة التخزين",
+                "ذاكرة التخزين",
+                "استخدام التخزين",
+                "إدارة التخزين",
+                "التخزين المؤقت",
+                "الذاكرة والتخزين",
+                "المساحة والتخزين",
+                "التخزين و التخزين المؤقت",
+                "التخزين والتخزين المؤقت"
             )
+        )
+        Log.d(TAG, "clearAppData: storage opened = $storageOpened")
 
-            try {
-                Thread.sleep(1200)
-            } catch (_: Exception) {
-            }
+        try { Thread.sleep(1500) } catch (_: Exception) {}
 
-            // 3) زر المسح الفعلي
-            val clearClicked = clickByAnyText(
-                timeoutMs = 5000,
-                maxAttempts = 25,
-                keywords = arrayOf(
-                    "Clear storage",
-                    "Clear data",
-                    "Clear app data",
-                    "Clear all data",
-                    "Clear all",
-                    "Clear cache and data",
-                    "Clear user data",
-                    "Reset app",
-                    "Erase data",
-                    "Delete data",
-                    "Delete app data",
-                    "Delete all data",
-                    "مسح التخزين",
-                    "مسح البيانات",
-                    "مسح بيانات التطبيق",
-                    "مسح كل البيانات",
-                    "مسح الكل",
-                    "محو التخزين",
-                    "محو البيانات",
-                    "محو كل البيانات",
-                    "محو الكل",
-                    "محو",
-                    "مسح",
-                    "حذف التخزين",
-                    "حذف البيانات",
-                    "حذف كل البيانات",
-                    "حذف الكل",
-                    "إعادة تعيين التطبيق",
-                    "إعادة التعيين",
-                    "تفريغ التخزين",
-                    "تفريغ البيانات",
-                    "إزالة البيانات",
-                    "إزالة التخزين"
-                )
-            )
-            if (!clearClicked) return false
-
-            try {
-                Thread.sleep(900)
-            } catch (_: Exception) {
-            }
-
-            // 4) تأكيد الحوار — كل الاحتمالات
-            val confirmKeywords = arrayOf(
-                "Clear all data",
-                "Clear data",
+        // 3) زر المسح الفعلي (اللي بيفتح الديالوج)
+        //    ملاحظة: بعد ما ندوس عليه، بيفتح ديالوج جديد
+        val clearClicked = clickByAnyText(
+            timeoutMs = 6000,
+            maxAttempts = 30,
+            keywords = arrayOf(
                 "Clear storage",
-                "Delete",
-                "Delete all",
-                "Erase",
-                "Erase all",
-                "Erase data",
-                "OK",
-                "Ok",
-                "ok",
-                "Yes",
-                "yes",
-                "Yes, clear",
-                "Yes, clear all",
-                "Yes, delete",
-                "Confirm",
-                "Confirm clear",
-                "Confirm delete",
-                "Continue",
-                "Proceed",
-                "Reset",
+                "Clear data",
+                "Clear app data",
+                "Clear all data",
+                "Clear user data",
+                "Clear cache and data",
                 "Reset app",
-                "Allow",
-                "Agree",
-                "Accept",
-                "Got it",
-                "Understood",
-                "I understand",
-                "Done",
-                "مسح الكل",
-                "مسح البيانات",
+                "Erase data",
+                "Delete data",
+                "Delete app data",
+                "Delete all data",
                 "مسح التخزين",
-                "مسح",
-                "محو الكل",
-                "محو البيانات",
+                "مسح البيانات",
+                "مسح بيانات التطبيق",
+                "مسح كل البيانات",
                 "محو التخزين",
+                "محو البيانات",
+                "محو كل البيانات",
                 "محو",
-                "حذف الكل",
-                "حذف البيانات",
+                "مسح",
                 "حذف التخزين",
-                "حذف",
-                "موافق",
-                "أوافق",
-                "الموافقة",
-                "نعم",
-                "حسناً",
-                "حسنا",
-                "تمام",
-                "طيب",
-                "متابعة",
-                "استمرار",
-                "تأكيد",
-                "تأكيد المسح",
-                "إعادة تعيين",
+                "حذف البيانات",
+                "حذف كل البيانات",
+                "إعادة تعيين التطبيق",
                 "إعادة التعيين",
-                "أفهم",
-                "فهمت",
-                "إزالة",
-                "إزالة الكل",
-                "تفريغ",
-                "تفريغ الكل",
-                "السماح",
-                "قبول"
+                "تفريغ التخزين",
+                "تفريغ البيانات",
+                "إزالة البيانات",
+                "إزالة التخزين"
             )
+        )
+        Log.d(TAG, "clearAppData: clear clicked = $clearClicked")
+        if (!clearClicked) return false
 
-            // 3 محاولات لتأكيد الحوار
-            for (attempt in 0 until 3) {
-                val ok = clickByAnyText(
-                    timeoutMs = 3000,
-                    maxAttempts = 15,
-                    keywords = confirmKeywords
-                )
-                if (!ok) {
-                    break
-                }
-                try {
-                    Thread.sleep(700)
-                } catch (_: Exception) {
-                }
-            }
+        // 4) ⭐⭐ استنى الديالوج يظهر
+        try { Thread.sleep(1800) } catch (_: Exception) {}
 
+        // 5) ⭐⭐ اضغط التأكيد بعدة طرق
+
+        // أ. جرّب الأزرار بالـ ID المشهورة في Android dialogs
+        if (clickAndroidDialogButton()) {
+            Log.d(TAG, "clearAppData: dialog button clicked via ID")
+            try { Thread.sleep(1000) } catch (_: Exception) {}
             return true
-        } catch (e: Exception) {
-            Log.e(TAG, "clearAppData", e)
-            return false
         }
+
+        // ب. جرّب بالكلمات المفتاحية
+        val confirmKeywords = arrayOf(
+            // English
+            "Clear all data",
+            "Clear data",
+            "Clear storage",
+            "Delete",
+            "Delete all",
+            "Delete data",
+            "Erase",
+            "Erase all",
+            "Erase data",
+            "OK",
+            "Ok",
+            "ok",
+            "Yes",
+            "yes",
+            "Yes, clear",
+            "Yes, clear all",
+            "Yes, delete",
+            "Confirm",
+            "Confirm clear",
+            "Confirm delete",
+            "Continue",
+            "Proceed",
+            "Reset",
+            "Reset app",
+            "Allow",
+            "Agree",
+            "Accept",
+            "Got it",
+            "Understood",
+            "I understand",
+            "Done",
+            // Arabic
+            "مسح الكل",
+            "مسح البيانات",
+            "مسح التخزين",
+            "محو الكل",
+            "محو البيانات",
+            "محو التخزين",
+            "حذف الكل",
+            "حذف البيانات",
+            "حذف التخزين",
+            "حذف",
+            "محو",
+            "مسح",
+            "موافق",
+            "أوافق",
+            "الموافقة",
+            "نعم",
+            "حسناً",
+            "حسنا",
+            "تمام",
+            "طيب",
+            "متابعة",
+            "استمرار",
+            "تأكيد",
+            "تأكيد المسح",
+            "إعادة تعيين",
+            "إعادة التعيين",
+            "أفهم",
+            "فهمت",
+            "إزالة",
+            "إزالة الكل",
+            "تفريغ",
+            "تفريغ الكل",
+            "السماح",
+            "قبول"
+        )
+
+        // نحاول 5 مرات
+        for (i in 0 until 5) {
+            val ok = clickByAnyText(
+                timeoutMs = 2500,
+                maxAttempts = 15,
+                keywords = confirmKeywords
+            )
+            Log.d(TAG, "clearAppData: confirm attempt $i = $ok")
+            if (!ok) break
+            try { Thread.sleep(900) } catch (_: Exception) {}
+        }
+
+        return true
+    } catch (e: Exception) {
+        Log.e(TAG, "clearAppData", e)
+        return false
     }
+}
+
+/// يحاول يدوس على زرار الديالوج بالـ ID (android:id/button1/button2)
+/// button1 = الأزرار الإيجابية (Delete / OK / نعم)
+/// button2 = الأزرار السلبية (Cancel / إلغاء) — نتجنبها
+private fun clickAndroidDialogButton(): Boolean {
+    try {
+        val all = collectAllNodes()
+        // جرّب أول button1 (ده اللي في 90% من الحالات هو Confirm)
+        for (node in all) {
+            try {
+                val viewId = node.viewIdResourceName ?: ""
+                if (viewId == "android:id/button1" && node.isVisibleToUser) {
+                    // تأكد إن النص مش "Cancel" أو "إلغاء"
+                    val t = node.text?.toString()?.trim() ?: ""
+                    if (t.contains("Cancel", ignoreCase = true) ||
+                        t.contains("إلغاء") ||
+                        t.contains("لا")
+                    ) {
+                        continue
+                    }
+                    if (performClickOnNode(node)) {
+                        Log.d(TAG, "clicked android:id/button1 ($t)")
+                        return true
+                    }
+                }
+            } catch (_: Exception) {}
+        }
+        // جرّب button2 كـ fallback (بس لو نصه إيجابي)
+        for (node in all) {
+            try {
+                val viewId = node.viewIdResourceName ?: ""
+                if (viewId == "android:id/button2" && node.isVisibleToUser) {
+                    val t = node.text?.toString()?.trim() ?: ""
+                    if (t.contains("Delete", ignoreCase = true) ||
+                        t.contains("OK", ignoreCase = true) ||
+                        t.contains("Yes", ignoreCase = true) ||
+                        t.contains("حذف") ||
+                        t.contains("محو") ||
+                        t.contains("موافق") ||
+                        t.contains("نعم")
+                    ) {
+                        if (performClickOnNode(node)) {
+                            Log.d(TAG, "clicked android:id/button2 ($t)")
+                            return true
+                        }
+                    }
+                }
+            } catch (_: Exception) {}
+        }
+    } catch (_: Exception) {}
+    return false
+}
 
     /// دوّر على عنصر بأي كلمة من الكلمات المفتاحية واضغط عليه
     private fun clickByAnyText(
