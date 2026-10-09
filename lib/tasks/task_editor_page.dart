@@ -59,6 +59,8 @@ class _TaskEditorPageState extends State<TaskEditorPage> {
         return Icons.tag_rounded;
       case TaskStepType.clickAt:
         return Icons.my_location_rounded;
+      case TaskStepType.waitForElement:
+        return Icons.hourglass_bottom_rounded;
       case TaskStepType.swipe:
         return Icons.swipe_rounded;
       case TaskStepType.wait:
@@ -84,6 +86,8 @@ class _TaskEditorPageState extends State<TaskEditorPage> {
         return const [Color(0xFF00B894), Color(0xFF00D68F)];
       case TaskStepType.clickAt:
         return const [Color(0xFFFFB84D), Color(0xFFFFD93D)];
+      case TaskStepType.waitForElement:
+        return const [Color(0xFFE17055), Color(0xFFFF8A65)];
       case TaskStepType.swipe:
         return const [Color(0xFFFF6B6B), Color(0xFFFF8E53)];
       case TaskStepType.wait:
@@ -112,7 +116,6 @@ class _TaskEditorPageState extends State<TaskEditorPage> {
     );
     if (result == null) return;
     if (!mounted) return;
-
     final configured = await showModalBottomSheet<TaskStep>(
       context: context,
       backgroundColor: Colors.transparent,
@@ -122,7 +125,6 @@ class _TaskEditorPageState extends State<TaskEditorPage> {
         step: result,
       ),
     );
-
     if (configured != null) {
       setState(() => _steps.add(configured));
     }
@@ -489,6 +491,17 @@ class _TaskEditorPageState extends State<TaskEditorPage> {
                       const SizedBox(width: 8),
                       const Icon(Icons.skip_next_rounded,
                           size: 10, color: Color(0xFFFFB84D)),
+                      if (step.skipCount > 0) ...[
+                        const SizedBox(width: 2),
+                        Text(
+                          '×${step.skipCount + 1}',
+                          style: _noDeco.copyWith(
+                            fontSize: 10,
+                            color: const Color(0xFFFFB84D),
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
                     ],
                   ],
                 ),
@@ -585,6 +598,8 @@ class _StepTypePicker extends StatelessWidget {
         return Icons.tag_rounded;
       case TaskStepType.clickAt:
         return Icons.my_location_rounded;
+      case TaskStepType.waitForElement:
+        return Icons.hourglass_bottom_rounded;
       case TaskStepType.swipe:
         return Icons.swipe_rounded;
       case TaskStepType.wait:
@@ -652,8 +667,7 @@ class _StepTypePicker extends StatelessWidget {
                             .withOpacity(isDark ? 0.6 : 0.9),
                         borderRadius: BorderRadius.circular(14),
                         border: Border.all(
-                          color:
-                              theme.colorScheme.primary.withOpacity(0.25),
+                          color: theme.colorScheme.primary.withOpacity(0.25),
                         ),
                       ),
                       child: Column(
@@ -704,6 +718,9 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
   late int _waitAfter;
   late int _timeoutMs;
   late FailureAction _onFail;
+  late int _skipCount;
+  late TextEditingController _timeoutCtrl;
+  late TextEditingController _skipCountCtrl;
   String? _selectedAppName;
   String? _lastHint;
 
@@ -715,6 +732,9 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
     _waitAfter = widget.step.waitAfterMs;
     _timeoutMs = widget.step.timeoutMs;
     _onFail = widget.step.onFail;
+    _skipCount = widget.step.skipCount;
+    _timeoutCtrl = TextEditingController(text: _timeoutMs.toString());
+    _skipCountCtrl = TextEditingController(text: _skipCount.toString());
 
     final keys = _fieldKeysFor(_currentType);
     for (final k in keys) {
@@ -734,6 +754,7 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
       case TaskStepType.clickByText:
       case TaskStepType.clickByDesc:
       case TaskStepType.clickById:
+      case TaskStepType.waitForElement:
         return ['text', 'desc', 'viewId', 'className', 'elementIndex'];
       case TaskStepType.clickAt:
         return ['x', 'y'];
@@ -789,11 +810,21 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
     }
   }
 
+  bool _isTextField(String key) {
+    return key == 'text' ||
+        key == 'desc' ||
+        key == 'hint' ||
+        key == 'viewId' ||
+        key == 'className';
+  }
+
   @override
   void dispose() {
     for (final c in _ctrls.values) {
       c.dispose();
     }
+    _timeoutCtrl.dispose();
+    _skipCountCtrl.dispose();
     super.dispose();
   }
 
@@ -862,7 +893,6 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
       return;
     }
 
-    // Click steps
     TaskStepType newType = _currentType;
 
     if (_currentType == TaskStepType.clickByText && !picked.hasText) {
@@ -924,7 +954,7 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
         _lastHint =
             'تم تغيير النوع تلقائياً لـ ${TaskStep(id: '', type: newType, params: {}, waitAfterMs: 0).typeLabel}';
       } else {
-        _lastHint = 'تم اختيار: ${picked.bestLabel} (${picked.shortClassName})';
+        _lastHint = 'تم اختيار: ${picked.bestLabel}';
       }
     });
   }
@@ -936,6 +966,7 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
       case TaskStepType.clickById:
       case TaskStepType.clickAt:
       case TaskStepType.typeText:
+      case TaskStepType.waitForElement:
         return true;
       default:
         return false;
@@ -948,6 +979,7 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
       case TaskStepType.clickByDesc:
       case TaskStepType.clickById:
       case TaskStepType.clickAt:
+      case TaskStepType.waitForElement:
         return true;
       default:
         return false;
@@ -995,7 +1027,7 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
                     fontSize: 20, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 14),
-              if (_canInspect) _buildInspectButton(theme),
+              if (_canInspect) _buildInspectButton(),
               if (_lastHint != null) ...[
                 const SizedBox(height: 10),
                 _buildHintBox(),
@@ -1054,6 +1086,7 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
                       waitAfterMs: _waitAfter,
                       timeoutMs: _timeoutMs,
                       onFail: _onFail,
+                      skipCount: _skipCount,
                     ),
                   );
                 },
@@ -1066,7 +1099,7 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
     );
   }
 
-  Widget _buildInspectButton(ThemeData theme) {
+  Widget _buildInspectButton() {
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -1219,17 +1252,35 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
         key == 'y2' ||
         key == 'duration' ||
         key == 'ms';
+
+    final isVariable = _isTextField(key);
+    final hintText = isVariable
+        ? 'يدعم: {num} = الرقم الحالي • {num:0} = أول رقم • {date} • {time}'
+        : null;
+
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
-      child: TextField(
-        controller: ctrl,
-        style: _noDeco.copyWith(fontSize: 15),
-        keyboardType: isNumeric ? TextInputType.number : TextInputType.text,
-        decoration: InputDecoration(
-          labelText: _labelFor(key),
-          labelStyle: _noDeco.copyWith(
-              color: theme.colorScheme.onSurface.withOpacity(0.6)),
-        ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          TextField(
+            controller: ctrl,
+            style: _noDeco.copyWith(fontSize: 15),
+            keyboardType:
+                isNumeric ? TextInputType.number : TextInputType.text,
+            decoration: InputDecoration(
+              labelText: _labelFor(key),
+              labelStyle: _noDeco.copyWith(
+                  color: theme.colorScheme.onSurface.withOpacity(0.6)),
+              helperText: hintText,
+              helperStyle: TextStyle(
+                fontSize: 10,
+                color: theme.colorScheme.primary.withOpacity(0.7),
+              ),
+              helperMaxLines: 2,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -1308,7 +1359,7 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
           ),
           const Spacer(),
           Text(
-            _timeoutMs == 0 ? 'بدون' : '$_timeoutMs مللي',
+            _timeoutMs == 0 ? 'بدون' : '${(_timeoutMs / 1000).toStringAsFixed(1)}ث',
             style: _noDeco.copyWith(
               fontSize: 12,
               fontWeight: FontWeight.bold,
@@ -1317,13 +1368,60 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
           ),
         ],
       ),
-      Slider(
-        value: _timeoutMs.toDouble(),
-        min: 0,
-        max: 15000,
-        divisions: 30,
-        label: _timeoutMs == 0 ? 'بدون' : '$_timeoutMs',
-        onChanged: (v) => setState(() => _timeoutMs = v.round()),
+      Row(
+        children: [
+          Expanded(
+            child: Slider(
+              value: _timeoutMs.toDouble().clamp(0, 120000),
+              min: 0,
+              max: 120000,
+              divisions: 120,
+              label: _timeoutMs == 0
+                  ? 'بدون'
+                  : '${(_timeoutMs / 1000).toStringAsFixed(0)}ث',
+              onChanged: (v) {
+                setState(() {
+                  _timeoutMs = v.round();
+                  _timeoutCtrl.text = _timeoutMs.toString();
+                });
+              },
+            ),
+          ),
+          SizedBox(
+            width: 90,
+            child: TextField(
+              controller: _timeoutCtrl,
+              keyboardType: TextInputType.number,
+              textAlign: TextAlign.center,
+              style: _noDeco.copyWith(
+                  fontSize: 14, fontWeight: FontWeight.bold),
+              decoration: const InputDecoration(
+                isDense: true,
+                contentPadding:
+                    EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+                suffixText: 'مللي',
+                suffixStyle: TextStyle(fontSize: 10),
+              ),
+              onChanged: (v) {
+                final n = int.tryParse(v) ?? 0;
+                if (n >= 0) {
+                  setState(() {
+                    _timeoutMs = n;
+                  });
+                }
+              },
+            ),
+          ),
+        ],
+      ),
+      Text(
+        _timeoutMs == 0
+            ? 'هيتم تنفيذ الخطوة مرة واحدة بس'
+            : 'هيفضل يدوّر لحد ${(_timeoutMs / 1000).toStringAsFixed(1)} ثانية',
+        style: _noDeco.copyWith(
+          fontSize: 10,
+          color: theme.colorScheme.onSurface.withOpacity(0.55),
+        ),
       ),
       const SizedBox(height: 12),
       Row(
@@ -1359,7 +1457,7 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
           Expanded(
             child: _actionChoice(
               theme,
-              label: 'تخطى الخطوة',
+              label: 'تخطى',
               icon: Icons.skip_next_rounded,
               selected: _onFail == FailureAction.skip,
               color: const Color(0xFFFFB84D),
@@ -1369,6 +1467,67 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
           ),
         ],
       ),
+      if (_onFail == FailureAction.skip) ...[
+        const SizedBox(height: 10),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surface.withOpacity(0.5),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+                color: const Color(0xFFFFB84D).withOpacity(0.35)),
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.skip_next_rounded,
+                  size: 16, color: Color(0xFFFFB84D)),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'عدد الخطوات الإضافية للتخطي',
+                      style: _noDeco.copyWith(
+                          fontSize: 12, fontWeight: FontWeight.bold),
+                    ),
+                    Text(
+                      '0 = تخطى الخطوة دي بس',
+                      style: _noDeco.copyWith(
+                        fontSize: 10,
+                        color: theme.colorScheme.onSurface.withOpacity(0.5),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              SizedBox(
+                width: 60,
+                child: TextField(
+                  controller: _skipCountCtrl,
+                  textAlign: TextAlign.center,
+                  keyboardType: TextInputType.number,
+                  style: _noDeco.copyWith(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: const Color(0xFFFFB84D),
+                  ),
+                  decoration: const InputDecoration(
+                    isDense: true,
+                    contentPadding: EdgeInsets.symmetric(vertical: 8),
+                  ),
+                  onChanged: (v) {
+                    final n = int.tryParse(v) ?? 0;
+                    if (n >= 0) {
+                      setState(() => _skipCount = n);
+                    }
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     ];
   }
 
@@ -1489,9 +1648,7 @@ class _CountdownDialogState extends State<_CountdownDialog> {
           ),
           const SizedBox(height: 10),
           Text(
-            _capturing
-                ? 'من فضلك استنى'
-                : 'اسرع! روح للتطبيق',
+            _capturing ? 'من فضلك استنى' : 'اسرع! روح للتطبيق',
             textAlign: TextAlign.center,
             style: TextStyle(
               fontSize: 12,
@@ -1698,9 +1855,8 @@ class _ElementPickerSheetState extends State<_ElementPickerSheet> {
                 : ListView.builder(
                     padding: const EdgeInsets.symmetric(horizontal: 12),
                     itemCount: _filtered.length,
-                    itemBuilder: (_, i) {
-                      return _buildElementTile(theme, _filtered[i]);
-                    },
+                    itemBuilder: (_, i) =>
+                        _buildElementTile(theme, _filtered[i]),
                   ),
           ),
           const SizedBox(height: 12),
@@ -1772,8 +1928,8 @@ class _ElementPickerSheetState extends State<_ElementPickerSheet> {
                             e.shortClassName,
                             style: _noDeco.copyWith(
                               fontSize: 9.5,
-                              color:
-                                  theme.colorScheme.onSurface.withOpacity(0.4),
+                              color: theme.colorScheme.onSurface
+                                  .withOpacity(0.4),
                             ),
                           ),
                           if (sameIdx > 0) ...[
