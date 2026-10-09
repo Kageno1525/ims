@@ -1,30 +1,25 @@
 enum TaskStepType {
-  openApp,
-  wait,
-  typeText,
-  clickByText,
-  clickByDesc,
-  clickById,
-  clickAt,
-  swipe,
-  back,
-  home,
-  recents,
+  openApp, wait, typeText,
+  clickByText, clickByDesc, clickById, clickAt,
+  swipe, back, home, recents,
 }
 
-// ⭐ جديد: إيه يحصل لو الخطوة فشلت
-enum FailureAction {
-  stop,   // وقف المهمة
-  skip,   // تخطى الخطوة وكمّل
-}
+enum FailureAction { stop, skip }
 
 class TaskStep {
   final String id;
   final TaskStepType type;
   final Map<String, dynamic> params;
+  // params الممكنة:
+  //   للـ click: text, desc, viewId, className, elementIndex, preferClickable
+  //   للـ typeText: text, viewId, hint, className, elementIndex
+  //   للـ openApp: package
+  //   للـ wait: ms
+  //   للـ clickAt: x, y
+  //   للـ swipe: x1, y1, x2, y2, duration
   final int waitAfterMs;
-  final int timeoutMs;              // ⭐ جديد
-  final FailureAction onFail;       // ⭐ جديد
+  final int timeoutMs;
+  final FailureAction onFail;
 
   TaskStep({
     required this.id,
@@ -36,51 +31,38 @@ class TaskStep {
   });
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'type': type.name,
-        'params': params,
-        'waitAfterMs': waitAfterMs,
-        'timeoutMs': timeoutMs,
-        'onFail': onFail.name,
-      };
+    'id': id, 'type': type.name, 'params': params,
+    'waitAfterMs': waitAfterMs, 'timeoutMs': timeoutMs, 'onFail': onFail.name,
+  };
 
   factory TaskStep.fromJson(Map<String, dynamic> json) => TaskStep(
-        id: json['id']?.toString() ?? '',
-        type: TaskStepType.values.firstWhere(
-          (e) => e.name == json['type'],
-          orElse: () => TaskStepType.wait,
-        ),
-        params: Map<String, dynamic>.from(json['params'] ?? {}),
-        waitAfterMs: json['waitAfterMs'] ?? 500,
-        timeoutMs: json['timeoutMs'] ?? 0,
-        onFail: FailureAction.values.firstWhere(
-          (e) => e.name == json['onFail'],
-          orElse: () => FailureAction.stop,
-        ),
-      );
+    id: json['id']?.toString() ?? '',
+    type: TaskStepType.values.firstWhere(
+      (e) => e.name == json['type'], orElse: () => TaskStepType.wait),
+    params: Map<String, dynamic>.from(json['params'] ?? {}),
+    waitAfterMs: json['waitAfterMs'] ?? 500,
+    timeoutMs: json['timeoutMs'] ?? 0,
+    onFail: FailureAction.values.firstWhere(
+      (e) => e.name == json['onFail'], orElse: () => FailureAction.stop),
+  );
 
   TaskStep copyWith({
-    String? id,
-    TaskStepType? type,
-    Map<String, dynamic>? params,
-    int? waitAfterMs,
-    int? timeoutMs,
-    FailureAction? onFail,
-  }) =>
-      TaskStep(
-        id: id ?? this.id,
-        type: type ?? this.type,
-        params: params ?? this.params,
-        waitAfterMs: waitAfterMs ?? this.waitAfterMs,
-        timeoutMs: timeoutMs ?? this.timeoutMs,
-        onFail: onFail ?? this.onFail,
-      );
+    String? id, TaskStepType? type, Map<String, dynamic>? params,
+    int? waitAfterMs, int? timeoutMs, FailureAction? onFail,
+  }) => TaskStep(
+    id: id ?? this.id, type: type ?? this.type, params: params ?? this.params,
+    waitAfterMs: waitAfterMs ?? this.waitAfterMs,
+    timeoutMs: timeoutMs ?? this.timeoutMs,
+    onFail: onFail ?? this.onFail,
+  );
 
-  bool get isSearchStep =>
+  bool get isClickStep =>
       type == TaskStepType.clickByText ||
       type == TaskStepType.clickByDesc ||
       type == TaskStepType.clickById ||
       type == TaskStepType.clickAt;
+
+  bool get isSearchStep => isClickStep;
 
   String get typeLabel {
     switch (type) {
@@ -102,7 +84,13 @@ class TaskStep {
     switch (type) {
       case TaskStepType.openApp: return params['package']?.toString() ?? '';
       case TaskStepType.wait: return '${params['ms'] ?? 1000} مللي';
-      case TaskStepType.typeText: return params['text']?.toString() ?? '';
+      case TaskStepType.typeText:
+        final v = params['text']?.toString() ?? '';
+        final id = params['viewId']?.toString() ?? '';
+        final hint = params['hint']?.toString() ?? '';
+        if (id.isNotEmpty) return 'في $id: $v';
+        if (hint.isNotEmpty) return 'في "$hint": $v';
+        return v;
       case TaskStepType.clickByText: return 'النص: ${params['text'] ?? ''}';
       case TaskStepType.clickByDesc: return 'الوصف: ${params['desc'] ?? ''}';
       case TaskStepType.clickById: return 'id: ${params['viewId'] ?? ''}';
@@ -124,43 +112,28 @@ class Task {
   final DateTime? lastRunAt;
 
   Task({
-    required this.id,
-    required this.name,
-    required this.steps,
-    required this.createdAt,
-    this.lastRunAt,
+    required this.id, required this.name, required this.steps,
+    required this.createdAt, this.lastRunAt,
   });
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'name': name,
-        'steps': steps.map((s) => s.toJson()).toList(),
-        'createdAt': createdAt.toIso8601String(),
-        'lastRunAt': lastRunAt?.toIso8601String(),
-      };
+    'id': id, 'name': name,
+    'steps': steps.map((s) => s.toJson()).toList(),
+    'createdAt': createdAt.toIso8601String(),
+    'lastRunAt': lastRunAt?.toIso8601String(),
+  };
 
   factory Task.fromJson(Map<String, dynamic> json) => Task(
-        id: json['id']?.toString() ?? '',
-        name: json['name']?.toString() ?? '',
-        steps: (json['steps'] as List? ?? [])
-            .map((e) => TaskStep.fromJson(Map<String, dynamic>.from(e)))
-            .toList(),
-        createdAt: DateTime.tryParse(json['createdAt']?.toString() ?? '') ??
-            DateTime.now(),
-        lastRunAt: json['lastRunAt'] != null
-            ? DateTime.tryParse(json['lastRunAt'].toString()) : null,
-      );
+    id: json['id']?.toString() ?? '',
+    name: json['name']?.toString() ?? '',
+    steps: (json['steps'] as List? ?? [])
+        .map((e) => TaskStep.fromJson(Map<String, dynamic>.from(e))).toList(),
+    createdAt: DateTime.tryParse(json['createdAt']?.toString() ?? '') ?? DateTime.now(),
+    lastRunAt: json['lastRunAt'] != null ? DateTime.tryParse(json['lastRunAt'].toString()) : null,
+  );
 
-  Task copyWith({
-    String? name,
-    List<TaskStep>? steps,
-    DateTime? lastRunAt,
-  }) =>
-      Task(
-        id: id,
-        name: name ?? this.name,
-        steps: steps ?? this.steps,
-        createdAt: createdAt,
-        lastRunAt: lastRunAt ?? this.lastRunAt,
-      );
+  Task copyWith({String? name, List<TaskStep>? steps, DateTime? lastRunAt}) => Task(
+    id: id, name: name ?? this.name, steps: steps ?? this.steps,
+    createdAt: createdAt, lastRunAt: lastRunAt ?? this.lastRunAt,
+  );
 }
