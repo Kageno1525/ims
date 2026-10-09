@@ -29,7 +29,7 @@ class TasksPage extends StatefulWidget {
   State<TasksPage> createState() => _TasksPageState();
 }
 
-class _TasksPageState extends State<TasksPage> {
+class _TasksPageState extends State<TasksPage> with WidgetsBindingObserver {
   static const _noDeco = TextStyle(
     decoration: TextDecoration.none,
     decorationColor: Colors.transparent,
@@ -37,6 +37,7 @@ class _TasksPageState extends State<TasksPage> {
 
   List<Task> _tasks = [];
   bool _loading = true;
+  bool _accessibilityOn = false;
   Task? _runningTask;
   final TaskRunner _runner = TaskRunner();
   final ValueNotifier<List<LogEntry>> _logs =
@@ -45,7 +46,9 @@ class _TasksPageState extends State<TasksPage> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _load();
+    _checkAccessibility();
     _runner.addListener(() {
       if (mounted) setState(() {});
     });
@@ -53,9 +56,23 @@ class _TasksPageState extends State<TasksPage> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _runner.dispose();
     _logs.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _checkAccessibility();
+    }
+  }
+
+  Future<void> _checkAccessibility() async {
+    final a = await AutoFillBridge.isAccessibilityEnabled();
+    if (!mounted) return;
+    setState(() => _accessibilityOn = a);
   }
 
   Future<void> _load() async {
@@ -197,11 +214,8 @@ class _TasksPageState extends State<TasksPage> {
                       ],
                     ),
                   ),
-                  IconBtn(
-                    icon: Icons.settings_rounded,
-                    onTap: () =>
-                        AutoFillBridge.openAccessibilitySettings(),
-                  ),
+                  // ⭐ زرار الإعدادات بلون حسب الحالة
+                  _accessibilityBtn(theme),
                   const SizedBox(width: 8),
                   IconBtn(
                     icon: widget.isDark
@@ -261,6 +275,65 @@ class _TasksPageState extends State<TasksPage> {
     );
   }
 
+  // ⭐ زرار الإعدادات
+  Widget _accessibilityBtn(ThemeData theme) {
+    final on = _accessibilityOn;
+    final color = on ? const Color(0xFF00D68F) : const Color(0xFFFF6B6B);
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(30),
+        onTap: () async {
+          await AutoFillBridge.openAccessibilitySettings();
+          await Future.delayed(const Duration(seconds: 1));
+          _checkAccessibility();
+        },
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [
+                color.withOpacity(0.2),
+                color.withOpacity(0.1),
+              ],
+            ),
+            borderRadius: BorderRadius.circular(30),
+            border: Border.all(color: color, width: 1.5),
+            boxShadow: [
+              BoxShadow(
+                color: color.withOpacity(0.3),
+                blurRadius: 8,
+                offset: const Offset(0, 3),
+              ),
+            ],
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                on
+                    ? Icons.check_circle_rounded
+                    : Icons.error_rounded,
+                size: 18,
+                color: color,
+              ),
+              const SizedBox(width: 5),
+              Text(
+                on ? 'مفعّل' : 'مقفول',
+                style: _noDeco.copyWith(
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                  color: color,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _runningBar(ThemeData theme) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
@@ -282,12 +355,25 @@ class _TasksPageState extends State<TasksPage> {
           ),
           const SizedBox(width: 12),
           Expanded(
-            child: Text(
-              'جاري تشغيل: ${_runningTask?.name ?? ""}',
-              style: _noDeco.copyWith(
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
-              ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'جاري تشغيل: ${_runningTask?.name ?? ""}',
+                  style: _noDeco.copyWith(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                if (_runner.totalTaskRounds > 1)
+                  Text(
+                    'دورة ${_runner.currentTaskRound + 1}/${_runner.totalTaskRounds}',
+                    style: _noDeco.copyWith(
+                      color: Colors.white.withOpacity(0.85),
+                      fontSize: 11,
+                    ),
+                  ),
+              ],
             ),
           ),
           Material(
@@ -398,16 +484,54 @@ class _TasksPageState extends State<TasksPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      task.name,
-                      style: _noDeco.copyWith(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 15,
-                      ),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            task.name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: _noDeco.copyWith(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 15,
+                            ),
+                          ),
+                        ),
+                        if (task.repeatCount > 1) ...[
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF6C5CE7)
+                                  .withOpacity(0.2),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(Icons.repeat_rounded,
+                                    size: 10,
+                                    color: Color(0xFF6C5CE7)),
+                                const SizedBox(width: 3),
+                                Text(
+                                  '×${task.repeatCount}',
+                                  style: _noDeco.copyWith(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.bold,
+                                    color: const Color(0xFF6C5CE7),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      '${task.steps.length} خطوة',
+                      '${task.steps.length} خطوة'
+                      '${task.autoIncrement ? " • الأرقام تتقدم" : ""}',
                       style: _noDeco.copyWith(
                         fontSize: 11,
                         color: theme.colorScheme.onSurface.withOpacity(0.5),
