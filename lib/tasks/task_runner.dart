@@ -76,7 +76,9 @@ class TaskRunner extends ChangeNotifier {
       } else {
         if (step.onFail == FailureAction.skip) {
           final skipTotal = 1 + step.skipCount;
-          for (int k = 0; k < skipTotal && i + k < task.steps.length; k++) {
+          for (int k = 0;
+              k < skipTotal && i + k < task.steps.length;
+              k++) {
             _results[i + k] = StepResult(
               stepId: task.steps[i + k].id,
               status: StepStatus.skipped,
@@ -90,7 +92,8 @@ class TaskRunner extends ChangeNotifier {
             LogLevel.wait,
           ));
           if (step.waitAfterMs > 0) {
-            await Future.delayed(Duration(milliseconds: step.waitAfterMs));
+            await Future.delayed(
+                Duration(milliseconds: step.waitAfterMs));
           }
           i += skipTotal;
         } else {
@@ -160,22 +163,31 @@ class TaskRunner extends ChangeNotifier {
       attempt++;
 
       if (attempt > 1) {
-        onLog(LogEntry('🔄 محاولة $attempt…', DateTime.now(), LogLevel.wait));
+        onLog(LogEntry(
+          '🔄 محاولة $attempt…',
+          DateTime.now(),
+          LogLevel.wait,
+        ));
       }
 
       final ok = await _executeStep(step, onLog);
       if (ok) {
         if (attempt > 1) {
-          onLog(LogEntry('✅ نجحت بعد $attempt محاولة',
-              DateTime.now(), LogLevel.ok));
+          onLog(LogEntry(
+            '✅ نجحت بعد $attempt محاولة',
+            DateTime.now(),
+            LogLevel.ok,
+          ));
         }
         return true;
       }
 
       final delay = (100 * attempt).clamp(100, 900);
-      final remaining = deadline.difference(DateTime.now()).inMilliseconds;
+      final remaining =
+          deadline.difference(DateTime.now()).inMilliseconds;
       if (remaining <= 0) break;
-      await Future.delayed(Duration(milliseconds: delay.clamp(0, remaining)));
+      await Future.delayed(
+          Duration(milliseconds: delay.clamp(0, remaining)));
     }
 
     onLog(LogEntry(
@@ -195,8 +207,9 @@ class TaskRunner extends ChangeNotifier {
           return await AutoFillBridge.openApp(pkg);
 
         case TaskStepType.wait:
-          final ms =
-              int.tryParse(step.params['ms']?.toString() ?? '1000') ?? 1000;
+          final ms = int.tryParse(
+                  step.params['ms']?.toString() ?? '1000') ??
+              1000;
           await Future.delayed(Duration(milliseconds: ms));
           return true;
 
@@ -205,9 +218,12 @@ class TaskRunner extends ChangeNotifier {
           final viewId = step.params['viewId']?.toString() ?? '';
           final hint = step.params['hint']?.toString() ?? '';
           final className = step.params['className']?.toString() ?? '';
-          final index =
-              int.tryParse(step.params['elementIndex']?.toString() ?? '0') ?? 0;
-          if (viewId.isNotEmpty || hint.isNotEmpty || className.isNotEmpty) {
+          final index = int.tryParse(
+                  step.params['elementIndex']?.toString() ?? '0') ??
+              0;
+          if (viewId.isNotEmpty ||
+              hint.isNotEmpty ||
+              className.isNotEmpty) {
             return await AutoFillBridge.smartType(
               value: value,
               viewId: viewId,
@@ -226,33 +242,84 @@ class TaskRunner extends ChangeNotifier {
             desc: step.params['desc']?.toString() ?? '',
             viewId: step.params['viewId']?.toString() ?? '',
             className: step.params['className']?.toString() ?? '',
-            index:
-                int.tryParse(step.params['elementIndex']?.toString() ?? '0') ?? 0,
+            index: int.tryParse(
+                    step.params['elementIndex']?.toString() ?? '0') ??
+                0,
             preferClickable: step.params['preferClickable'] != false,
           );
 
         case TaskStepType.waitForElement:
-          return await AutoFillBridge.findElement(
+          // 1) دوّر على العنصر
+          final found = await AutoFillBridge.findElement(
             text: step.params['text']?.toString() ?? '',
             desc: step.params['desc']?.toString() ?? '',
             viewId: step.params['viewId']?.toString() ?? '',
             className: step.params['className']?.toString() ?? '',
-            index:
-                int.tryParse(step.params['elementIndex']?.toString() ?? '0') ?? 0,
+            index: int.tryParse(
+                    step.params['elementIndex']?.toString() ?? '0') ??
+                0,
           );
+          if (!found) return false;
+
+          // 2) نفّذ الإجراء المطلوب عند الظهور
+          final onAppear =
+              step.params['onAppear']?.toString() ?? 'none';
+          if (onAppear == 'click') {
+            return await AutoFillBridge.smartClick(
+              text: step.params['text']?.toString() ?? '',
+              desc: step.params['desc']?.toString() ?? '',
+              viewId: step.params['viewId']?.toString() ?? '',
+              className: step.params['className']?.toString() ?? '',
+              index: int.tryParse(
+                      step.params['elementIndex']?.toString() ?? '0') ??
+                  0,
+              preferClickable: true,
+            );
+          } else if (onAppear == 'type') {
+            final value =
+                step.params['appearText']?.toString() ?? '';
+            return await AutoFillBridge.smartType(
+              value: value,
+              viewId: step.params['viewId']?.toString() ?? '',
+              hint: step.params['hint']?.toString() ?? '',
+              className: step.params['className']?.toString() ?? '',
+              index: int.tryParse(
+                      step.params['elementIndex']?.toString() ?? '0') ??
+                  0,
+            );
+          }
+          return true;
+
+        case TaskStepType.clearAppData:
+          final pkg = step.params['package']?.toString() ?? '';
+          if (pkg.isEmpty) return false;
+          return await AutoFillBridge.clearAppData(pkg);
 
         case TaskStepType.clickAt:
-          final x = int.tryParse(step.params['x']?.toString() ?? '0') ?? 0;
-          final y = int.tryParse(step.params['y']?.toString() ?? '0') ?? 0;
+          final x = int.tryParse(
+                  step.params['x']?.toString() ?? '0') ??
+              0;
+          final y = int.tryParse(
+                  step.params['y']?.toString() ?? '0') ??
+              0;
           return await AutoFillBridge.clickAt(x, y);
 
         case TaskStepType.swipe:
-          final x1 = int.tryParse(step.params['x1']?.toString() ?? '0') ?? 0;
-          final y1 = int.tryParse(step.params['y1']?.toString() ?? '0') ?? 0;
-          final x2 = int.tryParse(step.params['x2']?.toString() ?? '0') ?? 0;
-          final y2 = int.tryParse(step.params['y2']?.toString() ?? '0') ?? 0;
-          final d =
-              int.tryParse(step.params['duration']?.toString() ?? '300') ?? 300;
+          final x1 = int.tryParse(
+                  step.params['x1']?.toString() ?? '0') ??
+              0;
+          final y1 = int.tryParse(
+                  step.params['y1']?.toString() ?? '0') ??
+              0;
+          final x2 = int.tryParse(
+                  step.params['x2']?.toString() ?? '0') ??
+              0;
+          final y2 = int.tryParse(
+                  step.params['y2']?.toString() ?? '0') ??
+              0;
+          final d = int.tryParse(
+                  step.params['duration']?.toString() ?? '300') ??
+              300;
           return await AutoFillBridge.swipe(x1, y1, x2, y2, d);
 
         case TaskStepType.back:
