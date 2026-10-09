@@ -9,9 +9,11 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.Path
 import android.graphics.Rect
+import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.provider.Settings
 import android.util.Log
 import android.view.KeyEvent
 import android.view.accessibility.AccessibilityEvent
@@ -38,34 +40,57 @@ class ImsAccessibilityService : AccessibilityService() {
         @Volatile
         private var lastEditableRef: WeakReference<AccessibilityNodeInfo>? = null
 
-        fun typeTextStatic(text: String): Boolean = instance?.typeTextInternal(text) ?: false
+        fun typeTextStatic(text: String): Boolean =
+            instance?.typeTextInternal(text) ?: false
 
         fun smartClickStatic(
             text: String, desc: String, viewId: String,
             className: String, index: Int, preferClickable: Boolean
-        ): Boolean = instance?.smartClickInternal(text, desc, viewId, className, index, preferClickable) ?: false
+        ): Boolean = instance?.smartClickInternal(
+            text, desc, viewId, className, index, preferClickable
+        ) ?: false
 
         fun smartTypeStatic(
             value: String, viewId: String, hint: String,
             className: String, index: Int
-        ): Boolean = instance?.smartTypeInternal(value, viewId, hint, className, index) ?: false
+        ): Boolean = instance?.smartTypeInternal(
+            value, viewId, hint, className, index
+        ) ?: false
 
         fun findElementStatic(
             text: String, desc: String, viewId: String,
             className: String, index: Int
-        ): Boolean = instance?.findElementInternal(text, desc, viewId, className, index) ?: false
+        ): Boolean = instance?.findElementInternal(
+            text, desc, viewId, className, index
+        ) ?: false
 
-        fun openAppStatic(pkg: String): Boolean = instance?.openAppInternal(pkg) ?: false
-        fun clickAtStatic(x: Int, y: Int): Boolean = instance?.clickAtInternal(x, y) ?: false
+        fun clearAppDataStatic(pkg: String): Boolean =
+            instance?.clearAppDataInternal(pkg) ?: false
+
+        fun openAppStatic(pkg: String): Boolean =
+            instance?.openAppInternal(pkg) ?: false
+
+        fun clickAtStatic(x: Int, y: Int): Boolean =
+            instance?.clickAtInternal(x, y) ?: false
+
         fun swipeStatic(x1: Int, y1: Int, x2: Int, y2: Int, d: Int): Boolean =
             instance?.swipeInternal(x1, y1, x2, y2, d) ?: false
-        fun globalBackStatic(): Boolean = instance?.performGlobalAction(GLOBAL_ACTION_BACK) ?: false
-        fun globalHomeStatic(): Boolean = instance?.performGlobalAction(GLOBAL_ACTION_HOME) ?: false
-        fun globalRecentsStatic(): Boolean = instance?.performGlobalAction(GLOBAL_ACTION_RECENTS) ?: false
+
+        fun globalBackStatic(): Boolean =
+            instance?.performGlobalAction(GLOBAL_ACTION_BACK) ?: false
+
+        fun globalHomeStatic(): Boolean =
+            instance?.performGlobalAction(GLOBAL_ACTION_HOME) ?: false
+
+        fun globalRecentsStatic(): Boolean =
+            instance?.performGlobalAction(GLOBAL_ACTION_RECENTS) ?: false
+
         fun currentPackageStatic(): String = try {
             instance?.rootInActiveWindow?.packageName?.toString() ?: ""
         } catch (_: Exception) { "" }
-        fun dumpScreenStatic(): String = instance?.dumpScreenInternal() ?: "[]"
+
+        fun dumpScreenStatic(): String =
+            instance?.dumpScreenInternal() ?: "[]"
     }
 
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -82,7 +107,9 @@ class ImsAccessibilityService : AccessibilityService() {
                     AccessibilityServiceInfo.FLAG_REQUEST_ENHANCED_WEB_ACCESSIBILITY
             info.notificationTimeout = 30
             serviceInfo = info
-        } catch (e: Exception) { Log.e(TAG, "config", e) }
+        } catch (e: Exception) {
+            Log.e(TAG, "config", e)
+        }
     }
 
     override fun onDestroy() {
@@ -125,7 +152,9 @@ class ImsAccessibilityService : AccessibilityService() {
             } catch (_: Exception) {}
             if (roots.isEmpty()) rootInActiveWindow?.let { roots.add(it) }
             for (root in roots) walkNode(root, 0, arr, seen)
-        } catch (e: Exception) { Log.e(TAG, "dump", e) }
+        } catch (e: Exception) {
+            Log.e(TAG, "dump", e)
+        }
         return arr.toString()
     }
 
@@ -158,8 +187,10 @@ class ImsAccessibilityService : AccessibilityService() {
             val childCount = try { node.childCount } catch (_: Exception) { 0 }
 
             if (isVisible && rect.width() > 0 && rect.height() > 0 && arr.length() < 800) {
-                val hasContent = text.isNotEmpty() || desc.isNotEmpty() || hint.isNotEmpty()
-                val isInteractive = isClickable || isLongClickable || isEditable || isFocusable
+                val hasContent = text.isNotEmpty() ||
+                        desc.isNotEmpty() || hint.isNotEmpty()
+                val isInteractive = isClickable || isLongClickable ||
+                        isEditable || isFocusable
                 val hasId = viewId.isNotEmpty()
 
                 if (hasContent || isInteractive || hasId) {
@@ -172,8 +203,12 @@ class ImsAccessibilityService : AccessibilityService() {
                             var p = node.parent
                             var d = 0
                             while (p != null && d < 8) {
-                                if (p.isClickable) { clickableParent = true; break }
-                                p = p.parent; d++
+                                if (p.isClickable) {
+                                    clickableParent = true
+                                    break
+                                }
+                                p = p.parent
+                                d++
                             }
                         } catch (_: Exception) {}
 
@@ -222,24 +257,15 @@ class ImsAccessibilityService : AccessibilityService() {
         val matches = all.filter { node ->
             matchesQuery(node, text, desc, viewId, className)
         }
-        if (matches.isEmpty()) {
-            Log.d(TAG, "no matches for smartClick")
-            return false
-        }
-
+        if (matches.isEmpty()) return false
         val scored = matches.map { node ->
             Pair(node, scoreNode(node, preferClickable))
         }.sortedByDescending { it.second }
-
         val target = if (index >= 0 && index < scored.size)
-            scored[index].first
-        else
-            scored.first().first
-
+            scored[index].first else scored.first().first
         return performClickOnNode(target)
     }
 
-    // ⭐ جديد: دوّر على العنصر بدون ضغط
     private fun findElementInternal(
         text: String, desc: String, viewId: String,
         className: String, index: Int
@@ -250,12 +276,15 @@ class ImsAccessibilityService : AccessibilityService() {
         }
         if (matches.isEmpty()) return false
         val idx = if (index >= 0 && index < matches.size) index else 0
-        return try { matches[idx].refresh() } catch (_: Exception) { false }
+        return try {
+            matches[idx].refresh()
+        } catch (_: Exception) { false }
     }
 
     private fun matchesQuery(
         node: AccessibilityNodeInfo,
-        text: String, desc: String, viewId: String, className: String
+        text: String, desc: String,
+        viewId: String, className: String
     ): Boolean {
         try {
             if (!node.refresh()) return false
@@ -271,24 +300,32 @@ class ImsAccessibilityService : AccessibilityService() {
             }
             if (viewId.isNotEmpty()) {
                 val id = node.viewIdResourceName ?: ""
-                if (!(id == viewId || id.endsWith("/$viewId") || id.contains(viewId))) return false
+                if (!(id == viewId ||
+                            id.endsWith("/$viewId") ||
+                            id.contains(viewId))) return false
             }
             if (className.isNotEmpty()) {
                 val c = node.className?.toString() ?: ""
                 if (!c.endsWith(className)) return false
             }
             return true
-        } catch (_: Exception) { return false }
+        } catch (_: Exception) {
+            return false
+        }
     }
 
-    private fun scoreNode(node: AccessibilityNodeInfo, preferClickable: Boolean): Int {
+    private fun scoreNode(
+        node: AccessibilityNodeInfo,
+        preferClickable: Boolean
+    ): Int {
         try {
             if (node.isClickable && node.isEnabled) return 1000
             var p = node.parent
             var d = 0
             while (p != null && d < 5) {
                 if (p.isClickable && p.isEnabled) return 800
-                p = p.parent; d++
+                p = p.parent
+                d++
             }
             if (node.isFocusable && node.isEnabled) return 400
             if (node.isEnabled) return 100
@@ -336,12 +373,16 @@ class ImsAccessibilityService : AccessibilityService() {
         val editables = all.filter { node ->
             try {
                 node.refresh()
-                if (!node.isEditable || !node.isVisibleToUser) return@filter false
-
+                if (!node.isEditable || !node.isVisibleToUser) {
+                    return@filter false
+                }
                 if (viewId.isNotEmpty()) {
                     val id = node.viewIdResourceName ?: ""
-                    if (!(id == viewId || id.endsWith("/$viewId") || id.contains(viewId)))
+                    if (!(id == viewId ||
+                                id.endsWith("/$viewId") ||
+                                id.contains(viewId))) {
                         return@filter false
+                    }
                 }
                 if (hint.isNotEmpty()) {
                     val h = try {
@@ -355,25 +396,25 @@ class ImsAccessibilityService : AccessibilityService() {
                     if (!c.endsWith(className)) return@filter false
                 }
                 true
-            } catch (_: Exception) { false }
+            } catch (_: Exception) {
+                false
+            }
         }
-
-        if (editables.isEmpty()) {
-            Log.d(TAG, "no editable matches - fallback")
-            return typeTextInternal(value)
-        }
-
+        if (editables.isEmpty()) return typeTextInternal(value)
         val target = if (index >= 0 && index < editables.size)
             editables[index] else editables.first()
-
         return doSetText(target, value) && verifyText(target, value)
     }
 
-    // ═══════════════ الكتابة العامة ═══════════════
+    // ═══════════════ كتابة عامة ═══════════════
     private fun typeTextInternal(text: String): Boolean {
         val delays = longArrayOf(0L, 120L, 220L, 350L)
         for (delay in delays) {
-            if (delay > 0) try { Thread.sleep(delay) } catch (_: InterruptedException) { return false }
+            if (delay > 0) try {
+                Thread.sleep(delay)
+            } catch (_: InterruptedException) {
+                return false
+            }
             if (tryOnce(text)) return true
         }
         return false
@@ -395,7 +436,10 @@ class ImsAccessibilityService : AccessibilityService() {
         return false
     }
 
-    private fun tryMethodsWithVerify(node: AccessibilityNodeInfo, text: String): Boolean {
+    private fun tryMethodsWithVerify(
+        node: AccessibilityNodeInfo,
+        text: String
+    ): Boolean {
         if (!safeRefresh(node)) return false
         if (doSetText(node, text) && verifyText(node, text)) return true
         if (doFocusThenSet(node, text) && verifyText(node, text)) return true
@@ -406,24 +450,36 @@ class ImsAccessibilityService : AccessibilityService() {
     private fun doSetText(node: AccessibilityNodeInfo, text: String): Boolean {
         return try {
             val args = Bundle().apply {
-                putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text)
+                putCharSequence(
+                    AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,
+                    text
+                )
             }
             node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
         } catch (_: Exception) { false }
     }
 
-    private fun doFocusThenSet(node: AccessibilityNodeInfo, text: String): Boolean {
+    private fun doFocusThenSet(
+        node: AccessibilityNodeInfo,
+        text: String
+    ): Boolean {
         return try {
             node.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
             Thread.sleep(60)
             val args = Bundle().apply {
-                putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text)
+                putCharSequence(
+                    AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,
+                    text
+                )
             }
             node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
         } catch (_: Exception) { false }
     }
 
-    private fun doFocusThenPaste(node: AccessibilityNodeInfo, text: String): Boolean {
+    private fun doFocusThenPaste(
+        node: AccessibilityNodeInfo,
+        text: String
+    ): Boolean {
         return try {
             copyToClipboard(text)
             node.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
@@ -432,7 +488,10 @@ class ImsAccessibilityService : AccessibilityService() {
         } catch (_: Exception) { false }
     }
 
-    private fun verifyText(node: AccessibilityNodeInfo, expected: String): Boolean {
+    private fun verifyText(
+        node: AccessibilityNodeInfo,
+        expected: String
+    ): Boolean {
         return try {
             Thread.sleep(50)
             if (!safeRefresh(node)) return false
@@ -444,47 +503,64 @@ class ImsAccessibilityService : AccessibilityService() {
 
     private fun safeRefresh(node: AccessibilityNodeInfo?): Boolean {
         if (node == null) return false
-        return try { node.refresh() } catch (_: Exception) { false }
+        return try {
+            node.refresh()
+        } catch (_: Exception) { false }
     }
 
-    private fun gestureTapAndPaste(node: AccessibilityNodeInfo, text: String): Boolean {
+    private fun gestureTapAndPaste(
+        node: AccessibilityNodeInfo,
+        text: String
+    ): Boolean {
         try {
             copyToClipboard(text)
             if (!safeRefresh(node)) return false
             val rect = Rect()
             node.getBoundsInScreen(rect)
             if (rect.width() <= 0 || rect.height() <= 0) return false
-
-            val path = Path().apply { moveTo(rect.exactCenterX(), rect.exactCenterY()) }
+            val path = Path().apply {
+                moveTo(rect.exactCenterX(), rect.exactCenterY())
+            }
             val stroke = GestureDescription.StrokeDescription(path, 0, 50)
-            val gesture = GestureDescription.Builder().addStroke(stroke).build()
-
+            val gesture = GestureDescription.Builder()
+                .addStroke(stroke).build()
             val completed = java.util.concurrent.atomic.AtomicBoolean(false)
             val done = java.util.concurrent.atomic.AtomicBoolean(false)
-
             dispatchGesture(gesture, object : GestureResultCallback() {
                 override fun onCompleted(g: GestureDescription?) {
-                    completed.set(true); done.set(true)
+                    completed.set(true)
+                    done.set(true)
                 }
-                override fun onCancelled(g: GestureDescription?) { done.set(true) }
+                override fun onCancelled(g: GestureDescription?) {
+                    done.set(true)
+                }
             }, mainHandler)
-
             val start = System.currentTimeMillis()
-            while (!done.get() && System.currentTimeMillis() - start < 1000) {
-                try { Thread.sleep(20) } catch (_: InterruptedException) {}
+            while (!done.get() &&
+                System.currentTimeMillis() - start < 1000) {
+                try {
+                    Thread.sleep(20)
+                } catch (_: InterruptedException) {}
             }
             if (!completed.get()) return false
-            try { Thread.sleep(100) } catch (_: InterruptedException) {}
-
+            try {
+                Thread.sleep(100)
+            } catch (_: InterruptedException) {}
             var ok = false
-            try { ok = node.performAction(AccessibilityNodeInfo.ACTION_PASTE) } catch (_: Exception) {}
+            try {
+                ok = node.performAction(AccessibilityNodeInfo.ACTION_PASTE)
+            } catch (_: Exception) {}
             if (!ok) {
                 val focused = findFocusedInput()
                 if (focused != null) try {
-                    ok = focused.performAction(AccessibilityNodeInfo.ACTION_PASTE)
+                    ok = focused.performAction(
+                        AccessibilityNodeInfo.ACTION_PASTE
+                    )
                 } catch (_: Exception) {}
             }
-            try { Thread.sleep(80) } catch (_: InterruptedException) {}
+            try {
+                Thread.sleep(80)
+            } catch (_: InterruptedException) {}
             if (safeRefresh(node)) {
                 val now = node.text?.toString() ?: ""
                 if (now.contains(text)) return true
@@ -498,7 +574,9 @@ class ImsAccessibilityService : AccessibilityService() {
 
     private fun copyToClipboard(text: String) {
         try {
-            val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+            val cm = getSystemService(
+                Context.CLIPBOARD_SERVICE
+            ) as ClipboardManager
             cm.setPrimaryClip(ClipData.newPlainText("ims_autofill", text))
         } catch (_: Exception) {}
     }
@@ -514,16 +592,134 @@ class ImsAccessibilityService : AccessibilityService() {
         } catch (e: Exception) { false }
     }
 
+    // ═══════════════ مسح بيانات تطبيق ═══════════════
+    private fun clearAppDataInternal(pkg: String): Boolean {
+        try {
+            if (pkg.isEmpty()) return false
+
+            // 1) افتح صفحة التطبيق في الإعدادات
+            val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+            intent.data = Uri.parse("package:$pkg")
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            startActivity(intent)
+
+            // 2) استنى الصفحة تفتح
+            try { Thread.sleep(1500) } catch (_: Exception) {}
+
+            // 3) دوّر على "Storage" / "التخزين"
+            val storageClicked = clickByAnyText(
+                timeoutMs = 3000,
+                maxAttempts = 15,
+                keywords = arrayOf(
+                    "Storage & cache",
+                    "Storage",
+                    "التخزين والذاكرة",
+                    "التخزين"
+                )
+            )
+            if (!storageClicked) return false
+
+            try { Thread.sleep(1000) } catch (_: Exception) {}
+
+            // 4) دوّر على "Clear data" / "Clear storage" / "مسح البيانات"
+            val clearClicked = clickByAnyText(
+                timeoutMs = 3000,
+                maxAttempts = 15,
+                keywords = arrayOf(
+                    "Clear storage",
+                    "Clear data",
+                    "Clear app data",
+                    "مسح التخزين",
+                    "مسح البيانات"
+                )
+            )
+            if (!clearClicked) return false
+
+            try { Thread.sleep(800) } catch (_: Exception) {}
+
+            // 5) أكد الحوار
+            clickByAnyText(
+                timeoutMs = 2000,
+                maxAttempts = 10,
+                keywords = arrayOf(
+                    "Clear all data",
+                    "Delete",
+                    "OK",
+                    "Yes",
+                    "Confirm",
+                    "مسح الكل",
+                    "حذف",
+                    "موافق",
+                    "نعم",
+                    "تأكيد"
+                )
+            )
+
+            return true
+        } catch (e: Exception) {
+            Log.e(TAG, "clearAppData", e)
+            return false
+        }
+    }
+
+    /// دوّر على عنصر ب أي نص من الكلمات المفتاحية واضغط عليه
+    private fun clickByAnyText(
+        timeoutMs: Long,
+        maxAttempts: Int,
+        keywords: Array<String>
+    ): Boolean {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        var attempt = 0
+
+        while (System.currentTimeMillis() < deadline &&
+            attempt < maxAttempts
+        ) {
+            attempt++
+            try {
+                val all = collectAllNodes()
+                for (node in all) {
+                    try {
+                        if (!node.isVisibleToUser) continue
+                        val text = node.text?.toString()?.trim() ?: ""
+                        val desc = node.contentDescription
+                            ?.toString()?.trim() ?: ""
+                        for (kw in keywords) {
+                            if (text.equals(kw, ignoreCase = true) ||
+                                text.contains(kw, ignoreCase = true) ||
+                                desc.equals(kw, ignoreCase = true) ||
+                                desc.contains(kw, ignoreCase = true)
+                            ) {
+                                if (performClickOnNode(node)) return true
+                            }
+                        }
+                    } catch (_: Exception) {}
+                }
+            } catch (_: Exception) {}
+            try {
+                Thread.sleep(200)
+            } catch (_: Exception) {}
+        }
+        return false
+    }
+
     // ═══════════════ click على عنصر ═══════════════
     private fun performClickOnNode(node: AccessibilityNodeInfo): Boolean {
-        try { if (node.performAction(AccessibilityNodeInfo.ACTION_CLICK)) return true }
-        catch (_: Exception) {}
+        try {
+            if (node.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
+                return true
+            }
+        } catch (_: Exception) {}
         try {
             var p = node.parent
             var depth = 0
             while (p != null && depth < 6) {
-                if (p.isClickable && p.performAction(AccessibilityNodeInfo.ACTION_CLICK)) return true
-                p = p.parent; depth++
+                if (p.isClickable &&
+                    p.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+                ) {
+                    return true
+                }
+                p = p.parent
+                depth++
             }
         } catch (_: Exception) {}
         return clickAtNodeCenter(node)
@@ -534,21 +730,29 @@ class ImsAccessibilityService : AccessibilityService() {
             val rect = Rect()
             node.getBoundsInScreen(rect)
             if (rect.width() <= 0 || rect.height() <= 0) return false
-            clickAtInternal(rect.exactCenterX().toInt(), rect.exactCenterY().toInt())
+            clickAtInternal(
+                rect.exactCenterX().toInt(),
+                rect.exactCenterY().toInt()
+            )
         } catch (_: Exception) { false }
     }
 
     private fun clickAtInternal(x: Int, y: Int): Boolean {
         return try {
-            val path = Path().apply { moveTo(x.toFloat(), y.toFloat()) }
+            val path = Path().apply {
+                moveTo(x.toFloat(), y.toFloat())
+            }
             val stroke = GestureDescription.StrokeDescription(path, 0, 50)
-            val gesture = GestureDescription.Builder().addStroke(stroke).build()
+            val gesture = GestureDescription.Builder()
+                .addStroke(stroke).build()
             dispatchGesture(gesture, null, null)
             true
         } catch (e: Exception) { false }
     }
 
-    private fun swipeInternal(x1: Int, y1: Int, x2: Int, y2: Int, duration: Int): Boolean {
+    private fun swipeInternal(
+        x1: Int, y1: Int, x2: Int, y2: Int, duration: Int
+    ): Boolean {
         return try {
             val path = Path().apply {
                 moveTo(x1.toFloat(), y1.toFloat())
@@ -556,7 +760,8 @@ class ImsAccessibilityService : AccessibilityService() {
             }
             val dur = duration.toLong().coerceAtLeast(80L)
             val stroke = GestureDescription.StrokeDescription(path, 0, dur)
-            val gesture = GestureDescription.Builder().addStroke(stroke).build()
+            val gesture = GestureDescription.Builder()
+                .addStroke(stroke).build()
             dispatchGesture(gesture, null, null)
             true
         } catch (_: Exception) { false }
@@ -565,7 +770,9 @@ class ImsAccessibilityService : AccessibilityService() {
     private fun resolveCached(): AccessibilityNodeInfo? {
         return try {
             val n = lastEditableRef?.get()
-            if (n != null && safeRefresh(n) && n.isEditable && n.isVisibleToUser) n else null
+            if (n != null && safeRefresh(n) &&
+                n.isEditable && n.isVisibleToUser
+            ) n else null
         } catch (_: Exception) { null }
     }
 
@@ -575,15 +782,21 @@ class ImsAccessibilityService : AccessibilityService() {
             if (!wins.isNullOrEmpty()) {
                 for (w in wins) {
                     val root = w.root ?: continue
-                    val f = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
-                    if (f != null && safeRefresh(f) && f.isEditable && f.isVisibleToUser) return f
+                    val f = root.findFocus(
+                        AccessibilityNodeInfo.FOCUS_INPUT
+                    )
+                    if (f != null && safeRefresh(f) &&
+                        f.isEditable && f.isVisibleToUser
+                    ) return f
                 }
             }
         } catch (_: Exception) {}
         return try {
             val root = rootInActiveWindow
             val f = root?.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
-            if (f != null && safeRefresh(f) && f.isEditable && f.isVisibleToUser) f else null
+            if (f != null && safeRefresh(f) &&
+                f.isEditable && f.isVisibleToUser
+            ) f else null
         } catch (_: Exception) { null }
     }
 
@@ -602,13 +815,20 @@ class ImsAccessibilityService : AccessibilityService() {
         return findFirstEditable(active)
     }
 
-    private fun findFirstEditable(node: AccessibilityNodeInfo?): AccessibilityNodeInfo? {
+    private fun findFirstEditable(
+        node: AccessibilityNodeInfo?
+    ): AccessibilityNodeInfo? {
         if (node == null) return null
         try {
-            if (safeRefresh(node) && node.isEditable && node.isVisibleToUser) return node
+            if (safeRefresh(node) && node.isEditable &&
+                node.isVisibleToUser
+            ) return node
         } catch (_: Exception) { return null }
-        for (i in 0 until (try { node.childCount } catch (_: Exception) { 0 })) {
-            val c = try { node.getChild(i) } catch (_: Exception) { null } ?: continue
+        val cnt = try { node.childCount } catch (_: Exception) { 0 }
+        for (i in 0 until cnt) {
+            val c = try {
+                node.getChild(i)
+            } catch (_: Exception) { null } ?: continue
             val r = findFirstEditable(c)
             if (r != null) return r
         }
