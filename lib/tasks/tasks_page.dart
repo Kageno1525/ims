@@ -12,6 +12,8 @@ class TasksPage extends StatefulWidget {
   final VoidCallback onToggleTheme;
   final VoidCallback onBack;
   final Function(LogEntry) onLog;
+  final List<String> currentNumbers;
+  final int currentCsvIndex;
 
   const TasksPage({
     super.key,
@@ -19,6 +21,8 @@ class TasksPage extends StatefulWidget {
     required this.onToggleTheme,
     required this.onBack,
     required this.onLog,
+    this.currentNumbers = const [],
+    this.currentCsvIndex = 0,
   });
 
   @override
@@ -109,10 +113,14 @@ class _TasksPageState extends State<TasksPage> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text('حذف المهمة',
-            style: _noDeco.copyWith(fontWeight: FontWeight.bold)),
-        content: Text('متأكد إنك عايز تحذف "${task.name}"؟',
-            style: _noDeco.copyWith(fontSize: 14)),
+        title: Text(
+          'حذف المهمة',
+          style: _noDeco.copyWith(fontWeight: FontWeight.bold),
+        ),
+        content: Text(
+          'متأكد إنك عايز تحذف "${task.name}"؟',
+          style: _noDeco.copyWith(fontSize: 14),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -121,8 +129,10 @@ class _TasksPageState extends State<TasksPage> {
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
             style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: Text('حذف',
-                style: _noDeco.copyWith(fontWeight: FontWeight.bold)),
+            child: Text(
+              'حذف',
+              style: _noDeco.copyWith(fontWeight: FontWeight.bold),
+            ),
           ),
         ],
       ),
@@ -137,7 +147,12 @@ class _TasksPageState extends State<TasksPage> {
     if (_runner.running) return;
     setState(() => _runningTask = task);
     _logs.value = <LogEntry>[];
-    await _runner.run(task, onLog: _addLog);
+    await _runner.run(
+      task,
+      onLog: _addLog,
+      numbers: widget.currentNumbers,
+      currentIndex: widget.currentCsvIndex,
+    );
     await TaskStorage.upsert(task.copyWith(lastRunAt: DateTime.now()));
     await _load();
     if (mounted) setState(() => _runningTask = null);
@@ -155,26 +170,37 @@ class _TasksPageState extends State<TasksPage> {
             children: [
               Row(
                 children: [
-                  IconBtn(icon: Icons.arrow_back_rounded, onTap: widget.onBack),
+                  IconBtn(
+                    icon: Icons.arrow_back_rounded,
+                    onTap: widget.onBack,
+                  ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('المهام',
-                            style: _noDeco.copyWith(
-                                fontSize: 20, fontWeight: FontWeight.bold)),
-                        Text('${_tasks.length} مهمة محفوظة',
-                            style: _noDeco.copyWith(
-                                fontSize: 12,
-                                color: theme.colorScheme.onSurface
-                                    .withOpacity(0.5))),
+                        Text(
+                          'المهام',
+                          style: _noDeco.copyWith(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        Text(
+                          '${_tasks.length} مهمة محفوظة',
+                          style: _noDeco.copyWith(
+                            fontSize: 12,
+                            color: theme.colorScheme.onSurface
+                                .withOpacity(0.5),
+                          ),
+                        ),
                       ],
                     ),
                   ),
                   IconBtn(
                     icon: Icons.settings_rounded,
-                    onTap: () => AutoFillBridge.openAccessibilitySettings(),
+                    onTap: () =>
+                        AutoFillBridge.openAccessibilitySettings(),
                   ),
                   const SizedBox(width: 8),
                   IconBtn(
@@ -194,7 +220,10 @@ class _TasksPageState extends State<TasksPage> {
                   child: ActionBtn(
                     label: 'مهمة جديدة',
                     icon: Icons.add_rounded,
-                    gradient: const [Color(0xFF6C5CE7), Color(0xFF00D2FF)],
+                    gradient: const [
+                      Color(0xFF6C5CE7),
+                      Color(0xFF00D2FF)
+                    ],
                     busy: false,
                     onTap: _createTask,
                   ),
@@ -208,8 +237,10 @@ class _TasksPageState extends State<TasksPage> {
                         : ListView.separated(
                             padding: const EdgeInsets.only(bottom: 20),
                             itemCount: _tasks.length,
-                            separatorBuilder: (_, __) => const SizedBox(height: 10),
-                            itemBuilder: (_, i) => _taskCard(theme, _tasks[i]),
+                            separatorBuilder: (_, __) =>
+                                const SizedBox(height: 10),
+                            itemBuilder: (_, i) =>
+                                _taskCard(theme, _tasks[i]),
                           ),
               ),
               if (_runner.running || _logs.value.isNotEmpty) ...[
@@ -235,21 +266,28 @@ class _TasksPageState extends State<TasksPage> {
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
-            colors: [Color(0xFFFF6B6B), Color(0xFFFF8E53)]),
+          colors: [Color(0xFFFF6B6B), Color(0xFFFF8E53)],
+        ),
         borderRadius: BorderRadius.circular(16),
       ),
       child: Row(
         children: [
           const SizedBox(
-            width: 18, height: 18,
-            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+            width: 18,
+            height: 18,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              color: Colors.white,
+            ),
           ),
           const SizedBox(width: 12),
           Expanded(
             child: Text(
               'جاري تشغيل: ${_runningTask?.name ?? ""}',
               style: _noDeco.copyWith(
-                  color: Colors.white, fontWeight: FontWeight.bold),
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+              ),
             ),
           ),
           Material(
@@ -259,17 +297,27 @@ class _TasksPageState extends State<TasksPage> {
               borderRadius: BorderRadius.circular(10),
               onTap: () => _runner.stop(),
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(Icons.stop_rounded, color: Colors.white, size: 16),
+                    const Icon(
+                      Icons.stop_rounded,
+                      color: Colors.white,
+                      size: 16,
+                    ),
                     const SizedBox(width: 4),
-                    Text('إيقاف',
-                        style: _noDeco.copyWith(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 12)),
+                    Text(
+                      'إيقاف',
+                      style: _noDeco.copyWith(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 12,
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -285,19 +333,28 @@ class _TasksPageState extends State<TasksPage> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.auto_awesome_rounded,
-              size: 80, color: theme.colorScheme.primary.withOpacity(0.3)),
+          Icon(
+            Icons.auto_awesome_rounded,
+            size: 80,
+            color: theme.colorScheme.primary.withOpacity(0.3),
+          ),
           const SizedBox(height: 16),
-          Text('مفيش مهام بعد',
-              style: _noDeco.copyWith(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: theme.colorScheme.onSurface.withOpacity(0.5))),
+          Text(
+            'مفيش مهام بعد',
+            style: _noDeco.copyWith(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+              color: theme.colorScheme.onSurface.withOpacity(0.5),
+            ),
+          ),
           const SizedBox(height: 8),
-          Text('اضغط "مهمة جديدة" وابدأ تبني أول أتمتة',
-              style: _noDeco.copyWith(
-                  color: theme.colorScheme.onSurface.withOpacity(0.4),
-                  fontSize: 13)),
+          Text(
+            'اضغط "مهمة جديدة" وابدأ تبني أول أتمتة',
+            style: _noDeco.copyWith(
+              color: theme.colorScheme.onSurface.withOpacity(0.4),
+              fontSize: 13,
+            ),
+          ),
         ],
       ),
     );
@@ -305,12 +362,16 @@ class _TasksPageState extends State<TasksPage> {
 
   Widget _taskCard(ThemeData theme, Task task) {
     final status = _runningTask?.id == task.id ? _runner.results : null;
+
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: theme.colorScheme.surface.withOpacity(widget.isDark ? 0.55 : 0.85),
+        color: theme.colorScheme.surface
+            .withOpacity(widget.isDark ? 0.55 : 0.85),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: theme.colorScheme.primary.withOpacity(0.2)),
+        border: Border.all(
+          color: theme.colorScheme.primary.withOpacity(0.2),
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -318,35 +379,48 @@ class _TasksPageState extends State<TasksPage> {
           Row(
             children: [
               Container(
-                width: 44, height: 44,
+                width: 44,
+                height: 44,
                 decoration: BoxDecoration(
                   gradient: const LinearGradient(
-                      colors: [Color(0xFF6C5CE7), Color(0xFF00D2FF)]),
+                    colors: [Color(0xFF6C5CE7), Color(0xFF00D2FF)],
+                  ),
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: const Icon(Icons.play_arrow_rounded,
-                    color: Colors.white, size: 24),
+                child: const Icon(
+                  Icons.play_arrow_rounded,
+                  color: Colors.white,
+                  size: 24,
+                ),
               ),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(task.name,
-                        style: _noDeco.copyWith(
-                            fontWeight: FontWeight.bold, fontSize: 15)),
+                    Text(
+                      task.name,
+                      style: _noDeco.copyWith(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 15,
+                      ),
+                    ),
                     const SizedBox(height: 2),
                     Text(
                       '${task.steps.length} خطوة',
                       style: _noDeco.copyWith(
-                          fontSize: 11,
-                          color: theme.colorScheme.onSurface.withOpacity(0.5)),
+                        fontSize: 11,
+                        color: theme.colorScheme.onSurface.withOpacity(0.5),
+                      ),
                     ),
                   ],
                 ),
               ),
               IconButton(
-                icon: const Icon(Icons.play_circle_fill_rounded, size: 30),
+                icon: const Icon(
+                  Icons.play_circle_fill_rounded,
+                  size: 30,
+                ),
                 color: const Color(0xFF00D68F),
                 onPressed: _runner.running ? null : () => _runTask(task),
               ),
@@ -387,16 +461,23 @@ class _TasksPageState extends State<TasksPage> {
                   }
                 }
                 return Container(
-                  width: 22, height: 22,
-                  decoration: BoxDecoration(color: c, shape: BoxShape.circle),
+                  width: 22,
+                  height: 22,
+                  decoration: BoxDecoration(
+                    color: c,
+                    shape: BoxShape.circle,
+                  ),
                   child: Center(
                     child: ic != null
                         ? Icon(ic, size: 12, color: Colors.white)
-                        : Text('${i + 1}',
+                        : Text(
+                            '${i + 1}',
                             style: _noDeco.copyWith(
-                                color: Colors.white,
-                                fontSize: 10,
-                                fontWeight: FontWeight.bold)),
+                              color: Colors.white,
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
                   ),
                 );
               }),
@@ -428,11 +509,13 @@ class _TasksPageState extends State<TasksPage> {
     );
   }
 
-  Widget _miniBtn(ThemeData theme,
-      {required IconData icon,
-      required String label,
-      required Color color,
-      required VoidCallback? onTap}) {
+  Widget _miniBtn(
+    ThemeData theme, {
+    required IconData icon,
+    required String label,
+    required Color color,
+    required VoidCallback? onTap,
+  }) {
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -450,11 +533,14 @@ class _TasksPageState extends State<TasksPage> {
             children: [
               Icon(icon, size: 14, color: color),
               const SizedBox(width: 4),
-              Text(label,
-                  style: _noDeco.copyWith(
-                      color: color,
-                      fontSize: 11,
-                      fontWeight: FontWeight.bold)),
+              Text(
+                label,
+                style: _noDeco.copyWith(
+                  color: color,
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
             ],
           ),
         ),
