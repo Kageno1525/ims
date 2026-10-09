@@ -37,12 +37,14 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
   late TaskStepType _currentType;
   late int _waitAfter;
   late int _timeoutMs;
+  late int _repeatCount;
   late FailureAction _onFail;
   late int _skipCount;
   late OnAppearAction _onAppear;
   late NotFoundAction _onNotFound;
   late TextEditingController _timeoutCtrl;
   late TextEditingController _skipCountCtrl;
+  late TextEditingController _repeatCtrl;
   late TextEditingController _appearTextCtrl;
   late TextEditingController _altTextCtrl;
   late TextEditingController _altDescCtrl;
@@ -58,12 +60,14 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
     _currentType = widget.step.type;
     _waitAfter = widget.step.waitAfterMs;
     _timeoutMs = widget.step.timeoutMs;
+    _repeatCount = widget.step.repeatCount;
     _onFail = widget.step.onFail;
     _skipCount = widget.step.skipCount;
     _onAppear = widget.step.onAppear;
     _onNotFound = widget.step.onNotFound;
     _timeoutCtrl = TextEditingController(text: _timeoutMs.toString());
     _skipCountCtrl = TextEditingController(text: _skipCount.toString());
+    _repeatCtrl = TextEditingController(text: _repeatCount.toString());
     _appearTextCtrl =
         TextEditingController(text: widget.step.appearText);
     _altTextCtrl = TextEditingController(text: widget.step.altText);
@@ -119,6 +123,7 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
     }
     _timeoutCtrl.dispose();
     _skipCountCtrl.dispose();
+    _repeatCtrl.dispose();
     _appearTextCtrl.dispose();
     _altTextCtrl.dispose();
     _altDescCtrl.dispose();
@@ -327,6 +332,7 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
         altDesc: _altDescCtrl.text,
         altViewId: _altViewIdCtrl.text,
         altTypeText: _altTypeCtrl.text,
+        repeatCount: _repeatCount,
       ),
     );
   }
@@ -389,12 +395,15 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
 
               ..._buildContent(theme),
 
-              const SizedBox(height: 16),
+              // ⭐ حقل التكرار
+              const SizedBox(height: 14),
+              _buildRepeatField(theme),
+
+              const SizedBox(height: 12),
               _buildWaitSlider(theme),
 
               if (_isSearchStep) ..._buildTimeoutSection(theme),
 
-              // ⭐ قسم onAppear / onNotFound بس للـ waitForElement
               if (_isWaitForElement) ...[
                 const SizedBox(height: 16),
                 _buildOnAppearSection(theme),
@@ -415,6 +424,68 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  // ⭐ حقل تكرار الخطوة
+  Widget _buildRepeatField(ThemeData theme) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: const Color(0xFF6C5CE7).withOpacity(0.08),
+        borderRadius: BorderRadius.circular(12),
+        border:
+            Border.all(color: const Color(0xFF6C5CE7).withOpacity(0.3)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.repeat_rounded,
+              size: 18, color: Color(0xFF6C5CE7)),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'تكرار الخطوة',
+                  style: _noDeco.copyWith(
+                      fontSize: 13,
+                      fontWeight: FontWeight.bold,
+                      color: const Color(0xFF6C5CE7)),
+                ),
+                Text(
+                  '1 = مرة واحدة • أكثر = يكررها N مرة',
+                  style: _noDeco.copyWith(
+                    fontSize: 10,
+                    color: theme.colorScheme.onSurface.withOpacity(0.55),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          SizedBox(
+            width: 60,
+            child: TextField(
+              controller: _repeatCtrl,
+              textAlign: TextAlign.center,
+              keyboardType: TextInputType.number,
+              style: _noDeco.copyWith(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: const Color(0xFF6C5CE7),
+              ),
+              decoration: const InputDecoration(
+                isDense: true,
+                contentPadding: EdgeInsets.symmetric(vertical: 8),
+              ),
+              onChanged: (v) {
+                final n = int.tryParse(v) ?? 1;
+                if (n >= 1) setState(() => _repeatCount = n);
+              },
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -839,7 +910,6 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
     ];
   }
 
-  // ═══════ onAppear Section ═══════
   Widget _buildOnAppearSection(ThemeData theme) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1003,7 +1073,6 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
     );
   }
 
-  // ═══════ onNotFound Section ═══════
   Widget _buildOnNotFoundSection(ThemeData theme) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1089,7 +1158,6 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
                 color: const Color(0xFFFF6B6B),
               ),
 
-              // إعدادات حسب الاختيار
               if (_onNotFound == NotFoundAction.skip) ...[
                 const SizedBox(height: 12),
                 _buildSkipCount(theme),
@@ -1530,7 +1598,6 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
           color: theme.colorScheme.onSurface.withOpacity(0.55),
         ),
       ),
-      // onFail مش هيظهر في waitForElement — لأن onNotFound بيحل مكانه
       if (!_isWaitForElement) ...[
         const SizedBox(height: 12),
         Row(
@@ -1578,65 +1645,7 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
         ),
         if (_onFail == FailureAction.skip) ...[
           const SizedBox(height: 10),
-          Container(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
-              color: theme.colorScheme.surface.withOpacity(0.5),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                  color: const Color(0xFFFFB84D).withOpacity(0.35)),
-            ),
-            child: Row(
-              children: [
-                const Icon(Icons.skip_next_rounded,
-                    size: 16, color: Color(0xFFFFB84D)),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'خطوات إضافية للتخطي',
-                        style: _noDeco.copyWith(
-                            fontSize: 12, fontWeight: FontWeight.bold),
-                      ),
-                      Text(
-                        '0 = تخطى الخطوة دي بس',
-                        style: _noDeco.copyWith(
-                          fontSize: 10,
-                          color: theme.colorScheme.onSurface
-                              .withOpacity(0.5),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                SizedBox(
-                  width: 60,
-                  child: TextField(
-                    controller: _skipCountCtrl,
-                    textAlign: TextAlign.center,
-                    keyboardType: TextInputType.number,
-                    style: _noDeco.copyWith(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: const Color(0xFFFFB84D),
-                    ),
-                    decoration: const InputDecoration(
-                      isDense: true,
-                      contentPadding:
-                          EdgeInsets.symmetric(vertical: 8),
-                    ),
-                    onChanged: (v) {
-                      final n = int.tryParse(v) ?? 0;
-                      if (n >= 0) setState(() => _skipCount = n);
-                    },
-                  ),
-                ),
-              ],
-            ),
-          ),
+          _buildSkipCount(theme),
         ],
       ],
     ];
