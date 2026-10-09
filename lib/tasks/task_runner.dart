@@ -18,10 +18,14 @@ class TaskRunner extends ChangeNotifier {
   final List<StepResult> _results = [];
   bool _running = false;
   int _currentIndex = -1;
+  int _currentTaskRound = 0;
+  int _totalTaskRounds = 1;
 
   List<StepResult> get results => List.unmodifiable(_results);
   bool get running => _running;
   int get currentIndex => _currentIndex;
+  int get currentTaskRound => _currentTaskRound;
+  int get totalTaskRounds => _totalTaskRounds;
 
   Future<bool> run(
     Task task, {
@@ -31,22 +35,243 @@ class TaskRunner extends ChangeNotifier {
   }) async {
     if (_running) return false;
     _running = true;
-    _results.clear();
-    for (final s in task.steps) {
-      _results.add(StepResult(stepId: s.id, status: StepStatus.pending));
+
+    final totalRounds = task.repeatCount < 1 ? 1 : task.repeatCount;
+    _totalTaskRounds = totalRounds;
+
+    bool allOk = true;
+
+    for (int round = 0; round < totalRounds; round++) {
+      if (!_running) {
+        allOk = false;
+        break;
+      }
+
+      _currentTaskRound = round;
+
+      if (totalRounds > 1) {
+        onLog(LogEntry(
+          '🔁 دورة ${round + 1}/$totalRounds',
+          DateTime.now(),
+          LogLevel.info,
+        ));
+      }
+
+      // كل دورة تبدأ من أول خطوة
+      _results.clear();
+      for (final s in task.steps) {
+        _results.add(StepResult(stepId: s.id, status: StepStatus.pending));
+      }
+      _currentIndex = 0;
+      notifyListeners();
+
+      // لو autoIncrement، الرقم يتقدم مع كل دورة
+      final effectiveIndex = task.autoIncrement
+          ? currentIndex + round
+          : currentIndex;
+
+      final roundOk = await _runSingleRound(
+        task,
+        onLog: onLog,
+        numbers: numbers,
+        currentIndex: effectiveIndex,
+      );
+
+      if (!roundOk) {
+        allOk = false;
+        // نكمل الدورات أو نوقف حسب onFail؟ — نوقف
+        break;
+      }
     }
-    _currentIndex = 0;
+
+    _running = false;
+    _currentIndex = -1;
+    _currentTaskRound = 0;
     notifyListeners();
 
+    onLog(LogEntry(
+      allOk ? '🎉 المهمة خلصت بنجاح' : '⚠️ المهمة توقفت',
+      DateTime.now(),
+      allOk ? LogLevel.ok : LogLevel.error,
+    ));
+    return allOk;
+  }
+
+  Future<bool> _runSingleRound(
+    Task task, {
+    required Function(LogEntry) onLog,
+    required List<String> numbers,
+    required int currentIndex,
+  }) async {
     bool allOk = true;
     int i = 0;
 
     while (i < task.steps.length) {
       if (!_running) {
-        onLog(LogEntry('🛑 تم الإيقاف', DateTime.now(), LogLevel.info));
-        allOk = false;
-        break;
+        return false;
       }
+
+      _currentIndex = i;
+      _results[i] = StepResult(
+        stepId: task.steps[i].id,
+        status: StepStatus.running,
+      );
+      notifyListeners();
+
+      final step = task.steps[i];
+      onLog(LogEntry(
+        '▶️ خطوة ${i + 1}/${task.steps.length}: ${step.typeLabel}'
+        '${step.repeatCount > 1 ? " (×${step.repeatCount})" : ""}',
+        DateTime.now(),
+        LogLevel.info,
+      ));
+
+      final resolved = _resolveStep(step, numbers, currentIndex);
+
+      // ⭐ تنفيذ الخطوة (مع التكرار لو فيه)
+      final stepRepeat = resolved.repeatCount < 1 ? 1 : resolved.repeatCount;
+      bool stepOk = false;
+
+      for (int r = 0; r < stepRepeat; r++) {
+        if (!_running) return false;
+
+        if (stepRepeat > 1) {
+          onLog(LogEntry(
+            '  ↻ تكرار ${r + 1}/$stepRepeat',
+            DateTime.now(),
+            LogLevel.wait,
+          ));
+        }
+
+        if (resolved.type == TaskStepType.waitForElement) {
+          final outcome = await _runWaitForElement(
+            resolved, i, task.steps.length, onLog, numbers, currentIndex,
+          );
+
+          if (outcome == _WaitOutcome.found) {
+            stepOk = true;
+          } else {
+            final nfResult = await _handleNotFound(
+              resolved, i, task.steps.length, onLog, numbers, currentIndex,
+            );
+
+            if (nfResult == _NotFoundOutcome.stop) {
+              _results[i] = StepResult(
+                stepId: step.id,
+                status: StepStatus.failed,
+                message: 'فشل',
+              );
+              notifyListeners();
+              onLog(LogEntry(
+                '❌ فشل الخطوة ${i + 1} - وقف المهمة',
+                DateTime.now(),
+                LogLevel.error,
+              ));
+              return false;
+            } else if (nfResult == _NotFoundOutcome.skipped) {
+              final skipTotal = 1 + resolved.skipCount;
+              for (int k = 0;
+                  k < skipTotal && i + k < task.steps.length;
+                  k++) {
+                _results[i + k] = StepResult(
+                  stepId: task.steps[i + k].id,
+                  status: StepStatus.skipped,
+                  message: k == 0 ? 'العنصر ما ظهرش' : 'اتخطت',
+                );
+              }
+              notifyListeners();
+              onLog(LogEntry(
+                '⏭️ تخطي $skipTotal خطوة والاستمرار',
+                DateTime.now(),
+                LogLevel.wait,
+              ));
+              if (step.waitAfterMs > 0) {
+                await Future.delayed(Duration(milliseconds: step.waitAfterMs));
+              }
+              i += skipTotal;
+              // خروج من الحلقة كاملة
+              return _continueRound(task, i, onLog, numbers, currentIndex);
+            } else {
+              stepOk = true;
+              onLog(LogEntry(
+                '⚠️ العنصر ما ظهرش — اتعمل إجراء بديل',
+                DateTime.now(),
+                LogLevel.wait,
+              ));
+            }
+          }
+        } else {
+          final ok = await _executeStepWithTimeout(resolved, onLog);
+          if (ok) {
+            stepOk = true;
+          } else {
+            if (step.onFail == FailureAction.skip) {
+              final skipTotal = 1 + step.skipCount;
+              for (int k = 0;
+                  k < skipTotal && i + k < task.steps.length;
+                  k++) {
+                _results[i + k] = StepResult(
+                  stepId: task.steps[i + k].id,
+                  status: StepStatus.skipped,
+                  message: k == 0 ? 'اتخطت' : 'تم تخطيها',
+                );
+              }
+              notifyListeners();
+              onLog(LogEntry(
+                '⏭️ تخطي $skipTotal خطوة والاستمرار',
+                DateTime.now(),
+                LogLevel.wait,
+              ));
+              if (step.waitAfterMs > 0) {
+                await Future.delayed(Duration(milliseconds: step.waitAfterMs));
+              }
+              i += skipTotal;
+              return _continueRound(
+                  task, i, onLog, numbers, currentIndex);
+            } else {
+              _results[i] = StepResult(
+                stepId: step.id,
+                status: StepStatus.failed,
+                message: 'فشل',
+              );
+              notifyListeners();
+              onLog(LogEntry(
+                '❌ فشل الخطوة ${i + 1} - وقف المهمة',
+                DateTime.now(),
+                LogLevel.error,
+              ));
+              return false;
+            }
+          }
+        }
+      }
+
+      if (stepOk) {
+        _results[i] = StepResult(stepId: step.id, status: StepStatus.ok);
+        notifyListeners();
+        onLog(LogEntry(
+            '✅ خطوة ${i + 1} نجحت', DateTime.now(), LogLevel.ok));
+        if (step.waitAfterMs > 0) {
+          await Future.delayed(Duration(milliseconds: step.waitAfterMs));
+        }
+        i++;
+      }
+    }
+
+    return allOk;
+  }
+
+  Future<bool> _continueRound(
+    Task task,
+    int startIndex,
+    Function(LogEntry) onLog,
+    List<String> numbers,
+    int currentIndex,
+  ) async {
+    // نكمل من الـ startIndex جوه نفس الدورة
+    int i = startIndex;
+    while (i < task.steps.length) {
+      if (!_running) return false;
 
       _currentIndex = i;
       _results[i] = StepResult(
@@ -63,141 +288,85 @@ class TaskRunner extends ChangeNotifier {
       ));
 
       final resolved = _resolveStep(step, numbers, currentIndex);
+      final stepRepeat = resolved.repeatCount < 1 ? 1 : resolved.repeatCount;
+      bool stepOk = false;
 
-      // ⭐ خطوة "انتظار ظهور عنصر" لها معالجة خاصة
-      if (resolved.type == TaskStepType.waitForElement) {
-        final outcome = await _runWaitForElement(
-          resolved, i, task.steps.length, onLog, numbers, currentIndex,
-        );
+      for (int r = 0; r < stepRepeat; r++) {
+        if (!_running) return false;
 
-        if (outcome == _WaitOutcome.found) {
-          _results[i] = StepResult(
-              stepId: step.id, status: StepStatus.ok);
-          notifyListeners();
-          onLog(LogEntry('✅ خطوة ${i + 1} نجحت', DateTime.now(), LogLevel.ok));
-          if (step.waitAfterMs > 0) {
-            await Future.delayed(Duration(milliseconds: step.waitAfterMs));
-          }
-          i++;
-          continue;
-        } else {
-          // ما ظهرش — نعمل الـ onNotFound
-          final nfResult = await _handleNotFound(
+        if (resolved.type == TaskStepType.waitForElement) {
+          final outcome = await _runWaitForElement(
             resolved, i, task.steps.length, onLog, numbers, currentIndex,
           );
-
-          if (nfResult == _NotFoundOutcome.stop) {
-            _results[i] = StepResult(
-                stepId: step.id, status: StepStatus.failed, message: 'فشل');
-            notifyListeners();
-            onLog(LogEntry(
-                '❌ فشل الخطوة ${i + 1} - وقف المهمة',
-                DateTime.now(),
-                LogLevel.error,
-            ));
-            allOk = false;
-            break;
-          } else if (nfResult == _NotFoundOutcome.skipped) {
-            final skipTotal = 1 + resolved.skipCount;
-            for (int k = 0;
-                k < skipTotal && i + k < task.steps.length;
-                k++
-            ) {
-              _results[i + k] = StepResult(
-                stepId: task.steps[i + k].id,
-                status: StepStatus.skipped,
-                message: k == 0 ? 'العنصر ما ظهرش' : 'اتخطت',
-              );
-            }
-            notifyListeners();
-            onLog(LogEntry(
-                '⏭️ تخطي $skipTotal خطوة والاستمرار',
-                DateTime.now(),
-                LogLevel.wait,
-            ));
-            if (step.waitAfterMs > 0) {
-              await Future.delayed(Duration(milliseconds: step.waitAfterMs));
-            }
-            i += skipTotal;
-            continue;
+          if (outcome == _WaitOutcome.found) {
+            stepOk = true;
           } else {
-            // handled by onNotFound action — نعتبر الخطوة نجحت
-            _results[i] = StepResult(
-                stepId: step.id, status: StepStatus.ok,
-                message: 'اتعمل إجراء بديل');
-            notifyListeners();
-            onLog(LogEntry(
-                '⚠️ العنصر ما ظهرش — اتعمل إجراء بديل',
-                DateTime.now(),
-                LogLevel.wait,
-            ));
-            if (step.waitAfterMs > 0) {
-              await Future.delayed(Duration(milliseconds: step.waitAfterMs));
+            final nfResult = await _handleNotFound(
+              resolved, i, task.steps.length, onLog, numbers, currentIndex,
+            );
+            if (nfResult == _NotFoundOutcome.stop) {
+              return false;
+            } else if (nfResult == _NotFoundOutcome.skipped) {
+              final skipTotal = 1 + resolved.skipCount;
+              for (int k = 0;
+                  k < skipTotal && i + k < task.steps.length;
+                  k++) {
+                _results[i + k] = StepResult(
+                  stepId: task.steps[i + k].id,
+                  status: StepStatus.skipped,
+                  message: k == 0 ? 'العنصر ما ظهرش' : 'اتخطت',
+                );
+              }
+              notifyListeners();
+              i += skipTotal;
+              continue;
+            } else {
+              stepOk = true;
             }
-            i++;
-            continue;
+          }
+        } else {
+          final ok = await _executeStepWithTimeout(resolved, onLog);
+          if (ok) {
+            stepOk = true;
+          } else {
+            if (step.onFail == FailureAction.skip) {
+              final skipTotal = 1 + step.skipCount;
+              for (int k = 0;
+                  k < skipTotal && i + k < task.steps.length;
+                  k++) {
+                _results[i + k] = StepResult(
+                  stepId: task.steps[i + k].id,
+                  status: StepStatus.skipped,
+                  message: k == 0 ? 'اتخطت' : 'تم تخطيها',
+                );
+              }
+              notifyListeners();
+              i += skipTotal;
+              continue;
+            } else {
+              _results[i] = StepResult(
+                stepId: step.id,
+                status: StepStatus.failed,
+                message: 'فشل',
+              );
+              notifyListeners();
+              return false;
+            }
           }
         }
       }
 
-      // باقي الأنواع
-      final ok = await _executeStepWithTimeout(resolved, onLog);
-
-      if (ok) {
+      if (stepOk) {
         _results[i] = StepResult(stepId: step.id, status: StepStatus.ok);
         notifyListeners();
-        onLog(LogEntry('✅ خطوة ${i + 1} نجحت', DateTime.now(), LogLevel.ok));
         if (step.waitAfterMs > 0) {
           await Future.delayed(Duration(milliseconds: step.waitAfterMs));
         }
         i++;
-      } else {
-        if (step.onFail == FailureAction.skip) {
-          final skipTotal = 1 + step.skipCount;
-          for (int k = 0;
-              k < skipTotal && i + k < task.steps.length;
-              k++
-          ) {
-            _results[i + k] = StepResult(
-              stepId: task.steps[i + k].id,
-              status: StepStatus.skipped,
-              message: k == 0 ? 'اتخطت' : 'تم تخطيها',
-            );
-          }
-          notifyListeners();
-          onLog(LogEntry(
-              '⏭️ تخطي $skipTotal خطوة والاستمرار',
-              DateTime.now(),
-              LogLevel.wait,
-          ));
-          if (step.waitAfterMs > 0) {
-            await Future.delayed(Duration(milliseconds: step.waitAfterMs));
-          }
-          i += skipTotal;
-        } else {
-          _results[i] = StepResult(
-              stepId: step.id, status: StepStatus.failed, message: 'فشل');
-          notifyListeners();
-          onLog(LogEntry(
-              '❌ فشل الخطوة ${i + 1} - وقف المهمة',
-              DateTime.now(),
-              LogLevel.error,
-          ));
-          allOk = false;
-          break;
-        }
       }
     }
 
-    _running = false;
-    _currentIndex = -1;
-    notifyListeners();
-    onLog(LogEntry(
-      allOk ? '🎉 المهمة خلصت بنجاح' : '⚠️ المهمة توقفت',
-      DateTime.now(),
-      allOk ? LogLevel.ok : LogLevel.error,
-    ));
-    return allOk;
+    return true;
   }
 
   TaskStep _resolveStep(
@@ -234,7 +403,6 @@ class TaskRunner extends ChangeNotifier {
     );
   }
 
-  // ═══════════════ Wait For Element ═══════════════
   Future<_WaitOutcome> _runWaitForElement(
     TaskStep step,
     int stepIndex,
@@ -273,7 +441,6 @@ class TaskRunner extends ChangeNotifier {
 
       if (found) {
         onLog(LogEntry('✅ العنصر ظهر!', DateTime.now(), LogLevel.ok));
-        // نفذ onAppear
         if (step.onAppear == OnAppearAction.click) {
           onLog(LogEntry('👆 اضغط عليه…', DateTime.now(), LogLevel.info));
           await AutoFillBridge.smartClick(
@@ -325,13 +492,11 @@ class TaskRunner extends ChangeNotifier {
     switch (step.onNotFound) {
       case NotFoundAction.stop:
         return _NotFoundOutcome.stop;
-
       case NotFoundAction.skip:
         return _NotFoundOutcome.skipped;
-
       case NotFoundAction.clickAlt:
         onLog(LogEntry(
-          '🖱️ اضغط على البديل: ${step.altText}${step.altDesc}${step.altViewId}',
+          '🖱️ اضغط على البديل',
           DateTime.now(),
           LogLevel.info,
         ));
@@ -342,7 +507,6 @@ class TaskRunner extends ChangeNotifier {
           preferClickable: true,
         );
         return _NotFoundOutcome.handled;
-
       case NotFoundAction.typeAlt:
         onLog(LogEntry(
           '⌨️ اكتب البديل: "${step.altTypeText}"',
@@ -351,12 +515,10 @@ class TaskRunner extends ChangeNotifier {
         ));
         await AutoFillBridge.typeText(step.altTypeText);
         return _NotFoundOutcome.handled;
-
       case NotFoundAction.back:
         onLog(LogEntry('⬅️ رجوع', DateTime.now(), LogLevel.info));
         await AutoFillBridge.globalBack();
         return _NotFoundOutcome.handled;
-
       case NotFoundAction.home:
         onLog(LogEntry('🏠 الرئيسية', DateTime.now(), LogLevel.info));
         await AutoFillBridge.globalHome();
@@ -466,7 +628,6 @@ class TaskRunner extends ChangeNotifier {
           );
 
         case TaskStepType.waitForElement:
-          // يتم معالجتها بشكل خاص في run
           return await AutoFillBridge.findElement(
             text: step.params['text']?.toString() ?? '',
             desc: step.params['desc']?.toString() ?? '',
