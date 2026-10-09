@@ -16,6 +16,17 @@ enum TaskStepType {
 
 enum FailureAction { stop, skip }
 
+enum OnAppearAction { none, click, type }
+
+enum NotFoundAction {
+  skip,       // تخطي خطوات
+  stop,       // وقف المهمة
+  clickAlt,   // اضغط على عنصر بديل
+  typeAlt,    // اكتب نص
+  back,       // رجوع
+  home,       // الرئيسية
+}
+
 class TaskStep {
   final String id;
   final TaskStepType type;
@@ -24,6 +35,13 @@ class TaskStep {
   final int timeoutMs;
   final FailureAction onFail;
   final int skipCount;
+  final OnAppearAction onAppear;
+  final NotFoundAction onNotFound;
+  final String appearText;
+  final String altText;
+  final String altDesc;
+  final String altViewId;
+  final String altTypeText;
 
   TaskStep({
     required this.id,
@@ -33,6 +51,13 @@ class TaskStep {
     this.timeoutMs = 0,
     this.onFail = FailureAction.stop,
     this.skipCount = 0,
+    this.onAppear = OnAppearAction.none,
+    this.onNotFound = NotFoundAction.skip,
+    this.appearText = '',
+    this.altText = '',
+    this.altDesc = '',
+    this.altViewId = '',
+    this.altTypeText = '',
   });
 
   Map<String, dynamic> toJson() => {
@@ -43,6 +68,13 @@ class TaskStep {
         'timeoutMs': timeoutMs,
         'onFail': onFail.name,
         'skipCount': skipCount,
+        'onAppear': onAppear.name,
+        'onNotFound': onNotFound.name,
+        'appearText': appearText,
+        'altText': altText,
+        'altDesc': altDesc,
+        'altViewId': altViewId,
+        'altTypeText': altTypeText,
       };
 
   factory TaskStep.fromJson(Map<String, dynamic> json) => TaskStep(
@@ -59,6 +91,19 @@ class TaskStep {
           orElse: () => FailureAction.stop,
         ),
         skipCount: json['skipCount'] ?? 0,
+        onAppear: OnAppearAction.values.firstWhere(
+          (e) => e.name == json['onAppear'],
+          orElse: () => OnAppearAction.none,
+        ),
+        onNotFound: NotFoundAction.values.firstWhere(
+          (e) => e.name == json['onNotFound'],
+          orElse: () => NotFoundAction.skip,
+        ),
+        appearText: json['appearText']?.toString() ?? '',
+        altText: json['altText']?.toString() ?? '',
+        altDesc: json['altDesc']?.toString() ?? '',
+        altViewId: json['altViewId']?.toString() ?? '',
+        altTypeText: json['altTypeText']?.toString() ?? '',
       );
 
   TaskStep copyWith({
@@ -69,6 +114,13 @@ class TaskStep {
     int? timeoutMs,
     FailureAction? onFail,
     int? skipCount,
+    OnAppearAction? onAppear,
+    NotFoundAction? onNotFound,
+    String? appearText,
+    String? altText,
+    String? altDesc,
+    String? altViewId,
+    String? altTypeText,
   }) =>
       TaskStep(
         id: id ?? this.id,
@@ -78,6 +130,13 @@ class TaskStep {
         timeoutMs: timeoutMs ?? this.timeoutMs,
         onFail: onFail ?? this.onFail,
         skipCount: skipCount ?? this.skipCount,
+        onAppear: onAppear ?? this.onAppear,
+        onNotFound: onNotFound ?? this.onNotFound,
+        appearText: appearText ?? this.appearText,
+        altText: altText ?? this.altText,
+        altDesc: altDesc ?? this.altDesc,
+        altViewId: altViewId ?? this.altViewId,
+        altTypeText: altTypeText ?? this.altTypeText,
       );
 
   bool get isWaitStep => type == TaskStepType.waitForElement;
@@ -89,8 +148,6 @@ class TaskStep {
       type == TaskStepType.clickAt;
 
   bool get isSearchStep => isClickStep || isWaitStep;
-
-  bool get isTextInputStep => type == TaskStepType.typeText;
 
   String get typeLabel {
     switch (type) {
@@ -145,7 +202,6 @@ class TaskStep {
       case TaskStepType.clickAt:
         return '(${params['x'] ?? 0}, ${params['y'] ?? 0})';
       case TaskStepType.waitForElement:
-        final onAppear = params['onAppear']?.toString() ?? 'none';
         final t = params['text']?.toString() ?? '';
         final d = params['desc']?.toString() ?? '';
         final id = params['viewId']?.toString() ?? '';
@@ -159,11 +215,18 @@ class TaskStep {
         } else {
           target = '(بدون شرط)';
         }
-        if (onAppear == 'click') return '$target → اضغط';
-        if (onAppear == 'type') {
-          return '$target → اكتب "${params['appearText'] ?? ''}"';
+        String appear = '';
+        switch (onAppear) {
+          case OnAppearAction.click:
+            appear = ' → اضغط';
+            break;
+          case OnAppearAction.type:
+            appear = ' → اكتب "$appearText"';
+            break;
+          case OnAppearAction.none:
+            appear = '';
         }
-        return '$target → متابعة';
+        return '$target$appear';
       case TaskStepType.clearAppData:
         return params['package']?.toString() ?? '';
       case TaskStepType.swipe:
