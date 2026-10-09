@@ -110,9 +110,7 @@ class _TaskEditorPageState extends State<TaskEditorPage> {
       ),
     );
 
-    if (configured != null) {
-      setState(() => _steps.add(configured));
-    }
+    if (configured != null) setState(() => _steps.add(configured));
   }
 
   Future<void> _editStep(int index) async {
@@ -125,9 +123,7 @@ class _TaskEditorPageState extends State<TaskEditorPage> {
         step: _steps[index],
       ),
     );
-    if (result != null) {
-      setState(() => _steps[index] = result);
-    }
+    if (result != null) setState(() => _steps[index] = result);
   }
 
   void _removeStep(int index) => setState(() => _steps.removeAt(index));
@@ -149,11 +145,9 @@ class _TaskEditorPageState extends State<TaskEditorPage> {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: Row(
           children: [
-            Icon(
-              error ? Icons.error_outline_rounded : Icons.check_circle_rounded,
-              color: error ? const Color(0xFFFF6B6B) : const Color(0xFF00D68F),
-              size: 22,
-            ),
+            Icon(error ? Icons.error_outline_rounded : Icons.check_circle_rounded,
+                color: error ? const Color(0xFFFF6B6B) : const Color(0xFF00D68F),
+                size: 22),
             const SizedBox(width: 8),
             Text(error ? 'خطأ' : 'تمام',
                 style: _noDeco.copyWith(fontWeight: FontWeight.bold, fontSize: 16)),
@@ -173,14 +167,8 @@ class _TaskEditorPageState extends State<TaskEditorPage> {
 
   Future<void> _save() async {
     final name = _nameCtrl.text.trim();
-    if (name.isEmpty) {
-      _showMsg('من فضلك اكتب اسم المهمة الأول');
-      return;
-    }
-    if (_steps.isEmpty) {
-      _showMsg('ضيف خطوة على الأقل قبل الحفظ');
-      return;
-    }
+    if (name.isEmpty) { _showMsg('من فضلك اكتب اسم المهمة الأول'); return; }
+    if (_steps.isEmpty) { _showMsg('ضيف خطوة على الأقل قبل الحفظ'); return; }
 
     final fixedSteps = <TaskStep>[];
     for (final step in _steps) {
@@ -190,25 +178,12 @@ class _TaskEditorPageState extends State<TaskEditorPage> {
           _showMsg('فيه خطوة "فتح تطبيق" مش محدّد فيها أي تطبيق');
           return;
         }
-        if (!pkg.contains('.')) {
-          final resolved = await AutoFillBridge.resolvePackage(pkg);
-          if (resolved == null) {
-            _showMsg('مش لاقي تطبيق اسمه "$pkg". اختاره من القائمة.');
-            return;
-          }
-          fixedSteps.add(step.copyWith(
-            params: {...step.params, 'package': resolved},
-          ));
-        } else {
-          final resolved = await AutoFillBridge.resolvePackage(pkg);
-          if (resolved == null) {
-            _showMsg('مفيش تطبيق بالباكدج "$pkg" على الجهاز');
-            return;
-          }
-          fixedSteps.add(step.copyWith(
-            params: {...step.params, 'package': resolved},
-          ));
+        final resolved = await AutoFillBridge.resolvePackage(pkg);
+        if (resolved == null) {
+          _showMsg('مش لاقي تطبيق "$pkg". اختاره من القائمة.');
+          return;
         }
+        fixedSteps.add(step.copyWith(params: {...step.params, 'package': resolved}));
       } else {
         fixedSteps.add(step);
       }
@@ -236,10 +211,7 @@ class _TaskEditorPageState extends State<TaskEditorPage> {
             children: [
               Row(
                 children: [
-                  IconBtn(
-                    icon: Icons.close_rounded,
-                    onTap: () => Navigator.pop(context),
-                  ),
+                  IconBtn(icon: Icons.close_rounded, onTap: () => Navigator.pop(context)),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Text(
@@ -253,9 +225,7 @@ class _TaskEditorPageState extends State<TaskEditorPage> {
                   ),
                   const SizedBox(width: 4),
                   IconBtn(
-                    icon: widget.isDark
-                        ? Icons.dark_mode_rounded
-                        : Icons.light_mode_rounded,
+                    icon: widget.isDark ? Icons.dark_mode_rounded : Icons.light_mode_rounded,
                     onTap: widget.onToggleTheme,
                   ),
                 ],
@@ -267,19 +237,15 @@ class _TaskEditorPageState extends State<TaskEditorPage> {
                 decoration: InputDecoration(
                   labelText: 'اسم المهمة',
                   hintText: 'مثال: افتح واتساب',
-                  labelStyle: _noDeco.copyWith(
-                      color: theme.colorScheme.onSurface.withOpacity(0.6)),
-                  hintStyle: _noDeco.copyWith(
-                      color: theme.colorScheme.onSurface.withOpacity(0.4)),
-                  prefixIcon:
-                      const Icon(Icons.drive_file_rename_outline_rounded),
+                  labelStyle: _noDeco.copyWith(color: theme.colorScheme.onSurface.withOpacity(0.6)),
+                  hintStyle: _noDeco.copyWith(color: theme.colorScheme.onSurface.withOpacity(0.4)),
+                  prefixIcon: const Icon(Icons.drive_file_rename_outline_rounded),
                 ),
               ),
               const SizedBox(height: 18),
               Row(
                 children: [
-                  Icon(Icons.list_alt_rounded,
-                      size: 18, color: theme.colorScheme.primary),
+                  Icon(Icons.list_alt_rounded, size: 18, color: theme.colorScheme.primary),
                   const SizedBox(width: 6),
                   Text('الخطوات',
                       style: _noDeco.copyWith(
@@ -288,8 +254,7 @@ class _TaskEditorPageState extends State<TaskEditorPage> {
                           color: theme.colorScheme.onSurface)),
                   const SizedBox(width: 6),
                   Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                     decoration: BoxDecoration(
                       color: theme.colorScheme.primary.withOpacity(0.2),
                       borderRadius: BorderRadius.circular(10),
@@ -311,20 +276,17 @@ class _TaskEditorPageState extends State<TaskEditorPage> {
                           children: [
                             Icon(Icons.playlist_add_rounded,
                                 size: 60,
-                                color:
-                                    theme.colorScheme.primary.withOpacity(0.3)),
+                                color: theme.colorScheme.primary.withOpacity(0.3)),
                             const SizedBox(height: 12),
                             Text('مفيش خطوات',
                                 style: _noDeco.copyWith(
-                                    color: theme.colorScheme.onSurface
-                                        .withOpacity(0.5),
+                                    color: theme.colorScheme.onSurface.withOpacity(0.5),
                                     fontSize: 16,
                                     fontWeight: FontWeight.bold)),
                             const SizedBox(height: 6),
                             Text('اضغط "إضافة خطوة" وابدأ',
                                 style: _noDeco.copyWith(
-                                    color: theme.colorScheme.onSurface
-                                        .withOpacity(0.4),
+                                    color: theme.colorScheme.onSurface.withOpacity(0.4),
                                     fontSize: 12)),
                           ],
                         ),
@@ -380,13 +342,9 @@ class _TaskEditorPageState extends State<TaskEditorPage> {
       child: Row(
         children: [
           Container(
-            width: 46,
-            height: 46,
+            width: 46, height: 46,
             decoration: BoxDecoration(
-              gradient: LinearGradient(
-                  colors: colors,
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight),
+              gradient: LinearGradient(colors: colors, begin: Alignment.topLeft, end: Alignment.bottomRight),
               borderRadius: BorderRadius.circular(12),
             ),
             child: Column(
@@ -396,9 +354,7 @@ class _TaskEditorPageState extends State<TaskEditorPage> {
                 const SizedBox(height: 1),
                 Text('${i + 1}',
                     style: _noDeco.copyWith(
-                        color: Colors.white,
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold)),
+                        color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
               ],
             ),
           ),
@@ -409,10 +365,7 @@ class _TaskEditorPageState extends State<TaskEditorPage> {
               children: [
                 Text(step.typeLabel,
                     style: _noDeco.copyWith(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 14,
-                      color: colors.first,
-                    )),
+                      fontWeight: FontWeight.bold, fontSize: 14, color: colors.first)),
                 if (step.summary.isNotEmpty) ...[
                   const SizedBox(height: 3),
                   Text(step.summary,
@@ -420,15 +373,32 @@ class _TaskEditorPageState extends State<TaskEditorPage> {
                       overflow: TextOverflow.ellipsis,
                       style: _noDeco.copyWith(
                           fontSize: 12,
-                          color:
-                              theme.colorScheme.onSurface.withOpacity(0.75))),
+                          color: theme.colorScheme.onSurface.withOpacity(0.75))),
                 ],
-                const SizedBox(height: 2),
-                Text('انتظار: ${step.waitAfterMs} مللي',
-                    style: _noDeco.copyWith(
-                        fontSize: 11,
-                        color:
-                            theme.colorScheme.onSurface.withOpacity(0.45))),
+                // ⭐ عرض الـ timeout و onFail
+                Row(
+                  children: [
+                    Text('انتظار: ${step.waitAfterMs}م',
+                        style: _noDeco.copyWith(
+                            fontSize: 10,
+                            color: theme.colorScheme.onSurface.withOpacity(0.45))),
+                    if (step.isSearchStep && step.timeoutMs > 0) ...[
+                      const SizedBox(width: 8),
+                      Icon(Icons.timer_rounded, size: 10,
+                          color: theme.colorScheme.onSurface.withOpacity(0.45)),
+                      const SizedBox(width: 2),
+                      Text('${step.timeoutMs}م',
+                          style: _noDeco.copyWith(
+                              fontSize: 10,
+                              color: theme.colorScheme.onSurface.withOpacity(0.45))),
+                    ],
+                    if (step.onFail == FailureAction.skip) ...[
+                      const SizedBox(width: 8),
+                      Icon(Icons.skip_next_rounded, size: 10,
+                          color: const Color(0xFFFFB84D)),
+                    ],
+                  ],
+                ),
               ],
             ),
           ),
@@ -445,8 +415,7 @@ class _TaskEditorPageState extends State<TaskEditorPage> {
                   ),
                   _tinyIconBtn(
                     icon: Icons.keyboard_arrow_down_rounded,
-                    onTap:
-                        i == _steps.length - 1 ? null : () => _moveStep(i, 1),
+                    onTap: i == _steps.length - 1 ? null : () => _moveStep(i, 1),
                     color: theme.colorScheme.onSurface,
                   ),
                 ],
@@ -539,8 +508,7 @@ class _StepTypePicker extends StatelessWidget {
             const SizedBox(height: 8),
             Center(
               child: Container(
-                width: 50,
-                height: 5,
+                width: 50, height: 5,
                 decoration: BoxDecoration(
                   color: theme.colorScheme.onSurface.withOpacity(0.2),
                   borderRadius: BorderRadius.circular(3),
@@ -553,13 +521,10 @@ class _StepTypePicker extends StatelessWidget {
                 style: _noDeco.copyWith(fontSize: 20, fontWeight: FontWeight.bold)),
             const SizedBox(height: 16),
             Wrap(
-              spacing: 10,
-              runSpacing: 10,
+              spacing: 10, runSpacing: 10,
               alignment: WrapAlignment.center,
               children: items.map((t) {
-                final label =
-                    TaskStep(id: '', type: t, params: {}, waitAfterMs: 0)
-                        .typeLabel;
+                final label = TaskStep(id: '', type: t, params: {}, waitAfterMs: 0).typeLabel;
                 return Material(
                   color: Colors.transparent,
                   child: InkWell(
@@ -569,17 +534,13 @@ class _StepTypePicker extends StatelessWidget {
                       width: 100,
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: theme.colorScheme.surface
-                            .withOpacity(isDark ? 0.6 : 0.9),
+                        color: theme.colorScheme.surface.withOpacity(isDark ? 0.6 : 0.9),
                         borderRadius: BorderRadius.circular(14),
-                        border: Border.all(
-                            color:
-                                theme.colorScheme.primary.withOpacity(0.25)),
+                        border: Border.all(color: theme.colorScheme.primary.withOpacity(0.25)),
                       ),
                       child: Column(
                         children: [
-                          Icon(_iconFor(t),
-                              size: 26, color: theme.colorScheme.primary),
+                          Icon(_iconFor(t), size: 26, color: theme.colorScheme.primary),
                           const SizedBox(height: 6),
                           Text(label,
                               textAlign: TextAlign.center,
@@ -618,6 +579,8 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
 
   late Map<String, TextEditingController> _ctrls;
   late int _waitAfter;
+  late int _timeoutMs;
+  late FailureAction _onFail;
   String? _selectedAppName;
 
   @override
@@ -625,12 +588,13 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
     super.initState();
     _ctrls = {};
     _waitAfter = widget.step.waitAfterMs;
+    _timeoutMs = widget.step.timeoutMs;
+    _onFail = widget.step.onFail;
 
     final keys = _fieldKeysFor(widget.step.type);
     for (final k in keys) {
       _ctrls[k] = TextEditingController(
-        text: widget.step.params[k]?.toString() ??
-            _defaultValueFor(widget.step.type, k),
+        text: widget.step.params[k]?.toString() ?? _defaultValueFor(widget.step.type, k),
       );
     }
   }
@@ -657,7 +621,7 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
 
   String _labelFor(String key) {
     switch (key) {
-      case 'package': return 'اسم التطبيق';
+      case 'package': return 'اسم الحزمة';
       case 'text': return 'النص';
       case 'desc': return 'الوصف (Content Description)';
       case 'viewId': return 'الـ view id';
@@ -675,9 +639,7 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
 
   @override
   void dispose() {
-    for (final c in _ctrls.values) {
-      c.dispose();
-    }
+    for (final c in _ctrls.values) c.dispose();
     super.dispose();
   }
 
@@ -696,9 +658,7 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
     }
   }
 
-  // ⭐ التقاط الشاشة الحالية
   Future<void> _inspectScreen() async {
-    // 1) dialog countdown
     final captured = await showDialog<List<ScreenElement>>(
       context: context,
       barrierDismissible: false,
@@ -708,28 +668,23 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
     if (captured == null || captured.isEmpty) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-              content: Text('مفيش عناصر ظهرت. تأكد من تفعيل Accessibility.')),
+          const SnackBar(content: Text('مفيش عناصر. تأكد من Accessibility.')),
         );
       }
       return;
     }
-
     if (!mounted) return;
 
-    // 2) عرض العناصر واختيار
     final picked = await showModalBottomSheet<ScreenElement>(
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
-      builder: (ctx) =>
-          _ElementPickerSheet(elements: captured, isDark: widget.isDark),
+      builder: (ctx) => _ElementPickerSheet(elements: captured, isDark: widget.isDark),
     );
-
     if (picked == null) return;
 
-    // 3) املأ الحقول
     setState(() {
+      // املأ اللي متاح
       if (_ctrls.containsKey('text') && picked.text.isNotEmpty) {
         _ctrls['text']?.text = picked.text;
       }
@@ -739,22 +694,45 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
       if (_ctrls.containsKey('viewId') && picked.id.isNotEmpty) {
         _ctrls['viewId']?.text = picked.id;
       }
-      if (_ctrls.containsKey('x')) {
-        _ctrls['x']?.text = picked.x.toString();
-      }
-      if (_ctrls.containsKey('y')) {
-        _ctrls['y']?.text = picked.y.toString();
-      }
+      if (_ctrls.containsKey('x')) _ctrls['x']?.text = picked.x.toString();
+      if (_ctrls.containsKey('y')) _ctrls['y']?.text = picked.y.toString();
     });
+
+    // ⚠️ تحذير لو نوع الخطوة مش مناسب
+    final type = widget.step.type;
+    String? warning;
+    if (type == TaskStepType.clickByText && picked.text.isEmpty) {
+      warning = 'العنصر اللي اخترته مش عنده "نص". نوع الخطوة الحالي "ضغط على نص" مش مناسب — جرب "ضغط على وصف" أو "ضغط على id"';
+    } else if (type == TaskStepType.clickByDesc && picked.desc.isEmpty) {
+      warning = 'العنصر مش عنده "وصف". جرب "ضغط على نص" أو "ضغط على id"';
+    } else if (type == TaskStepType.clickById && picked.id.isEmpty) {
+      warning = 'العنصر مش عنده "id". جرب "ضغط على نص" أو "ضغط على وصف"';
+    }
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('تم اختيار: ${picked.bestLabel}')),
+        SnackBar(
+          content: Text(warning ?? 'تم اختيار: ${picked.bestLabel}'),
+          duration: Duration(seconds: warning != null ? 5 : 2),
+          backgroundColor: warning != null ? const Color(0xFFFF6B6B) : null,
+        ),
       );
     }
   }
 
   bool get _canInspect {
+    switch (widget.step.type) {
+      case TaskStepType.clickByText:
+      case TaskStepType.clickByDesc:
+      case TaskStepType.clickById:
+      case TaskStepType.clickAt:
+        return true;
+      default:
+        return false;
+    }
+  }
+
+  bool get _isSearchStep {
     switch (widget.step.type) {
       case TaskStepType.clickByText:
       case TaskStepType.clickByDesc:
@@ -774,8 +752,7 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
     final currentPkg = _ctrls['package']?.text ?? '';
 
     return Padding(
-      padding:
-          EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
       child: Container(
         decoration: BoxDecoration(
           color: theme.scaffoldBackgroundColor,
@@ -789,8 +766,7 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
             children: [
               Center(
                 child: Container(
-                  width: 50,
-                  height: 5,
+                  width: 50, height: 5,
                   decoration: BoxDecoration(
                     color: theme.colorScheme.onSurface.withOpacity(0.2),
                     borderRadius: BorderRadius.circular(3),
@@ -800,11 +776,9 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
               const SizedBox(height: 16),
               Text(label,
                   textAlign: TextAlign.center,
-                  style: _noDeco.copyWith(
-                      fontSize: 20, fontWeight: FontWeight.bold)),
+                  style: _noDeco.copyWith(fontSize: 20, fontWeight: FontWeight.bold)),
               const SizedBox(height: 16),
 
-              // زرار التقاط الشاشة
               if (_canInspect) ...[
                 Material(
                   color: Colors.transparent,
@@ -812,8 +786,7 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
                     borderRadius: BorderRadius.circular(14),
                     onTap: _inspectScreen,
                     child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 14),
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                       decoration: BoxDecoration(
                         gradient: const LinearGradient(
                             colors: [Color(0xFF6C5CE7), Color(0xFF00D2FF)]),
@@ -821,8 +794,7 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
                       ),
                       child: Row(
                         children: [
-                          const Icon(Icons.search_rounded,
-                              color: Colors.white, size: 22),
+                          const Icon(Icons.search_rounded, color: Colors.white, size: 22),
                           const SizedBox(width: 10),
                           Expanded(
                             child: Column(
@@ -836,8 +808,7 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
                                 Text('هيتم الالتقاط بعد 5 ثواني',
                                     style: _noDeco.copyWith(
                                         fontSize: 11,
-                                        color:
-                                            Colors.white.withOpacity(0.85))),
+                                        color: Colors.white.withOpacity(0.85))),
                               ],
                             ),
                           ),
@@ -858,21 +829,17 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
                     borderRadius: BorderRadius.circular(14),
                     onTap: _pickApp,
                     child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 14),
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                       decoration: BoxDecoration(
                         color: currentPkg.isEmpty
                             ? theme.colorScheme.primary.withOpacity(0.15)
                             : theme.colorScheme.surface.withOpacity(0.6),
                         borderRadius: BorderRadius.circular(14),
-                        border: Border.all(
-                            color:
-                                theme.colorScheme.primary.withOpacity(0.35)),
+                        border: Border.all(color: theme.colorScheme.primary.withOpacity(0.35)),
                       ),
                       child: Row(
                         children: [
-                          Icon(Icons.apps_rounded,
-                              color: theme.colorScheme.primary, size: 22),
+                          Icon(Icons.apps_rounded, color: theme.colorScheme.primary, size: 22),
                           const SizedBox(width: 10),
                           Expanded(
                             child: Column(
@@ -891,8 +858,7 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
                                   Text(currentPkg,
                                       style: _noDeco.copyWith(
                                           fontSize: 10.5,
-                                          color: theme.colorScheme.onSurface
-                                              .withOpacity(0.5))),
+                                          color: theme.colorScheme.onSurface.withOpacity(0.5))),
                               ],
                             ),
                           ),
@@ -909,8 +875,7 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
                   style: _noDeco.copyWith(fontSize: 15),
                   decoration: InputDecoration(
                     labelText: 'اسم الحزمة (أو اختار من فوق)',
-                    labelStyle: _noDeco.copyWith(
-                        color: theme.colorScheme.onSurface.withOpacity(0.6)),
+                    labelStyle: _noDeco.copyWith(color: theme.colorScheme.onSurface.withOpacity(0.6)),
                     prefixIcon: const Icon(Icons.tag_rounded),
                   ),
                 ),
@@ -923,30 +888,106 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
                         controller: e.value,
                         style: _noDeco.copyWith(fontSize: 15),
                         keyboardType: int.tryParse(e.value.text) != null
-                            ? TextInputType.number
-                            : TextInputType.text,
+                            ? TextInputType.number : TextInputType.text,
                         decoration: InputDecoration(
                           labelText: _labelFor(e.key),
-                          labelStyle: _noDeco.copyWith(
-                              color: theme.colorScheme.onSurface
-                                  .withOpacity(0.6)),
+                          labelStyle: _noDeco.copyWith(color: theme.colorScheme.onSurface.withOpacity(0.6)),
                         ),
                       ),
                     )),
 
               const SizedBox(height: 4),
               Text('الانتظار بعد الخطوة: $_waitAfter مللي',
-                  style: _noDeco.copyWith(
-                      fontSize: 12, fontWeight: FontWeight.bold)),
+                  style: _noDeco.copyWith(fontSize: 12, fontWeight: FontWeight.bold)),
               Slider(
                 value: _waitAfter.toDouble(),
-                min: 0,
-                max: 5000,
-                divisions: 50,
+                min: 0, max: 5000, divisions: 50,
                 label: '$_waitAfter',
                 onChanged: (v) => setState(() => _waitAfter = v.round()),
               ),
-              const SizedBox(height: 8),
+
+              // ⭐ قسم المهلة (لخطوات البحث بس)
+              if (_isSearchStep) ...[
+                const SizedBox(height: 4),
+                Divider(color: theme.colorScheme.primary.withOpacity(0.15)),
+                const SizedBox(height: 8),
+
+                Row(
+                  children: [
+                    Icon(Icons.timer_rounded, size: 16, color: theme.colorScheme.primary),
+                    const SizedBox(width: 6),
+                    Text('مهلة الانتظار',
+                        style: _noDeco.copyWith(
+                            fontSize: 13,
+                            fontWeight: FontWeight.bold,
+                            color: theme.colorScheme.primary)),
+                    const Spacer(),
+                    Text(
+                      _timeoutMs == 0 ? 'بدون' : '$_timeoutMs مللي',
+                      style: _noDeco.copyWith(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: theme.colorScheme.onSurface.withOpacity(0.8)),
+                    ),
+                  ],
+                ),
+                Slider(
+                  value: _timeoutMs.toDouble(),
+                  min: 0, max: 15000, divisions: 30,
+                  label: _timeoutMs == 0 ? 'بدون' : '$_timeoutMs',
+                  onChanged: (v) => setState(() => _timeoutMs = v.round()),
+                ),
+                Text(
+                  _timeoutMs == 0
+                      ? 'هيتم تنفيذ الخطوة مرة واحدة بس'
+                      : 'هيفضل يدوّر على العنصر لحد $_timeoutMs مللي',
+                  style: _noDeco.copyWith(
+                      fontSize: 10,
+                      color: theme.colorScheme.onSurface.withOpacity(0.55)),
+                ),
+
+                const SizedBox(height: 14),
+                Row(
+                  children: [
+                    Icon(Icons.error_outline_rounded,
+                        size: 16, color: theme.colorScheme.primary),
+                    const SizedBox(width: 6),
+                    Text('لو فشلت الخطوة',
+                        style: _noDeco.copyWith(
+                            fontSize: 13,
+                            fontWeight: FontWeight.bold,
+                            color: theme.colorScheme.primary)),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _actionChoice(
+                        theme,
+                        label: 'وقف المهمة',
+                        icon: Icons.stop_rounded,
+                        selected: _onFail == FailureAction.stop,
+                        color: const Color(0xFFFF6B6B),
+                        onTap: () => setState(() => _onFail = FailureAction.stop),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: _actionChoice(
+                        theme,
+                        label: 'تخطى الخطوة',
+                        icon: Icons.skip_next_rounded,
+                        selected: _onFail == FailureAction.skip,
+                        color: const Color(0xFFFFB84D),
+                        onTap: () => setState(() => _onFail = FailureAction.skip),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+
+              const SizedBox(height: 16),
               ActionBtn(
                 label: 'تم',
                 icon: Icons.check_rounded,
@@ -960,11 +1001,59 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
                   Navigator.pop(
                     context,
                     widget.step.copyWith(
-                        params: params, waitAfterMs: _waitAfter),
+                      params: params,
+                      waitAfterMs: _waitAfter,
+                      timeoutMs: _timeoutMs,
+                      onFail: _onFail,
+                    ),
                   );
                 },
               ),
               const SizedBox(height: 20),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _actionChoice(
+    ThemeData theme, {
+    required String label,
+    required IconData icon,
+    required bool selected,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 10),
+          decoration: BoxDecoration(
+            color: selected ? color.withOpacity(0.2) : theme.colorScheme.surface.withOpacity(0.4),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: selected ? color : theme.colorScheme.primary.withOpacity(0.15),
+              width: selected ? 1.5 : 1,
+            ),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, size: 18, color: selected ? color : theme.colorScheme.onSurface.withOpacity(0.6)),
+              const SizedBox(width: 6),
+              Flexible(
+                child: Text(label,
+                    style: _noDeco.copyWith(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      color: selected ? color : theme.colorScheme.onSurface.withOpacity(0.6),
+                    ),
+                    overflow: TextOverflow.ellipsis),
+              ),
             ],
           ),
         ),
@@ -993,11 +1082,7 @@ class _CountdownDialogState extends State<_CountdownDialog> {
         setState(() => _seconds--);
       } else {
         t.cancel();
-        setState(() {
-          _seconds = 0;
-          _capturing = true;
-        });
-        // التقاط الشاشة
+        setState(() { _seconds = 0; _capturing = true; });
         final elements = await AutoFillBridge.dumpScreen();
         if (mounted) Navigator.pop(context, elements);
       }
@@ -1019,28 +1104,23 @@ class _CountdownDialogState extends State<_CountdownDialog> {
       content: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.screen_share_rounded,
-              size: 50, color: Color(0xFF6C5CE7)),
+          const Icon(Icons.screen_share_rounded, size: 50, color: Color(0xFF6C5CE7)),
           const SizedBox(height: 14),
           Text(
             _capturing ? 'جاري الالتقاط…' : 'هيتم الالتقاط بعد $_seconds',
             style: const TextStyle(
-              fontSize: 22,
-              fontWeight: FontWeight.bold,
-              decoration: TextDecoration.none,
-            ),
+              fontSize: 22, fontWeight: FontWeight.bold,
+              decoration: TextDecoration.none),
           ),
           const SizedBox(height: 10),
           Text(
-            _capturing
-                ? 'من فضلك استنى'
+            _capturing ? 'من فضلك استنى'
                 : 'اسرع! روح للتطبيق اللي عايز تلتقط منه',
             textAlign: TextAlign.center,
             style: TextStyle(
               fontSize: 12,
               color: theme.colorScheme.onSurface.withOpacity(0.7),
-              decoration: TextDecoration.none,
-            ),
+              decoration: TextDecoration.none),
           ),
           if (!_capturing) ...[
             const SizedBox(height: 14),
@@ -1050,19 +1130,16 @@ class _CountdownDialogState extends State<_CountdownDialog> {
                 alignment: Alignment.center,
                 children: [
                   SizedBox(
-                    width: 50,
-                    height: 50,
+                    width: 50, height: 50,
                     child: CircularProgressIndicator(
                       value: _seconds / 5,
                       strokeWidth: 4,
-                      backgroundColor:
-                          theme.colorScheme.onSurface.withOpacity(0.1),
+                      backgroundColor: theme.colorScheme.onSurface.withOpacity(0.1),
                     ),
                   ),
                   Text('$_seconds',
                       style: const TextStyle(
-                          fontSize: 22,
-                          fontWeight: FontWeight.bold,
+                          fontSize: 22, fontWeight: FontWeight.bold,
                           decoration: TextDecoration.none)),
                 ],
               ),
@@ -1112,9 +1189,27 @@ class _ElementPickerSheetState extends State<_ElementPickerSheet> {
 
   IconData _iconFor(ScreenElement e) {
     if (e.editable) return Icons.keyboard_rounded;
-    if (e.clickable) return Icons.touch_app_rounded;
+    if (e.clickable || e.clickableParent) return Icons.touch_app_rounded;
     if (e.hasText) return Icons.text_fields_rounded;
     return Icons.widgets_rounded;
+  }
+
+  Color _colorFor(ScreenElement e) {
+    if (e.editable) return const Color(0xFF00D2FF);
+    if (e.clickable) return const Color(0xFF00D68F);
+    if (e.clickableParent) return const Color(0xFFFFB84D);
+    if (e.hasText) return const Color(0xFF6C5CE7);
+    return const Color(0xFF95A5A6);
+  }
+
+  String _typeLabelFor(ScreenElement e) {
+    if (e.editable) return 'حقل كتابة';
+    if (e.clickable) return 'قابل للضغط';
+    if (e.clickableParent) return 'أب قابل للضغط';
+    if (e.hasText) return 'نص';
+    if (e.hasDesc) return 'وصف';
+    if (e.hasId) return 'id';
+    return 'عنصر';
   }
 
   @override
@@ -1130,8 +1225,7 @@ class _ElementPickerSheetState extends State<_ElementPickerSheet> {
         children: [
           const SizedBox(height: 12),
           Container(
-            width: 50,
-            height: 5,
+            width: 50, height: 5,
             decoration: BoxDecoration(
               color: theme.colorScheme.onSurface.withOpacity(0.2),
               borderRadius: BorderRadius.circular(3),
@@ -1156,12 +1250,10 @@ class _ElementPickerSheetState extends State<_ElementPickerSheet> {
                 setState(() {
                   _filtered = s.isEmpty
                       ? widget.elements
-                      : widget.elements
-                          .where((e) =>
-                              e.text.toLowerCase().contains(s) ||
-                              e.desc.toLowerCase().contains(s) ||
-                              e.id.toLowerCase().contains(s))
-                          .toList();
+                      : widget.elements.where((e) =>
+                          e.text.toLowerCase().contains(s) ||
+                          e.desc.toLowerCase().contains(s) ||
+                          e.id.toLowerCase().contains(s)).toList();
                 });
               },
               decoration: InputDecoration(
@@ -1178,16 +1270,15 @@ class _ElementPickerSheetState extends State<_ElementPickerSheet> {
                 ? Center(
                     child: Text('مفيش نتائج',
                         style: _noDeco.copyWith(
-                            color:
-                                theme.colorScheme.onSurface.withOpacity(0.5))))
+                            color: theme.colorScheme.onSurface.withOpacity(0.5))))
                 : ListView.builder(
                     padding: const EdgeInsets.symmetric(horizontal: 12),
                     itemCount: _filtered.length,
                     itemBuilder: (_, i) {
                       final e = _filtered[i];
+                      final color = _colorFor(e);
                       return Padding(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 4, vertical: 4),
+                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
                         child: Material(
                           color: Colors.transparent,
                           borderRadius: BorderRadius.circular(12),
@@ -1197,42 +1288,58 @@ class _ElementPickerSheetState extends State<_ElementPickerSheet> {
                             child: Container(
                               padding: const EdgeInsets.all(12),
                               decoration: BoxDecoration(
-                                color: theme.colorScheme.surface
-                                    .withOpacity(0.5),
+                                color: theme.colorScheme.surface.withOpacity(0.5),
                                 borderRadius: BorderRadius.circular(12),
-                                border: Border.all(
-                                    color: theme.colorScheme.primary
-                                        .withOpacity(0.15)),
+                                border: Border.all(color: color.withOpacity(0.3)),
                               ),
                               child: Row(
                                 children: [
                                   Container(
-                                    width: 38,
-                                    height: 38,
+                                    width: 40, height: 40,
                                     decoration: BoxDecoration(
-                                      color: theme.colorScheme.primary
-                                          .withOpacity(0.15),
-                                      borderRadius:
-                                          BorderRadius.circular(10),
+                                      color: color.withOpacity(0.15),
+                                      borderRadius: BorderRadius.circular(10),
                                     ),
-                                    child: Icon(_iconFor(e),
-                                        color: theme.colorScheme.primary,
-                                        size: 20),
+                                    child: Icon(_iconFor(e), color: color, size: 20),
                                   ),
                                   const SizedBox(width: 10),
                                   Expanded(
                                     child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
+                                      crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
+                                        Row(
+                                          children: [
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(
+                                                  horizontal: 6, vertical: 1),
+                                              decoration: BoxDecoration(
+                                                color: color.withOpacity(0.2),
+                                                borderRadius: BorderRadius.circular(6),
+                                              ),
+                                              child: Text(_typeLabelFor(e),
+                                                  style: _noDeco.copyWith(
+                                                      fontSize: 9,
+                                                      fontWeight: FontWeight.bold,
+                                                      color: color)),
+                                            ),
+                                            const SizedBox(width: 6),
+                                            Text(
+                                              e.className.split(".").last,
+                                              style: _noDeco.copyWith(
+                                                  fontSize: 9.5,
+                                                  color: theme.colorScheme
+                                                      .onSurface.withOpacity(0.4)),
+                                            ),
+                                          ],
+                                        ),
+                                        const SizedBox(height: 4),
                                         if (e.hasText)
                                           Text(e.text,
                                               maxLines: 1,
                                               overflow: TextOverflow.ellipsis,
                                               style: _noDeco.copyWith(
                                                   fontSize: 13,
-                                                  fontWeight:
-                                                      FontWeight.bold)),
+                                                  fontWeight: FontWeight.bold)),
                                         if (e.hasDesc)
                                           Text('📝 ${e.desc}',
                                               maxLines: 1,
@@ -1240,31 +1347,25 @@ class _ElementPickerSheetState extends State<_ElementPickerSheet> {
                                               style: _noDeco.copyWith(
                                                   fontSize: 11,
                                                   color: theme.colorScheme
-                                                      .onSurface
-                                                      .withOpacity(0.75))),
+                                                      .onSurface.withOpacity(0.75))),
                                         if (e.hasId)
                                           Text('🏷 ${e.id}',
                                               maxLines: 1,
                                               overflow: TextOverflow.ellipsis,
                                               style: _noDeco.copyWith(
                                                   fontSize: 10.5,
-                                                  color: theme.colorScheme
-                                                      .primary
+                                                  color: theme.colorScheme.primary
                                                       .withOpacity(0.8))),
                                         Text(
-                                          '${e.className.split(".").last} • (${e.x}, ${e.y})',
+                                          '(${e.x}, ${e.y}) • ${e.width}×${e.height}',
                                           style: _noDeco.copyWith(
-                                              fontSize: 10,
+                                              fontSize: 9.5,
                                               color: theme.colorScheme
-                                                  .onSurface
-                                                  .withOpacity(0.4)),
+                                                  .onSurface.withOpacity(0.35)),
                                         ),
                                       ],
                                     ),
                                   ),
-                                  if (e.clickable)
-                                    const Icon(Icons.touch_app_rounded,
-                                        size: 16, color: Color(0xFF00D68F)),
                                 ],
                               ),
                             ),
@@ -1337,8 +1438,7 @@ class _AppPickerSheetState extends State<_AppPickerSheet> {
         children: [
           const SizedBox(height: 12),
           Container(
-            width: 50,
-            height: 5,
+            width: 50, height: 5,
             decoration: BoxDecoration(
               color: theme.colorScheme.onSurface.withOpacity(0.2),
               borderRadius: BorderRadius.circular(3),
@@ -1363,11 +1463,9 @@ class _AppPickerSheetState extends State<_AppPickerSheet> {
                 setState(() {
                   _filtered = s.isEmpty
                       ? _all
-                      : _all
-                          .where((a) =>
-                              a.name.toLowerCase().contains(s) ||
-                              a.package.toLowerCase().contains(s))
-                          .toList();
+                      : _all.where((a) =>
+                          a.name.toLowerCase().contains(s) ||
+                          a.package.toLowerCase().contains(s)).toList();
                 });
               },
               decoration: InputDecoration(
@@ -1386,16 +1484,14 @@ class _AppPickerSheetState extends State<_AppPickerSheet> {
                     ? Center(
                         child: Text('مفيش نتائج',
                             style: _noDeco.copyWith(
-                                color: theme.colorScheme.onSurface
-                                    .withOpacity(0.5))))
+                                color: theme.colorScheme.onSurface.withOpacity(0.5))))
                     : ListView.builder(
                         padding: const EdgeInsets.symmetric(horizontal: 12),
                         itemCount: _filtered.length,
                         itemBuilder: (_, i) {
                           final app = _filtered[i];
                           return Padding(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 4, vertical: 3),
+                            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 3),
                             child: Material(
                               color: Colors.transparent,
                               borderRadius: BorderRadius.circular(12),
@@ -1408,36 +1504,29 @@ class _AppPickerSheetState extends State<_AppPickerSheet> {
                                   child: Row(
                                     children: [
                                       Container(
-                                        width: 40,
-                                        height: 40,
+                                        width: 40, height: 40,
                                         decoration: BoxDecoration(
-                                          color: theme.colorScheme.primary
-                                              .withOpacity(0.15),
-                                          borderRadius:
-                                              BorderRadius.circular(10),
+                                          color: theme.colorScheme.primary.withOpacity(0.15),
+                                          borderRadius: BorderRadius.circular(10),
                                         ),
                                         child: Icon(Icons.android_rounded,
-                                            color: theme.colorScheme.primary,
-                                            size: 22),
+                                            color: theme.colorScheme.primary, size: 22),
                                       ),
                                       const SizedBox(width: 12),
                                       Expanded(
                                         child: Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
+                                          crossAxisAlignment: CrossAxisAlignment.start,
                                           children: [
                                             Text(app.name,
                                                 style: _noDeco.copyWith(
                                                     fontSize: 14,
-                                                    fontWeight:
-                                                        FontWeight.bold)),
+                                                    fontWeight: FontWeight.bold)),
                                             const SizedBox(height: 2),
                                             Text(app.package,
                                                 style: _noDeco.copyWith(
                                                     fontSize: 10.5,
                                                     color: theme.colorScheme
-                                                        .onSurface
-                                                        .withOpacity(0.5))),
+                                                        .onSurface.withOpacity(0.5))),
                                           ],
                                         ),
                                       ),
