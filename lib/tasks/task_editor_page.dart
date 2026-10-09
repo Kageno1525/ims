@@ -375,7 +375,6 @@ class _TaskEditorPageState extends State<TaskEditorPage> {
                           fontSize: 12,
                           color: theme.colorScheme.onSurface.withOpacity(0.75))),
                 ],
-                // ⭐ عرض الـ timeout و onFail
                 Row(
                   children: [
                     Text('انتظار: ${step.waitAfterMs}م',
@@ -578,23 +577,26 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
   );
 
   late Map<String, TextEditingController> _ctrls;
+  late TaskStepType _currentType;  // ⭐ نوع الخطوة الحالي - قابل للتغيير
   late int _waitAfter;
   late int _timeoutMs;
   late FailureAction _onFail;
   String? _selectedAppName;
+  String? _lastWarning;  // ⭐ تحذير آخر التقاط
 
   @override
   void initState() {
     super.initState();
     _ctrls = {};
+    _currentType = widget.step.type;
     _waitAfter = widget.step.waitAfterMs;
     _timeoutMs = widget.step.timeoutMs;
     _onFail = widget.step.onFail;
 
-    final keys = _fieldKeysFor(widget.step.type);
+    final keys = _fieldKeysFor(_currentType);
     for (final k in keys) {
       _ctrls[k] = TextEditingController(
-        text: widget.step.params[k]?.toString() ?? _defaultValueFor(widget.step.type, k),
+        text: widget.step.params[k]?.toString() ?? _defaultValueFor(_currentType, k),
       );
     }
   }
@@ -658,6 +660,29 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
     }
   }
 
+  // ⭐ تغيير نوع الخطوة (نحتفظ بالبيانات)
+  void _changeType(TaskStepType newType) {
+    setState(() {
+      final oldValues = <String, String>{};
+      for (final e in _ctrls.entries) {
+        oldValues[e.key] = e.value.text;
+      }
+      _currentType = newType;
+
+      final keys = _fieldKeysFor(newType);
+      final newCtrls = <String, TextEditingController>{};
+      for (final k in keys) {
+        // احتفظ بالقيمة القديمة لو موجودة
+        final val = oldValues[k] ?? _defaultValueFor(newType, k);
+        newCtrls[k] = TextEditingController(text: val);
+      }
+      for (final c in _ctrls.values) c.dispose();
+      _ctrls = newCtrls;
+      _lastWarning = null;
+    });
+  }
+
+  // ⭐ التقاط الشاشة
   Future<void> _inspectScreen() async {
     final captured = await showDialog<List<ScreenElement>>(
       context: context,
@@ -683,31 +708,56 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
     );
     if (picked == null) return;
 
+    // ⭐ املأ كل الحقول الممكنة
     setState(() {
-      // املأ اللي متاح
-      if (_ctrls.containsKey('text') && picked.text.isNotEmpty) {
-        _ctrls['text']?.text = picked.text;
-      }
-      if (_ctrls.containsKey('desc') && picked.desc.isNotEmpty) {
-        _ctrls['desc']?.text = picked.desc;
-      }
-      if (_ctrls.containsKey('viewId') && picked.id.isNotEmpty) {
-        _ctrls['viewId']?.text = picked.id;
-      }
+      if (_ctrls.containsKey('text')) _ctrls['text']?.text = picked.text;
+      if (_ctrls.containsKey('desc')) _ctrls['desc']?.text = picked.desc;
+      if (_ctrls.containsKey('viewId')) _ctrls['viewId']?.text = picked.id;
       if (_ctrls.containsKey('x')) _ctrls['x']?.text = picked.x.toString();
       if (_ctrls.containsKey('y')) _ctrls['y']?.text = picked.y.toString();
     });
 
-    // ⚠️ تحذير لو نوع الخطوة مش مناسب
-    final type = widget.step.type;
+    // ⭐ تحقق + اقتراح نوع خطوة أفضل
     String? warning;
-    if (type == TaskStepType.clickByText && picked.text.isEmpty) {
-      warning = 'العنصر اللي اخترته مش عنده "نص". نوع الخطوة الحالي "ضغط على نص" مش مناسب — جرب "ضغط على وصف" أو "ضغط على id"';
-    } else if (type == TaskStepType.clickByDesc && picked.desc.isEmpty) {
-      warning = 'العنصر مش عنده "وصف". جرب "ضغط على نص" أو "ضغط على id"';
-    } else if (type == TaskStepType.clickById && picked.id.isEmpty) {
-      warning = 'العنصر مش عنده "id". جرب "ضغط على نص" أو "ضغط على وصف"';
+    TaskStepType? suggestedType;
+
+    final hasText = picked.text.isNotEmpty;
+    final hasDesc = picked.desc.isNotEmpty;
+    final hasId = picked.id.isNotEmpty;
+
+    switch (_currentType) {
+      case TaskStepType.clickByText:
+        if (!hasText) {
+          warning = 'العنصر ده مفيهوش "نص"';
+          if (hasDesc) suggestedType = TaskStepType.clickByDesc;
+          else if (hasId) suggestedType = TaskStepType.clickById;
+          else suggestedType = TaskStepType.clickAt;
+        }
+        break;
+      case TaskStepType.clickByDesc:
+        if (!hasDesc) {
+          warning = 'العنصر ده مفيهوش "وصف"';
+          if (hasText) suggestedType = TaskStepType.clickByText;
+          else if (hasId) suggestedType = TaskStepType.clickById;
+          else suggestedType = TaskStepType.clickAt;
+        }
+        break;
+      case TaskStepType.clickById:
+        if (!hasId) {
+          warning = 'العنصر ده مفيهوش "id"';
+          if (hasText) suggestedType = TaskStepType.clickByText;
+          else if (hasDesc) suggestedType = TaskStepType.clickByDesc;
+          else suggestedType = TaskStepType.clickAt;
+        }
+        break;
+      case TaskStepType.clickAt:
+        // الإحداثيات دايماً موجودة
+        break;
+      default:
+        break;
     }
+
+    setState(() => _lastWarning = warning);
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -715,13 +765,20 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
           content: Text(warning ?? 'تم اختيار: ${picked.bestLabel}'),
           duration: Duration(seconds: warning != null ? 5 : 2),
           backgroundColor: warning != null ? const Color(0xFFFF6B6B) : null,
+          action: suggestedType != null
+              ? SnackBarAction(
+                  label: 'غيّر النوع',
+                  textColor: Colors.white,
+                  onPressed: () => _changeType(suggestedType!),
+                )
+              : null,
         ),
       );
     }
   }
 
   bool get _canInspect {
-    switch (widget.step.type) {
+    switch (_currentType) {
       case TaskStepType.clickByText:
       case TaskStepType.clickByDesc:
       case TaskStepType.clickById:
@@ -733,7 +790,7 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
   }
 
   bool get _isSearchStep {
-    switch (widget.step.type) {
+    switch (_currentType) {
       case TaskStepType.clickByText:
       case TaskStepType.clickByDesc:
       case TaskStepType.clickById:
@@ -747,8 +804,8 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final label = widget.step.typeLabel;
-    final isOpenApp = widget.step.type == TaskStepType.openApp;
+    final label = TaskStep(id: '', type: _currentType, params: {}, waitAfterMs: 0).typeLabel;
+    final isOpenApp = _currentType == TaskStepType.openApp;
     final currentPkg = _ctrls['package']?.text ?? '';
 
     return Padding(
@@ -777,7 +834,49 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
               Text(label,
                   textAlign: TextAlign.center,
                   style: _noDeco.copyWith(fontSize: 20, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 16),
+              const SizedBox(height: 8),
+
+              // ⭐ زرار تغيير النوع - مفيد جداً
+              if (_isSearchStep)
+                Center(
+                  child: TextButton.icon(
+                    onPressed: () => _showTypeChangeSheet(),
+                    icon: const Icon(Icons.swap_horiz_rounded, size: 16),
+                    label: const Text('تغيير نوع الخطوة', style: TextStyle(fontSize: 12)),
+                    style: TextButton.styleFrom(
+                      foregroundColor: theme.colorScheme.primary,
+                    ),
+                  ),
+                ),
+
+              const SizedBox(height: 12),
+
+              // ⚠️ تحذير لو فيه مشكلة
+              if (_lastWarning != null) ...[
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFF6B6B).withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: const Color(0xFFFF6B6B).withOpacity(0.35)),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.warning_amber_rounded,
+                          color: Color(0xFFFF6B6B), size: 18),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(_lastWarning!,
+                            style: _noDeco.copyWith(
+                                color: const Color(0xFFFF6B6B),
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold)),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 14),
+              ],
 
               if (_canInspect) ...[
                 Material(
@@ -906,7 +1005,6 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
                 onChanged: (v) => setState(() => _waitAfter = v.round()),
               ),
 
-              // ⭐ قسم المهلة (لخطوات البحث بس)
               if (_isSearchStep) ...[
                 const SizedBox(height: 4),
                 Divider(color: theme.colorScheme.primary.withOpacity(0.15)),
@@ -1001,6 +1099,7 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
                   Navigator.pop(
                     context,
                     widget.step.copyWith(
+                      type: _currentType,
                       params: params,
                       waitAfterMs: _waitAfter,
                       timeoutMs: _timeoutMs,
@@ -1014,6 +1113,84 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
           ),
         ),
       ),
+    );
+  }
+
+  // ⭐ sheet صغير لتغيير نوع الخطوة
+  void _showTypeChangeSheet() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        final theme = Theme.of(ctx);
+        final types = [
+          TaskStepType.clickByText,
+          TaskStepType.clickByDesc,
+          TaskStepType.clickById,
+          TaskStepType.clickAt,
+        ];
+        return Container(
+          decoration: BoxDecoration(
+            color: theme.scaffoldBackgroundColor,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+          ),
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 50, height: 5,
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.onSurface.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(3),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text('غيّر نوع الخطوة',
+                  style: _noDeco.copyWith(fontSize: 18, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 16),
+              ...types.map((t) {
+                final label = TaskStep(id: '', type: t, params: {}, waitAfterMs: 0).typeLabel;
+                final isCur = t == _currentType;
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Material(
+                    color: isCur
+                        ? theme.colorScheme.primary.withOpacity(0.2)
+                        : theme.colorScheme.surface.withOpacity(0.5),
+                    borderRadius: BorderRadius.circular(12),
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(12),
+                      onTap: () {
+                        Navigator.pop(ctx);
+                        _changeType(t);
+                      },
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                        child: Row(
+                          children: [
+                            Icon(
+                              isCur ? Icons.radio_button_checked_rounded : Icons.radio_button_unchecked_rounded,
+                              color: isCur ? theme.colorScheme.primary : theme.colorScheme.onSurface.withOpacity(0.4),
+                              size: 20,
+                            ),
+                            const SizedBox(width: 12),
+                            Text(label,
+                                style: _noDeco.copyWith(
+                                    fontSize: 14,
+                                    fontWeight: isCur ? FontWeight.bold : FontWeight.normal)),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              }),
+              const SizedBox(height: 10),
+            ],
+          ),
+        );
+      },
     );
   }
 
