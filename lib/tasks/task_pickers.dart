@@ -190,6 +190,8 @@ Future<ScreenElement?> showElementPicker(
   );
 }
 
+enum _ElementFilter { all, clickable, editable }
+
 class _ElementPickerSheet extends StatefulWidget {
   final List<ScreenElement> elements;
   final bool isDark;
@@ -205,7 +207,7 @@ class _ElementPickerSheet extends StatefulWidget {
 class _ElementPickerSheetState extends State<_ElementPickerSheet> {
   late List<ScreenElement> _filtered;
   late TextEditingController _search;
-  bool _onlyInteractive = false;
+  _ElementFilter _filter = _ElementFilter.all;
 
   @override
   void initState() {
@@ -224,7 +226,12 @@ class _ElementPickerSheetState extends State<_ElementPickerSheet> {
     final s = _search.text.trim().toLowerCase();
     setState(() {
       _filtered = widget.elements.where((e) {
-        if (_onlyInteractive && !e.isInteractive) return false;
+        // فلتر النوع
+        if (_filter == _ElementFilter.clickable) {
+          if (!e.isInteractive) return false;
+        } else if (_filter == _ElementFilter.editable) {
+          if (!e.editable) return false;
+        }
         if (s.isEmpty) return true;
         return e.text.toLowerCase().contains(s) ||
             e.desc.toLowerCase().contains(s) ||
@@ -309,25 +316,45 @@ class _ElementPickerSheetState extends State<_ElementPickerSheet> {
             ),
           ),
           const SizedBox(height: 8),
+          // ⭐ 3 فلاتر
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
+            padding: const EdgeInsets.symmetric(horizontal: 12),
             child: Row(
               children: [
-                FilterChip(
-                  label: Text(
-                    'عناصر قابلة للضغط فقط',
-                    style: _noDeco.copyWith(fontSize: 11),
-                  ),
-                  selected: _onlyInteractive,
-                  onSelected: (v) {
-                    setState(() => _onlyInteractive = v);
+                _chip(
+                  theme,
+                  label: 'الكل',
+                  icon: Icons.apps_rounded,
+                  selected: _filter == _ElementFilter.all,
+                  color: theme.colorScheme.primary,
+                  onTap: () {
+                    setState(() => _filter = _ElementFilter.all);
                     _applyFilter();
                   },
-                  backgroundColor:
-                      theme.colorScheme.surface.withOpacity(0.5),
-                  selectedColor:
-                      theme.colorScheme.primary.withOpacity(0.3),
-                  checkmarkColor: theme.colorScheme.primary,
+                ),
+                const SizedBox(width: 6),
+                _chip(
+                  theme,
+                  label: 'قابلة للضغط',
+                  icon: Icons.touch_app_rounded,
+                  selected: _filter == _ElementFilter.clickable,
+                  color: const Color(0xFF00D68F),
+                  onTap: () {
+                    setState(() => _filter = _ElementFilter.clickable);
+                    _applyFilter();
+                  },
+                ),
+                const SizedBox(width: 6),
+                _chip(
+                  theme,
+                  label: 'قابلة للكتابة',
+                  icon: Icons.keyboard_rounded,
+                  selected: _filter == _ElementFilter.editable,
+                  color: const Color(0xFF00D2FF),
+                  onTap: () {
+                    setState(() => _filter = _ElementFilter.editable);
+                    _applyFilter();
+                  },
                 ),
               ],
             ),
@@ -352,6 +379,65 @@ class _ElementPickerSheetState extends State<_ElementPickerSheet> {
           ),
           const SizedBox(height: 12),
         ],
+      ),
+    );
+  }
+
+  Widget _chip(
+    ThemeData theme, {
+    required String label,
+    required IconData icon,
+    required bool selected,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return Expanded(
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(10),
+          onTap: onTap,
+          child: Container(
+            padding:
+                const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
+            decoration: BoxDecoration(
+              color: selected
+                  ? color.withOpacity(0.2)
+                  : theme.colorScheme.surface.withOpacity(0.4),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                color: selected
+                    ? color
+                    : theme.colorScheme.primary.withOpacity(0.15),
+                width: selected ? 1.5 : 1,
+              ),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(icon,
+                    size: 14,
+                    color: selected
+                        ? color
+                        : theme.colorScheme.onSurface.withOpacity(0.5)),
+                const SizedBox(width: 4),
+                Flexible(
+                  child: Text(
+                    label,
+                    style: _noDeco.copyWith(
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.bold,
+                      color: selected
+                          ? color
+                          : theme.colorScheme.onSurface.withOpacity(0.6),
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
