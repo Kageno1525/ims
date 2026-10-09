@@ -19,12 +19,12 @@ enum FailureAction { stop, skip }
 enum OnAppearAction { none, click, type }
 
 enum NotFoundAction {
-  skip,       // تخطي خطوات
-  stop,       // وقف المهمة
-  clickAlt,   // اضغط على عنصر بديل
-  typeAlt,    // اكتب نص
-  back,       // رجوع
-  home,       // الرئيسية
+  skip,
+  stop,
+  clickAlt,
+  typeAlt,
+  back,
+  home,
 }
 
 class TaskStep {
@@ -42,6 +42,7 @@ class TaskStep {
   final String altDesc;
   final String altViewId;
   final String altTypeText;
+  final int repeatCount; // ⭐ جديد
 
   TaskStep({
     required this.id,
@@ -58,6 +59,7 @@ class TaskStep {
     this.altDesc = '',
     this.altViewId = '',
     this.altTypeText = '',
+    this.repeatCount = 1,
   });
 
   Map<String, dynamic> toJson() => {
@@ -75,6 +77,7 @@ class TaskStep {
         'altDesc': altDesc,
         'altViewId': altViewId,
         'altTypeText': altTypeText,
+        'repeatCount': repeatCount,
       };
 
   factory TaskStep.fromJson(Map<String, dynamic> json) => TaskStep(
@@ -104,6 +107,7 @@ class TaskStep {
         altDesc: json['altDesc']?.toString() ?? '',
         altViewId: json['altViewId']?.toString() ?? '',
         altTypeText: json['altTypeText']?.toString() ?? '',
+        repeatCount: json['repeatCount'] ?? 1,
       );
 
   TaskStep copyWith({
@@ -121,6 +125,7 @@ class TaskStep {
     String? altDesc,
     String? altViewId,
     String? altTypeText,
+    int? repeatCount,
   }) =>
       TaskStep(
         id: id ?? this.id,
@@ -137,6 +142,7 @@ class TaskStep {
         altDesc: altDesc ?? this.altDesc,
         altViewId: altViewId ?? this.altViewId,
         altTypeText: altTypeText ?? this.altTypeText,
+        repeatCount: repeatCount ?? this.repeatCount,
       );
 
   bool get isWaitStep => type == TaskStepType.waitForElement;
@@ -148,6 +154,8 @@ class TaskStep {
       type == TaskStepType.clickAt;
 
   bool get isSearchStep => isClickStep || isWaitStep;
+
+  bool get hasLoop => repeatCount > 1;
 
   String get typeLabel {
     switch (type) {
@@ -245,6 +253,9 @@ class Task {
   final List<TaskStep> steps;
   final DateTime createdAt;
   final DateTime? lastRunAt;
+  // ⭐ Task-level loop
+  final int repeatCount;
+  final bool autoIncrement; // كل دورة تاخد الرقم اللي بعده
 
   Task({
     required this.id,
@@ -252,6 +263,8 @@ class Task {
     required this.steps,
     required this.createdAt,
     this.lastRunAt,
+    this.repeatCount = 1,
+    this.autoIncrement = false,
   });
 
   Map<String, dynamic> toJson() => {
@@ -260,6 +273,8 @@ class Task {
         'steps': steps.map((s) => s.toJson()).toList(),
         'createdAt': createdAt.toIso8601String(),
         'lastRunAt': lastRunAt?.toIso8601String(),
+        'repeatCount': repeatCount,
+        'autoIncrement': autoIncrement,
       };
 
   factory Task.fromJson(Map<String, dynamic> json) => Task(
@@ -273,12 +288,16 @@ class Task {
         lastRunAt: json['lastRunAt'] != null
             ? DateTime.tryParse(json['lastRunAt'].toString())
             : null,
+        repeatCount: json['repeatCount'] ?? 1,
+        autoIncrement: json['autoIncrement'] == true,
       );
 
   Task copyWith({
     String? name,
     List<TaskStep>? steps,
     DateTime? lastRunAt,
+    int? repeatCount,
+    bool? autoIncrement,
   }) =>
       Task(
         id: id,
@@ -286,5 +305,7 @@ class Task {
         steps: steps ?? this.steps,
         createdAt: createdAt,
         lastRunAt: lastRunAt ?? this.lastRunAt,
+        repeatCount: repeatCount ?? this.repeatCount,
+        autoIncrement: autoIncrement ?? this.autoIncrement,
       );
 }
