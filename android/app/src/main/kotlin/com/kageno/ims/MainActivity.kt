@@ -23,14 +23,18 @@ class MainActivity : FlutterActivity() {
 
         methodChannel?.setMethodCallHandler { call, result ->
             when (call.method) {
-                "isAccessibilityEnabled" -> result.success(isAccessibilityEnabled())
+                "isAccessibilityEnabled" ->
+                    result.success(isAccessibilityEnabled())
                 "openAccessibilitySettings" -> {
                     try {
-                        startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                        startActivity(
+                            Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+                        )
                     } catch (_: Exception) {}
                     result.success(null)
                 }
-                "hasOverlayPermission" -> result.success(Settings.canDrawOverlays(this))
+                "hasOverlayPermission" ->
+                    result.success(Settings.canDrawOverlays(this))
                 "openOverlaySettings" -> {
                     try {
                         startActivity(
@@ -44,7 +48,9 @@ class MainActivity : FlutterActivity() {
                 }
                 "typeText" -> {
                     val text = call.argument<String>("text") ?: ""
-                    runAsync(result) { ImsAccessibilityService.typeTextStatic(text) }
+                    runAsync(result) {
+                        ImsAccessibilityService.typeTextStatic(text)
+                    }
                 }
                 "startVolume" -> {
                     ImsAccessibilityService.volumeEnabled = true
@@ -60,9 +66,10 @@ class MainActivity : FlutterActivity() {
                     } else {
                         try {
                             startService(
-                                Intent(this, FloatingService::class.java).apply {
-                                    action = "SHOW"
-                                }
+                                Intent(
+                                    this,
+                                    FloatingService::class.java
+                                ).apply { action = "SHOW" }
                             )
                             result.success(true)
                         } catch (_: Exception) {
@@ -73,9 +80,10 @@ class MainActivity : FlutterActivity() {
                 "hideFloating" -> {
                     try {
                         startService(
-                            Intent(this, FloatingService::class.java).apply {
-                                action = "HIDE"
-                            }
+                            Intent(
+                                this,
+                                FloatingService::class.java
+                            ).apply { action = "HIDE" }
                         )
                     } catch (_: Exception) {}
                     result.success(null)
@@ -87,7 +95,15 @@ class MainActivity : FlutterActivity() {
                 }
                 "openApp" -> {
                     val pkg = call.argument<String>("package") ?: ""
-                    runAsync(result) { ImsAccessibilityService.openAppStatic(pkg) }
+                    runAsync(result) {
+                        ImsAccessibilityService.openAppStatic(pkg)
+                    }
+                }
+                "clearAppData" -> {
+                    val pkg = call.argument<String>("package") ?: ""
+                    runAsync(result) {
+                        ImsAccessibilityService.clearAppDataStatic(pkg)
+                    }
                 }
                 "smartClick" -> {
                     val text = call.argument<String>("text") ?: ""
@@ -95,10 +111,12 @@ class MainActivity : FlutterActivity() {
                     val viewId = call.argument<String>("viewId") ?: ""
                     val className = call.argument<String>("className") ?: ""
                     val index = call.argument<Int>("index") ?: 0
-                    val preferClickable = call.argument<Boolean>("preferClickable") ?: true
+                    val preferClickable =
+                        call.argument<Boolean>("preferClickable") ?: true
                     runAsync(result) {
                         ImsAccessibilityService.smartClickStatic(
-                            text, desc, viewId, className, index, preferClickable
+                            text, desc, viewId, className, index,
+                            preferClickable
                         )
                     }
                 }
@@ -118,7 +136,8 @@ class MainActivity : FlutterActivity() {
                     val text = call.argument<String>("text") ?: ""
                     val desc = call.argument<String>("desc") ?: ""
                     val viewId = call.argument<String>("viewId") ?: ""
-                    val className = call.argument<String>("className") ?: ""
+                    val className =
+                        call.argument<String>("className") ?: ""
                     val index = call.argument<Int>("index") ?: 0
                     runAsync(result) {
                         ImsAccessibilityService.findElementStatic(
@@ -129,25 +148,33 @@ class MainActivity : FlutterActivity() {
                 "clickByText" -> {
                     val t = call.argument<String>("text") ?: ""
                     runAsync(result) {
-                        ImsAccessibilityService.smartClickStatic(t, "", "", "", 0, true)
+                        ImsAccessibilityService.smartClickStatic(
+                            t, "", "", "", 0, true
+                        )
                     }
                 }
                 "clickByDesc" -> {
                     val d = call.argument<String>("desc") ?: ""
                     runAsync(result) {
-                        ImsAccessibilityService.smartClickStatic("", d, "", "", 0, true)
+                        ImsAccessibilityService.smartClickStatic(
+                            "", d, "", "", 0, true
+                        )
                     }
                 }
                 "clickById" -> {
                     val v = call.argument<String>("viewId") ?: ""
                     runAsync(result) {
-                        ImsAccessibilityService.smartClickStatic("", "", v, "", 0, true)
+                        ImsAccessibilityService.smartClickStatic(
+                            "", "", v, "", 0, true
+                        )
                     }
                 }
                 "clickAt" -> {
                     val x = call.argument<Int>("x") ?: 0
                     val y = call.argument<Int>("y") ?: 0
-                    runAsync(result) { ImsAccessibilityService.clickAtStatic(x, y) }
+                    runAsync(result) {
+                        ImsAccessibilityService.clickAtStatic(x, y)
+                    }
                 }
                 "swipe" -> {
                     val x1 = call.argument<Int>("x1") ?: 0
@@ -156,20 +183,29 @@ class MainActivity : FlutterActivity() {
                     val y2 = call.argument<Int>("y2") ?: 0
                     val d = call.argument<Int>("duration") ?: 300
                     runAsync(result) {
-                        ImsAccessibilityService.swipeStatic(x1, y1, x2, y2, d)
+                        ImsAccessibilityService.swipeStatic(
+                            x1, y1, x2, y2, d
+                        )
                     }
                 }
-                "globalBack" -> runAsync(result) { ImsAccessibilityService.globalBackStatic() }
-                "globalHome" -> runAsync(result) { ImsAccessibilityService.globalHomeStatic() }
+                "globalBack" -> runAsync(result) {
+                    ImsAccessibilityService.globalBackStatic()
+                }
+                "globalHome" -> runAsync(result) {
+                    ImsAccessibilityService.globalHomeStatic()
+                }
                 "globalRecents" -> runAsync(result) {
                     ImsAccessibilityService.globalRecentsStatic()
                 }
-                "currentPackage" -> result.success(
-                    ImsAccessibilityService.currentPackageStatic()
-                )
+                "currentPackage" ->
+                    result.success(
+                        ImsAccessibilityService.currentPackageStatic()
+                    )
                 "dumpScreen" -> {
                     try {
-                        result.success(ImsAccessibilityService.dumpScreenStatic())
+                        result.success(
+                            ImsAccessibilityService.dumpScreenStatic()
+                        )
                     } catch (e: Exception) {
                         result.success("[]")
                     }
@@ -178,7 +214,9 @@ class MainActivity : FlutterActivity() {
                     try {
                         result.success(listInstalledApps())
                     } catch (e: Exception) {
-                        result.success(emptyList<Map<String, String>>())
+                        result.success(
+                            emptyList<Map<String, String>>()
+                        )
                     }
                 }
                 "resolvePackage" -> {
@@ -190,10 +228,14 @@ class MainActivity : FlutterActivity() {
         }
 
         ImsAccessibilityService.onVolumeKey = { action ->
-            runOnUiThread { methodChannel?.invokeMethod("onVolume", action) }
+            runOnUiThread {
+                methodChannel?.invokeMethod("onVolume", action)
+            }
         }
         FloatingService.onClick = {
-            runOnUiThread { methodChannel?.invokeMethod("onFloatingClick", null) }
+            runOnUiThread {
+                methodChannel?.invokeMethod("onFloatingClick", null)
+            }
         }
     }
 
@@ -207,7 +249,9 @@ class MainActivity : FlutterActivity() {
                 try {
                     val pkg = app.packageName
                     if (pkg == packageName) continue
-                    if (pm.getLaunchIntentForPackage(pkg) == null) continue
+                    if (pm.getLaunchIntentForPackage(pkg) == null) {
+                        continue
+                    }
                     val label = pm.getApplicationLabel(app).toString()
                     if (label.isNotBlank()) map[pkg] = label
                 } catch (_: Exception) {}
@@ -246,19 +290,20 @@ class MainActivity : FlutterActivity() {
         } catch (_: Exception) {}
         val apps = listInstalledApps()
         val ql = q.lowercase()
-        apps.firstOrNull { (it["name"] ?: "").lowercase() == ql }?.let {
-            return it["package"]
-        }
+        apps.firstOrNull {
+            (it["name"] ?: "").lowercase() == ql
+        }?.let { return it["package"] }
         apps.firstOrNull {
             (it["name"] ?: "").lowercase().contains(ql) ||
                 (it["package"] ?: "").lowercase().contains(ql)
-        }?.let {
-            return it["package"]
-        }
+        }?.let { return it["package"] }
         return null
     }
 
-    private fun runAsync(result: MethodChannel.Result, block: () -> Boolean) {
+    private fun runAsync(
+        result: MethodChannel.Result,
+        block: () -> Boolean
+    ) {
         Thread {
             val ok = try { block() } catch (_: Exception) { false }
             Handler(Looper.getMainLooper()).post { result.success(ok) }
@@ -266,11 +311,14 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun isAccessibilityEnabled(): Boolean {
-        val service = "$packageName/${ImsAccessibilityService::class.java.name}"
+        val service =
+            "$packageName/${ImsAccessibilityService::class.java.name}"
         val enabled = Settings.Secure.getString(
             contentResolver,
             Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
         ) ?: return false
-        return enabled.split(':').any { it.equals(service, ignoreCase = true) }
+        return enabled.split(':').any {
+            it.equals(service, ignoreCase = true)
+        }
     }
 }
