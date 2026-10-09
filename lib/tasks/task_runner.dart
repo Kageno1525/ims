@@ -62,8 +62,86 @@ class TaskRunner extends ChangeNotifier {
         LogLevel.info,
       ));
 
-      final resolvedStep = _resolveStep(step, numbers, currentIndex);
-      final ok = await _executeStepWithTimeout(resolvedStep, onLog);
+      final resolved = _resolveStep(step, numbers, currentIndex);
+
+      // ⭐ خطوة "انتظار ظهور عنصر" لها معالجة خاصة
+      if (resolved.type == TaskStepType.waitForElement) {
+        final outcome = await _runWaitForElement(
+          resolved, i, task.steps.length, onLog, numbers, currentIndex,
+        );
+
+        if (outcome == _WaitOutcome.found) {
+          _results[i] = StepResult(
+              stepId: step.id, status: StepStatus.ok);
+          notifyListeners();
+          onLog(LogEntry('✅ خطوة ${i + 1} نجحت', DateTime.now(), LogLevel.ok));
+          if (step.waitAfterMs > 0) {
+            await Future.delayed(Duration(milliseconds: step.waitAfterMs));
+          }
+          i++;
+          continue;
+        } else {
+          // ما ظهرش — نعمل الـ onNotFound
+          final nfResult = await _handleNotFound(
+            resolved, i, task.steps.length, onLog, numbers, currentIndex,
+          );
+
+          if (nfResult == _NotFoundOutcome.stop) {
+            _results[i] = StepResult(
+                stepId: step.id, status: StepStatus.failed, message: 'فشل');
+            notifyListeners();
+            onLog(LogEntry(
+                '❌ فشل الخطوة ${i + 1} - وقف المهمة',
+                DateTime.now(),
+                LogLevel.error,
+            ));
+            allOk = false;
+            break;
+          } else if (nfResult == _NotFoundOutcome.skipped) {
+            final skipTotal = 1 + resolved.skipCount;
+            for (int k = 0;
+                k < skipTotal && i + k < task.steps.length;
+                k++
+            ) {
+              _results[i + k] = StepResult(
+                stepId: task.steps[i + k].id,
+                status: StepStatus.skipped,
+                message: k == 0 ? 'العنصر ما ظهرش' : 'اتخطت',
+              );
+            }
+            notifyListeners();
+            onLog(LogEntry(
+                '⏭️ تخطي $skipTotal خطوة والاستمرار',
+                DateTime.now(),
+                LogLevel.wait,
+            ));
+            if (step.waitAfterMs > 0) {
+              await Future.delayed(Duration(milliseconds: step.waitAfterMs));
+            }
+            i += skipTotal;
+            continue;
+          } else {
+            // handled by onNotFound action — نعتبر الخطوة نجحت
+            _results[i] = StepResult(
+                stepId: step.id, status: StepStatus.ok,
+                message: 'اتعمل إجراء بديل');
+            notifyListeners();
+            onLog(LogEntry(
+                '⚠️ العنصر ما ظهرش — اتعمل إجراء بديل',
+                DateTime.now(),
+                LogLevel.wait,
+            ));
+            if (step.waitAfterMs > 0) {
+              await Future.delayed(Duration(milliseconds: step.waitAfterMs));
+            }
+            i++;
+            continue;
+          }
+        }
+      }
+
+      // باقي الأنواع
+      final ok = await _executeStepWithTimeout(resolved, onLog);
 
       if (ok) {
         _results[i] = StepResult(stepId: step.id, status: StepStatus.ok);
@@ -78,35 +156,32 @@ class TaskRunner extends ChangeNotifier {
           final skipTotal = 1 + step.skipCount;
           for (int k = 0;
               k < skipTotal && i + k < task.steps.length;
-              k++) {
+              k++
+          ) {
             _results[i + k] = StepResult(
               stepId: task.steps[i + k].id,
               status: StepStatus.skipped,
-              message: k == 0 ? 'اتخطت' : 'تم تخطيها بـ skipCount',
+              message: k == 0 ? 'اتخطت' : 'تم تخطيها',
             );
           }
           notifyListeners();
           onLog(LogEntry(
-            '⏭️ تخطي $skipTotal خطوة والاستمرار',
-            DateTime.now(),
-            LogLevel.wait,
+              '⏭️ تخطي $skipTotal خطوة والاستمرار',
+              DateTime.now(),
+              LogLevel.wait,
           ));
           if (step.waitAfterMs > 0) {
-            await Future.delayed(
-                Duration(milliseconds: step.waitAfterMs));
+            await Future.delayed(Duration(milliseconds: step.waitAfterMs));
           }
           i += skipTotal;
         } else {
           _results[i] = StepResult(
-            stepId: step.id,
-            status: StepStatus.failed,
-            message: 'فشل',
-          );
+              stepId: step.id, status: StepStatus.failed, message: 'فشل');
           notifyListeners();
           onLog(LogEntry(
-            '❌ فشل الخطوة ${i + 1} - وقف المهمة',
-            DateTime.now(),
-            LogLevel.error,
+              '❌ فشل الخطوة ${i + 1} - وقف المهمة',
+              DateTime.now(),
+              LogLevel.error,
           ));
           allOk = false;
           break;
@@ -140,7 +215,153 @@ class TaskRunner extends ChangeNotifier {
         newParams[e.key] = v;
       }
     }
-    return step.copyWith(params: newParams);
+    String resolveStr(String s) {
+      if (s.isEmpty || !TemplateResolver.hasVariables(s)) return s;
+      return TemplateResolver.resolve(
+        s,
+        numbers: numbers,
+        currentIndex: currentIndex,
+      );
+    }
+
+    return step.copyWith(
+      params: newParams,
+      appearText: resolveStr(step.appearText),
+      altText: resolveStr(step.altText),
+      altDesc: resolveStr(step.altDesc),
+      altViewId: resolveStr(step.altViewId),
+      altTypeText: resolveStr(step.altTypeText),
+    );
+  }
+
+  // ═══════════════ Wait For Element ═══════════════
+  Future<_WaitOutcome> _runWaitForElement(
+    TaskStep step,
+    int stepIndex,
+    int totalSteps,
+    Function(LogEntry) onLog,
+    List<String> numbers,
+    int currentIndex,
+  ) async {
+    final text = step.params['text']?.toString() ?? '';
+    final desc = step.params['desc']?.toString() ?? '';
+    final viewId = step.params['viewId']?.toString() ?? '';
+    final className = step.params['className']?.toString() ?? '';
+    final idx = int.tryParse(
+            step.params['elementIndex']?.toString() ?? '0') ??
+        0;
+
+    final timeout = step.timeoutMs > 0 ? step.timeoutMs : 5000;
+    final deadline = DateTime.now().add(Duration(milliseconds: timeout));
+    int attempt = 0;
+
+    while (DateTime.now().isBefore(deadline)) {
+      if (!_running) return _WaitOutcome.notFound;
+      attempt++;
+      if (attempt > 1) {
+        onLog(LogEntry('🔄 محاولة $attempt…', DateTime.now(),
+            LogLevel.wait));
+      }
+
+      final found = await AutoFillBridge.findElement(
+        text: text,
+        desc: desc,
+        viewId: viewId,
+        className: className,
+        index: idx,
+      );
+
+      if (found) {
+        onLog(LogEntry('✅ العنصر ظهر!', DateTime.now(), LogLevel.ok));
+        // نفذ onAppear
+        if (step.onAppear == OnAppearAction.click) {
+          onLog(LogEntry('👆 اضغط عليه…', DateTime.now(), LogLevel.info));
+          await AutoFillBridge.smartClick(
+            text: text,
+            desc: desc,
+            viewId: viewId,
+            className: className,
+            index: idx,
+            preferClickable: true,
+          );
+        } else if (step.onAppear == OnAppearAction.type) {
+          onLog(LogEntry('⌨️ اكتب فيه "${step.appearText}"…',
+              DateTime.now(), LogLevel.info));
+          await AutoFillBridge.smartType(
+            value: step.appearText,
+            viewId: viewId,
+            hint: step.params['hint']?.toString() ?? '',
+            className: className,
+            index: idx,
+          );
+        }
+        return _WaitOutcome.found;
+      }
+
+      final delay = (100 * attempt).clamp(100, 700);
+      final remaining =
+          deadline.difference(DateTime.now()).inMilliseconds;
+      if (remaining <= 0) break;
+      await Future.delayed(
+          Duration(milliseconds: delay.clamp(0, remaining)));
+    }
+
+    onLog(LogEntry(
+      '⏱️ العنصر ما ظهرش بعد ${(timeout / 1000).toStringAsFixed(0)}ث ($attempt محاولة)',
+      DateTime.now(),
+      LogLevel.error,
+    ));
+    return _WaitOutcome.notFound;
+  }
+
+  Future<_NotFoundOutcome> _handleNotFound(
+    TaskStep step,
+    int stepIndex,
+    int totalSteps,
+    Function(LogEntry) onLog,
+    List<String> numbers,
+    int currentIndex,
+  ) async {
+    switch (step.onNotFound) {
+      case NotFoundAction.stop:
+        return _NotFoundOutcome.stop;
+
+      case NotFoundAction.skip:
+        return _NotFoundOutcome.skipped;
+
+      case NotFoundAction.clickAlt:
+        onLog(LogEntry(
+          '🖱️ اضغط على البديل: ${step.altText}${step.altDesc}${step.altViewId}',
+          DateTime.now(),
+          LogLevel.info,
+        ));
+        await AutoFillBridge.smartClick(
+          text: step.altText,
+          desc: step.altDesc,
+          viewId: step.altViewId,
+          preferClickable: true,
+        );
+        return _NotFoundOutcome.handled;
+
+      case NotFoundAction.typeAlt:
+        onLog(LogEntry(
+          '⌨️ اكتب البديل: "${step.altTypeText}"',
+          DateTime.now(),
+          LogLevel.info,
+        ));
+        await AutoFillBridge.typeText(step.altTypeText);
+        return _NotFoundOutcome.handled;
+
+      case NotFoundAction.back:
+        onLog(LogEntry('⬅️ رجوع', DateTime.now(), LogLevel.info));
+        await AutoFillBridge.globalBack();
+        return _NotFoundOutcome.handled;
+
+      case NotFoundAction.home:
+        onLog(LogEntry('🏠 الرئيسية', DateTime.now(), LogLevel.info));
+        await AutoFillBridge.globalHome();
+        return _NotFoundOutcome.handled;
+    }
   }
 
   void stop() {
@@ -153,35 +374,24 @@ class TaskRunner extends ChangeNotifier {
     if (!step.isSearchStep || step.timeoutMs <= 0) {
       return await _executeStep(step, onLog);
     }
-
     final deadline =
         DateTime.now().add(Duration(milliseconds: step.timeoutMs));
     int attempt = 0;
-
     while (DateTime.now().isBefore(deadline)) {
       if (!_running) return false;
       attempt++;
-
       if (attempt > 1) {
-        onLog(LogEntry(
-          '🔄 محاولة $attempt…',
-          DateTime.now(),
-          LogLevel.wait,
-        ));
+        onLog(LogEntry('🔄 محاولة $attempt…', DateTime.now(),
+            LogLevel.wait));
       }
-
       final ok = await _executeStep(step, onLog);
       if (ok) {
         if (attempt > 1) {
-          onLog(LogEntry(
-            '✅ نجحت بعد $attempt محاولة',
-            DateTime.now(),
-            LogLevel.ok,
-          ));
+          onLog(LogEntry('✅ نجحت بعد $attempt محاولة',
+              DateTime.now(), LogLevel.ok));
         }
         return true;
       }
-
       final delay = (100 * attempt).clamp(100, 900);
       final remaining =
           deadline.difference(DateTime.now()).inMilliseconds;
@@ -189,7 +399,6 @@ class TaskRunner extends ChangeNotifier {
       await Future.delayed(
           Duration(milliseconds: delay.clamp(0, remaining)));
     }
-
     onLog(LogEntry(
       '⏱️ انتهت المهلة (${step.timeoutMs} مللي، $attempt محاولة)',
       DateTime.now(),
@@ -198,7 +407,8 @@ class TaskRunner extends ChangeNotifier {
     return false;
   }
 
-  Future<bool> _executeStep(TaskStep step, Function(LogEntry) onLog) async {
+  Future<bool> _executeStep(
+      TaskStep step, Function(LogEntry) onLog) async {
     try {
       switch (step.type) {
         case TaskStepType.openApp:
@@ -206,10 +416,15 @@ class TaskRunner extends ChangeNotifier {
           if (pkg.isEmpty) return false;
           return await AutoFillBridge.openApp(pkg);
 
+        case TaskStepType.clearAppData:
+          final pkg = step.params['package']?.toString() ?? '';
+          if (pkg.isEmpty) return false;
+          return await AutoFillBridge.clearAppData(pkg);
+
         case TaskStepType.wait:
-          final ms = int.tryParse(
-                  step.params['ms']?.toString() ?? '1000') ??
-              1000;
+          final ms =
+              int.tryParse(step.params['ms']?.toString() ?? '1000') ??
+                  1000;
           await Future.delayed(Duration(milliseconds: ms));
           return true;
 
@@ -217,13 +432,15 @@ class TaskRunner extends ChangeNotifier {
           final value = step.params['text']?.toString() ?? '';
           final viewId = step.params['viewId']?.toString() ?? '';
           final hint = step.params['hint']?.toString() ?? '';
-          final className = step.params['className']?.toString() ?? '';
+          final className =
+              step.params['className']?.toString() ?? '';
           final index = int.tryParse(
                   step.params['elementIndex']?.toString() ?? '0') ??
               0;
           if (viewId.isNotEmpty ||
               hint.isNotEmpty ||
-              className.isNotEmpty) {
+              className.isNotEmpty
+          ) {
             return await AutoFillBridge.smartType(
               value: value,
               viewId: viewId,
@@ -249,8 +466,8 @@ class TaskRunner extends ChangeNotifier {
           );
 
         case TaskStepType.waitForElement:
-          // 1) دوّر على العنصر
-          final found = await AutoFillBridge.findElement(
+          // يتم معالجتها بشكل خاص في run
+          return await AutoFillBridge.findElement(
             text: step.params['text']?.toString() ?? '',
             desc: step.params['desc']?.toString() ?? '',
             viewId: step.params['viewId']?.toString() ?? '',
@@ -259,64 +476,23 @@ class TaskRunner extends ChangeNotifier {
                     step.params['elementIndex']?.toString() ?? '0') ??
                 0,
           );
-          if (!found) return false;
-
-          // 2) نفّذ الإجراء المطلوب عند الظهور
-          final onAppear =
-              step.params['onAppear']?.toString() ?? 'none';
-          if (onAppear == 'click') {
-            return await AutoFillBridge.smartClick(
-              text: step.params['text']?.toString() ?? '',
-              desc: step.params['desc']?.toString() ?? '',
-              viewId: step.params['viewId']?.toString() ?? '',
-              className: step.params['className']?.toString() ?? '',
-              index: int.tryParse(
-                      step.params['elementIndex']?.toString() ?? '0') ??
-                  0,
-              preferClickable: true,
-            );
-          } else if (onAppear == 'type') {
-            final value =
-                step.params['appearText']?.toString() ?? '';
-            return await AutoFillBridge.smartType(
-              value: value,
-              viewId: step.params['viewId']?.toString() ?? '',
-              hint: step.params['hint']?.toString() ?? '',
-              className: step.params['className']?.toString() ?? '',
-              index: int.tryParse(
-                      step.params['elementIndex']?.toString() ?? '0') ??
-                  0,
-            );
-          }
-          return true;
-
-        case TaskStepType.clearAppData:
-          final pkg = step.params['package']?.toString() ?? '';
-          if (pkg.isEmpty) return false;
-          return await AutoFillBridge.clearAppData(pkg);
 
         case TaskStepType.clickAt:
-          final x = int.tryParse(
-                  step.params['x']?.toString() ?? '0') ??
-              0;
-          final y = int.tryParse(
-                  step.params['y']?.toString() ?? '0') ??
-              0;
+          final x =
+              int.tryParse(step.params['x']?.toString() ?? '0') ?? 0;
+          final y =
+              int.tryParse(step.params['y']?.toString() ?? '0') ?? 0;
           return await AutoFillBridge.clickAt(x, y);
 
         case TaskStepType.swipe:
-          final x1 = int.tryParse(
-                  step.params['x1']?.toString() ?? '0') ??
-              0;
-          final y1 = int.tryParse(
-                  step.params['y1']?.toString() ?? '0') ??
-              0;
-          final x2 = int.tryParse(
-                  step.params['x2']?.toString() ?? '0') ??
-              0;
-          final y2 = int.tryParse(
-                  step.params['y2']?.toString() ?? '0') ??
-              0;
+          final x1 =
+              int.tryParse(step.params['x1']?.toString() ?? '0') ?? 0;
+          final y1 =
+              int.tryParse(step.params['y1']?.toString() ?? '0') ?? 0;
+          final x2 =
+              int.tryParse(step.params['x2']?.toString() ?? '0') ?? 0;
+          final y2 =
+              int.tryParse(step.params['y2']?.toString() ?? '0') ?? 0;
           final d = int.tryParse(
                   step.params['duration']?.toString() ?? '300') ??
               300;
@@ -337,3 +513,6 @@ class TaskRunner extends ChangeNotifier {
     }
   }
 }
+
+enum _WaitOutcome { found, notFound }
+enum _NotFoundOutcome { stop, skipped, handled }
