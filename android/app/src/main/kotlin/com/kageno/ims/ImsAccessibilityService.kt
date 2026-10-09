@@ -590,165 +590,180 @@ class ImsAccessibilityService : AccessibilityService() {
     }
 
     // ═══════════════ مسح بيانات تطبيق ═══════════════
-    private fun clearAppDataInternal(pkg: String): Boolean {
-        try {
-            if (pkg.isEmpty()) return false
+ private fun clearAppDataInternal(pkg: String): Boolean {
+    try {
+        if (pkg.isEmpty()) return false
 
-            Log.d(TAG, "clearAppData: starting for $pkg")
+        Log.d(TAG, "clearAppData: starting for $pkg")
 
-            // 1) افتح صفحة التطبيق في الإعدادات
-            val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
-            intent.data = Uri.parse("package:$pkg")
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            startActivity(intent)
+        // 1) افتح صفحة التطبيق في الإعدادات
+        val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+        intent.data = Uri.parse("package:$pkg")
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        startActivity(intent)
 
-            try { Thread.sleep(1800) } catch (_: Exception) {}
+        try { Thread.sleep(1800) } catch (_: Exception) {}
 
-            // 2) دوّر على "Storage" / "التخزين" — كل الاحتمالات
-            val storageClicked = clickByAnyText(
-                timeoutMs = 5000,
-                maxAttempts = 25,
-                keywords = arrayOf(
-                    // English — Stock Android
-                    "Storage & cache",
-                    "Storage and cache",
-                    "Storage & cache usage",
-                    "Storage usage",
-                    "Storage",
-                    "App storage",
-                    "Memory",
-                    // English — Samsung
-                    "Storage",
-                    "Storage and cache",
-                    // English — Xiaomi/MIUI
-                    "Storage",
-                    "Storage usage",
-                    "Manage storage",
-                    // English — OnePlus/Oppo/Realme
-                    "Storage",
-                    "App storage",
-                    "Storage usage",
-                    // English — Huawei
-                    "Storage",
-                    "Storage & cache",
-                    // Arabic — Stock
-                    "التخزين والذاكرة",
-                    "التخزين والذاكرة المؤقتة",
-                    "التخزين",
-                    "مساحة التخزين",
-                    "ذاكرة التخزين",
-                    "استخدام التخزين",
-                    "إدارة التخزين",
-                    "التخزين المؤقت",
-                    "الذاكرة والتخزين",
-                    "المساحة والتخزين",
-                    "التخزين و التخزين المؤقت",
-                    "التخزين والتخزين المؤقت",
-                )
+        // 2) فتح صفحة التخزين
+        clickByAnyText(
+            timeoutMs = 5000,
+            maxAttempts = 25,
+            keywords = arrayOf(
+                "Storage & cache",
+                "Storage and cache",
+                "Storage & cache usage",
+                "Storage usage",
+                "Storage",
+                "App storage",
+                "Manage storage",
+                "Memory",
+                "التخزين والذاكرة",
+                "التخزين والذاكرة المؤقتة",
+                "التخزين",
+                "مساحة التخزين",
+                "ذاكرة التخزين",
+                "استخدام التخزين",
+                "إدارة التخزين",
+                "التخزين المؤقت",
+                "الذاكرة والتخزين",
+                "المساحة والتخزين",
+                "التخزين و التخزين المؤقت",
+                "التخزين والتخزين المؤقت",
             )
-            Log.d(TAG, "clearAppData: storage click = $storageClicked")
-            if (!storageClicked) {
-                // في بعض الأجهزة لازم ندوس "Storage & cache" من تاب تاني
-                // نجرّب ندوس على أي حاجة فيها "Storage" أو "تخزين"
-                clickByAnyText(
-                    timeoutMs = 2000,
-                    maxAttempts = 10,
-                    keywords = arrayOf(
-                        "Storage", "التخزين", "ذاكرة"
-                    )
-                )
-            }
+        )
 
-            try { Thread.sleep(1200) } catch (_: Exception) {}
+        try { Thread.sleep(1200) } catch (_: Exception) {}
 
-            // 3) دوّر على "Clear data" / "Clear storage" / "محو" — كل الاحتمالات
-            val clearClicked = clickByAnyText(
-                timeoutMs = 5000,
-                maxAttempts = 25,
-                keywords = arrayOf(
-                    // English — Stock
-                    "Clear storage",
-                    "Clear data",
-                    "Clear app data",
-                    "Clear all data",
-                    "Clear all",
-                    "Clear cache and data",
-                    "Clear user data",
-                    "Reset app",
-                    "Erase data",
-                    "Delete data",
-                    "Delete app data",
-                    "Delete all data",
-                    // Arabic — كل الصيغ
-                    "مسح التخزين",
-                    "مسح البيانات",
-                    "مسح بيانات التطبيق",
-                    "مسح كل البيانات",
-                    "مسح الكل",
-                    "محو التخزين",
-                    "محو البيانات",
-                    "محو كل البيانات",
-                    "محو الكل",
-                    "محو",
-                    "مسح",
-                    "حذف التخزين",
-                    "حذف البيانات",
-                    "حذف كل البيانات",
-                    "حذف الكل",
-                    "إعادة تعيين التطبيق",
-                    "إعادة التعيين",
-                    "تفريغ التخزين",
-                    "تفريغ البيانات",
-                    "إزالة البيانات",
-                    "إزالة التخزين",
-                )
+        // 3) زر المسح الفعلي
+        val clearClicked = clickByAnyText(
+            timeoutMs = 5000,
+            maxAttempts = 25,
+            keywords = arrayOf(
+                "Clear storage",
+                "Clear data",
+                "Clear app data",
+                "Clear all data",
+                "Clear all",
+                "Clear cache and data",
+                "Clear user data",
+                "Reset app",
+                "Erase data",
+                "Delete data",
+                "Delete app data",
+                "Delete all data",
+                "مسح التخزين",
+                "مسح البيانات",
+                "مسح بيانات التطبيق",
+                "مسح كل البيانات",
+                "مسح الكل",
+                "محو التخزين",
+                "محو البيانات",
+                "محو كل البيانات",
+                "محو الكل",
+                "محو",
+                "مسح",
+                "حذف التخزين",
+                "حذف البيانات",
+                "حذف كل البيانات",
+                "حذف الكل",
+                "إعادة تعيين التطبيق",
+                "إعادة التعيين",
+                "تفريغ التخزين",
+                "تفريغ البيانات",
+                "إزالة البيانات",
+                "إزالة التخزين",
             )
-            Log.d(TAG, "clearAppData: clear click = $clearClicked")
-            if (!clearClicked) return false
+        )
+        if (!clearClicked) return false
 
-            try { Thread.sleep(900) } catch (_: Exception) {}
+        try { Thread.sleep(900) } catch (_: Exception) {}
 
-            // 4) أكد الحوار — كل الاحتمالات
-            clickByAnyText(
+        // 4) ⭐ تأكيد الحوار — قائمة موسعة جداً
+        // نجرّب 3 مرات عشان بعض الأجهزة بتعمل حوارين متتاليين
+        for (int attempt = 0; attempt < 3; attempt++) {
+            val ok = clickByAnyText(
                 timeoutMs = 3000,
                 maxAttempts = 15,
                 keywords = arrayOf(
+                    // English — كل الاحتمالات
                     "Clear all data",
                     "Clear data",
+                    "Clear storage",
                     "Delete",
+                    "Delete all",
                     "Erase",
+                    "Erase all",
+                    "Erase data",
                     "OK",
                     "Ok",
+                    "ok",
                     "Yes",
+                    "yes",
                     "Yes, clear",
+                    "Yes, clear all",
+                    "Yes, delete",
                     "Confirm",
                     "Confirm clear",
+                    "Confirm delete",
                     "Continue",
+                    "Proceed",
                     "Reset",
+                    "Reset app",
+                    "Allow",
+                    "Agree",
+                    "Accept",
+                    "Got it",
+                    "Understood",
+                    "I understand",
+                    "Done",
+                    // Arabic — كل الاحتمالات
                     "مسح الكل",
+                    "مسح البيانات",
+                    "مسح التخزين",
                     "مسح",
                     "محو الكل",
+                    "محو البيانات",
+                    "محو التخزين",
                     "محو",
+                    "حذف الكل",
+                    "حذف البيانات",
+                    "حذف التخزين",
                     "حذف",
                     "موافق",
-                    "نعم",
-                    "تأكيد",
-                    "متابعة",
-                    "استمرار",
-                    "إعادة تعيين",
-                    "الموافقة",
                     "أوافق",
+                    "الموافقة",
+                    "نعم",
+                    "حسناً",
+                    "حسنا",
                     "تمام",
                     "طيب",
+                    "متابعة",
+                    "استمرار",
+                    "تأكيد",
+                    "تأكيد المسح",
+                    "إعادة تعيين",
+                    "إعادة التعيين",
+                    "أفهم",
+                    "فهمت",
+                    "إزالة",
+                    "إزالة الكل",
+                    "تفريغ",
+                    "تفريغ الكل",
+                    "السماح",
+                    "قبول",
+                    "من موافقة",
                 )
             )
-
-            return true
-        } catch (e: Exception) {
-            Log.e(TAG, "clearAppData", e)
-            return false
+            if (!ok) break
+            try { Thread.sleep(700) } catch (_: Exception) {}
         }
+
+        return true
+    } catch (e: Exception) {
+        Log.e(TAG, "clearAppData", e)
+        return false
     }
+}
 
     /// دوّر على عنصر بأي كلمة من الكلمات المفتاحية واضغط عليه
     private fun clickByAnyText(
