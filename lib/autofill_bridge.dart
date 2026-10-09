@@ -10,7 +10,11 @@ class ScreenElement {
   final String className;
   final String hint;
   final bool clickable;
+  final bool longClickable;
+  final bool focusable;
   final bool editable;
+  final bool enabled;
+  final bool clickableParent;   // ⭐ جديد
   final String pkg;
   final int x;
   final int y;
@@ -18,6 +22,8 @@ class ScreenElement {
   final int top;
   final int right;
   final int bottom;
+  final int width;              // ⭐ جديد
+  final int height;             // ⭐ جديد
 
   ScreenElement({
     required this.text,
@@ -26,7 +32,11 @@ class ScreenElement {
     required this.className,
     required this.hint,
     required this.clickable,
+    required this.longClickable,
+    required this.focusable,
     required this.editable,
+    required this.enabled,
+    required this.clickableParent,
     required this.pkg,
     required this.x,
     required this.y,
@@ -34,6 +44,8 @@ class ScreenElement {
     required this.top,
     required this.right,
     required this.bottom,
+    required this.width,
+    required this.height,
   });
 
   factory ScreenElement.fromMap(Map<String, dynamic> m) => ScreenElement(
@@ -43,7 +55,11 @@ class ScreenElement {
         className: m['className']?.toString() ?? '',
         hint: m['hint']?.toString() ?? '',
         clickable: m['clickable'] == true,
+        longClickable: m['longClickable'] == true,
+        focusable: m['focusable'] == true,
         editable: m['editable'] == true,
+        enabled: m['enabled'] != false,
+        clickableParent: m['clickableParent'] == true,
         pkg: m['pkg']?.toString() ?? '',
         x: (m['x'] as num?)?.toInt() ?? 0,
         y: (m['y'] as num?)?.toInt() ?? 0,
@@ -51,6 +67,8 @@ class ScreenElement {
         top: (m['top'] as num?)?.toInt() ?? 0,
         right: (m['right'] as num?)?.toInt() ?? 0,
         bottom: (m['bottom'] as num?)?.toInt() ?? 0,
+        width: (m['width'] as num?)?.toInt() ?? 0,
+        height: (m['height'] as num?)?.toInt() ?? 0,
       );
 
   bool get hasText => text.isNotEmpty;
@@ -197,7 +215,6 @@ class AutoFillBridge {
     } catch (_) { return null; }
   }
 
-  // ⭐ جديد: قراءة كل عناصر الشاشة
   static Future<List<ScreenElement>> dumpScreen() async {
     try {
       final raw = await _channel.invokeMethod('dumpScreen');
