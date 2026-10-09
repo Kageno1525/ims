@@ -214,9 +214,6 @@ class _TasksPageState extends State<TasksPage> with WidgetsBindingObserver {
                       ],
                     ),
                   ),
-                  // ⭐ زرار الإعدادات بلون حسب الحالة
-                  _accessibilityBtn(theme),
-                  const SizedBox(width: 8),
                   IconBtn(
                     icon: widget.isDark
                         ? Icons.dark_mode_rounded
@@ -226,6 +223,11 @@ class _TasksPageState extends State<TasksPage> with WidgetsBindingObserver {
                 ],
               ),
               const SizedBox(height: 14),
+
+              // ⭐ كارت الإعدادات البارز
+              _accessibilityCard(theme),
+              const SizedBox(height: 14),
+
               if (_runner.running)
                 _runningBar(theme)
               else
@@ -275,56 +277,170 @@ class _TasksPageState extends State<TasksPage> with WidgetsBindingObserver {
     );
   }
 
-  // ⭐ زرار الإعدادات
-  Widget _accessibilityBtn(ThemeData theme) {
+  // ⭐ كارت الإعدادات البارز
+  Widget _accessibilityCard(ThemeData theme) {
     final on = _accessibilityOn;
     final color = on ? const Color(0xFF00D68F) : const Color(0xFFFF6B6B);
 
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        borderRadius: BorderRadius.circular(30),
+        borderRadius: BorderRadius.circular(18),
         onTap: () async {
-          await AutoFillBridge.openAccessibilitySettings();
-          await Future.delayed(const Duration(seconds: 1));
-          _checkAccessibility();
+          if (on) {
+            // لو شغال → اسأل إذا عايز يقفله
+            final go = await showDialog<bool>(
+              context: context,
+              builder: (ctx) => AlertDialog(
+                backgroundColor: theme.colorScheme.surface,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(20)),
+                title: Row(
+                  children: [
+                    const Icon(Icons.check_circle_rounded,
+                        color: Color(0xFF00D68F), size: 22),
+                    const SizedBox(width: 8),
+                    Text('إعدادات الوصول شغالة',
+                        style: _noDeco.copyWith(
+                            fontWeight: FontWeight.bold, fontSize: 16)),
+                  ],
+                ),
+                content: Text(
+                  'خدمة IMS AutoFill مفعّلة. عايز تفتح الإعدادات؟',
+                  style: _noDeco.copyWith(fontSize: 14),
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(ctx, false),
+                    child: Text('إلغاء',
+                        style: _noDeco.copyWith(
+                            color: theme.colorScheme.onSurface
+                                .withOpacity(0.6))),
+                  ),
+                  TextButton(
+                    onPressed: () => Navigator.pop(ctx, true),
+                    child: Text('افتح',
+                        style: _noDeco.copyWith(
+                            color: const Color(0xFF00D68F),
+                            fontWeight: FontWeight.bold)),
+                  ),
+                ],
+              ),
+            );
+            if (go == true) {
+              await AutoFillBridge.openAccessibilitySettings();
+              await Future.delayed(const Duration(seconds: 1));
+              _checkAccessibility();
+            }
+          } else {
+            // لو مقفول → روح مباشرة
+            await AutoFillBridge.openAccessibilitySettings();
+            await Future.delayed(const Duration(seconds: 1));
+            _checkAccessibility();
+          }
         },
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 350),
+          padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
             gradient: LinearGradient(
               colors: [
-                color.withOpacity(0.2),
-                color.withOpacity(0.1),
+                color.withOpacity(on ? 0.25 : 0.3),
+                color.withOpacity(on ? 0.12 : 0.18),
               ],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
             ),
-            borderRadius: BorderRadius.circular(30),
-            border: Border.all(color: color, width: 1.5),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
+              color: color,
+              width: 1.8,
+            ),
             boxShadow: [
               BoxShadow(
-                color: color.withOpacity(0.3),
-                blurRadius: 8,
-                offset: const Offset(0, 3),
+                color: color.withOpacity(on ? 0.25 : 0.4),
+                blurRadius: on ? 12 : 20,
+                offset: const Offset(0, 6),
               ),
             ],
           ),
           child: Row(
-            mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(
-                on
-                    ? Icons.check_circle_rounded
-                    : Icons.error_rounded,
-                size: 18,
-                color: color,
-              ),
-              const SizedBox(width: 5),
-              Text(
-                on ? 'مفعّل' : 'مقفول',
-                style: _noDeco.copyWith(
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
+              Container(
+                width: 52,
+                height: 52,
+                decoration: BoxDecoration(
+                  color: color.withOpacity(0.25),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                    color: color.withOpacity(0.5),
+                    width: 1.5,
+                  ),
+                ),
+                child: Icon(
+                  on
+                      ? Icons.verified_user_rounded
+                      : Icons.gpp_bad_rounded,
+                  size: 28,
                   color: color,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      on
+                          ? 'إعدادات الوصول شغالة'
+                          : 'إعدادات الوصول مقفولة',
+                      style: _noDeco.copyWith(
+                        fontSize: 15,
+                        fontWeight: FontWeight.bold,
+                        color: color,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      on
+                          ? 'IMS AutoFill مفعّل — كل حاجة جاهزة'
+                          : 'اضغط هنا لتفعيل IMS AutoFill',
+                      style: _noDeco.copyWith(
+                        fontSize: 11.5,
+                        color: theme.colorScheme.onSurface
+                            .withOpacity(on ? 0.7 : 0.85),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: color.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: color.withOpacity(0.5)),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      on ? Icons.circle : Icons.circle_outlined,
+                      size: 10,
+                      color: color,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      on ? 'ON' : 'OFF',
+                      style: _noDeco.copyWith(
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        color: color,
+                        letterSpacing: 1,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],
