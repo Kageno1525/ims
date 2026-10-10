@@ -1,0 +1,30 @@
+{
+  "project_info": {
+    "project_number": "123748875337",
+    "firebase_url": "https://ims-kageno-default-rtdb.europe-west1.firebasedatabase.app",
+    "project_id": "ims-kageno",
+    "storage_bucket": "ims-kageno.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:123748875337:android:9556acca1ede82b7a89398",
+        "android_client_info": {
+          "package_name": "com.kageno.ims"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCgYKWbBdbA9ZAjR2sGdHnUg4ZoXlEn_-M"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
