@@ -16,11 +16,12 @@ import 'autofill_bridge.dart';
 import 'tasks/tasks_page.dart';
 import 'pages/control_page.dart';
 import 'pages/scripts_page.dart';
+import 'pages/admin_scripts_page.dart';
 
 const String _kLoginUrl = 'https://imssms.org/login';
 const String _kNumbersUrl = 'https://imssms.org/numbers';
 
-enum Stage { home, login, numbers, tasks, control, scripts }
+enum Stage { home, login, numbers, tasks, control, scripts, adminScripts }
 
 class AppShell extends StatefulWidget {
   final bool isDark;
@@ -783,8 +784,16 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
 
   void _openTasks() => setState(() => _stage = Stage.tasks);
   void _openControl() => setState(() => _stage = Stage.control);
-  void _openScripts() => setState(() => _stage = Stage.scripts);
   void _closeToHome() => setState(() => _stage = Stage.home);
+
+  // ⭐ توجيه ذكي: الأدمن → إدارة السكربتات، اليوزر → السكربتات
+  void _openScripts() {
+    setState(() {
+      _stage = widget.userProfile.isAdmin
+          ? Stage.adminScripts
+          : Stage.scripts;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -807,6 +816,14 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
 
   Widget _buildStage() {
     switch (_stage) {
+      case Stage.adminScripts:
+        return AdminScriptsPage(
+          key: const ValueKey('admin-scripts'),
+          isDark: widget.isDark,
+          onToggleTheme: widget.onToggleTheme,
+          onBack: _closeToHome,
+        );
+
       case Stage.control:
         return ControlPage(
           key: const ValueKey('control'),
