@@ -278,7 +278,6 @@ class TaskRunner extends ChangeNotifier {
         return false;
       }
 
-      // 1) حمّل الأرقام لو مش محمّلة
       if (!_csvCache.containsKey(csvName)) {
         final files = await CsvReader.listFiles();
         final file = files.firstWhere(
@@ -309,7 +308,6 @@ class TaskRunner extends ChangeNotifier {
 
       int idx = _csvIndex[csvName] ?? 0;
 
-      // لو خلصنا الملف، نرجع للأول (لو الـ cycles > 1)
       if (idx >= nums.length) {
         if (cycles <= 1) {
           onLog(LogEntry('✅ خلصنا كل الأرقام في "$csvName"',
@@ -328,7 +326,6 @@ class TaskRunner extends ChangeNotifier {
       onLog(LogEntry('📱 [$csvName] رقم ${idx + 1}/${nums.length}: $number',
           DateTime.now(), LogLevel.info));
 
-      // 2) اكتب الرقم في الحقل
       final viewId = step.params['viewId']?.toString() ?? '';
       final hint = step.params['hint']?.toString() ?? '';
       final className = step.params['className']?.toString() ?? '';
@@ -358,7 +355,8 @@ class TaskRunner extends ChangeNotifier {
     }
   }
 
-  // ═══════════════ سحب للبحث ═══════════════
+  // ═══════════════ سحب للبحث (نسخة جديدة) ═══════════════
+  // ⭐ نقطة واحدة ثابتة + اتجاه (فوق/تحت) + مسافة
   Future<bool> _executeSwipeToFind(
     TaskStep step,
     Function(LogEntry) onLog,
@@ -371,10 +369,21 @@ class TaskRunner extends ChangeNotifier {
         return false;
       }
 
+      // ⭐ نقطة البداية الثابتة (نفس النقطة كل مرة)
       final x1 = int.tryParse(step.params['x1']?.toString() ?? '0') ?? 0;
       final y1 = int.tryParse(step.params['y1']?.toString() ?? '0') ?? 0;
-      final x2 = int.tryParse(step.params['x2']?.toString() ?? '0') ?? 0;
-      final y2 = int.tryParse(step.params['y2']?.toString() ?? '0') ?? 0;
+
+      if (x1 == 0 && y1 == 0) {
+        onLog(LogEntry('⚠️ مفيش نقطة تمركز محددة',
+            DateTime.now(), LogLevel.error));
+        return false;
+      }
+
+      // ⭐ الاتجاه والمسافة
+      final direction = step.params['direction']?.toString() ?? 'down';
+      final distance = int.tryParse(
+              step.params['distance']?.toString() ?? '400') ??
+          400;
       final maxSwipes = int.tryParse(
               step.params['maxSwipes']?.toString() ?? '20') ??
           20;
@@ -382,22 +391,32 @@ class TaskRunner extends ChangeNotifier {
               step.params['duration']?.toString() ?? '300') ??
           300;
 
+      // ⭐ احسب نقطة النهاية من الاتجاه
+      final x2 = x1;
+      final y2 = direction == 'up' ? (y1 - distance) : (y1 + distance);
+
+      final dirLabel = direction == 'up' ? 'لـ فوق ⬆️' : 'لـ تحت ⬇️';
+
       onLog(LogEntry('🔍 بدور على "$target"',
           DateTime.now(), LogLevel.info));
+      onLog(LogEntry(
+          '📍 النقطة الثابتة: ($x1, $y1) • الاتجاه: $dirLabel • المسافة: $distance بكسل',
+          DateTime.now(), LogLevel.info));
 
-      // 1) شوف لو النص موجود حالياً
-      final found = await AutoFillBridge.findElement(text: target);
-      if (found) {
-        onLog(LogEntry('✅ "$target" موجود من الأول',
+      // 1) شوف لو النص موجود من الأول
+      final found0 = await AutoFillBridge.findElement(text: target);
+      if (found0) {
+        onLog(LogEntry('✅ "$target" موجود من الأول — مش محتاج سحب',
             DateTime.now(), LogLevel.ok));
         return true;
       }
 
-      // 2) ابدأ السحب والبحث
+      // 2) ابدأ السحب من نفس النقطة كل مرة
       for (int i = 1; i <= maxSwipes; i++) {
         if (!_running) return false;
 
-        onLog(LogEntry('  ↕️ سحبة $i/$maxSwipes',
+        onLog(LogEntry(
+            '  ↕️ سحبة $i/$maxSwipes من ($x1, $y1) → ($x2, $y2)',
             DateTime.now(), LogLevel.wait));
 
         await AutoFillBridge.swipe(x1, y1, x2, y2, duration);
@@ -732,7 +751,6 @@ class TaskRunner extends ChangeNotifier {
         case TaskStepType.recents:
           return await AutoFillBridge.globalRecents();
 
-        // هيتعاملوا منفصلين في الـ run
         case TaskStepType.numberFromFile:
         case TaskStepType.swipeToFind:
           return false;
