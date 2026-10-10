@@ -1196,39 +1196,98 @@ class _StepCard extends StatelessWidget {
     );
   }
 
-  Widget _swipeBody(ThemeData theme) {
+Widget _swipeBody(ThemeData theme) {
+  // ⭐ نسخة جديدة: نقطة واحدة + اتجاه
+  if (step.type == TaskStepType.swipeToFind) {
+    final target = step.params['targetText']?.toString() ?? '';
+    final direction = step.params['direction']?.toString() ?? 'down';
     final x1 = step.params['x1']?.toString() ?? '0';
     final y1 = step.params['y1']?.toString() ?? '0';
-    final x2 = step.params['x2']?.toString() ?? '0';
-    final y2 = step.params['y2']?.toString() ?? '0';
+    final dist = step.params['distance']?.toString() ?? '400';
+    final dirLabel = direction == 'up' ? '⬆️ فوق' : '⬇️ تحت';
 
-    return Row(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Expanded(
-          child: Text(
-            '($x1, $y1)',
-            style: _noDeco.copyWith(
-              fontSize: 11,
-              fontFamily: 'monospace',
+        if (target.isNotEmpty) ...[
+          Row(
+            children: [
+              Icon(Icons.search_rounded, size: 12, color: _accent),
+              const SizedBox(width: 4),
+              Expanded(
+                child: Text(
+                  'دور على: $target',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: _noDeco.copyWith(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.bold,
+                    color: _accent,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+        ],
+        Row(
+          children: [
+            Icon(
+              Icons.location_on_rounded,
+              size: 12,
               color: theme.colorScheme.onSurface.withOpacity(0.7),
             ),
-          ),
-        ),
-        Icon(Icons.arrow_forward_rounded, size: 14, color: _accent),
-        Expanded(
-          child: Text(
-            '($x2, $y2)',
-            textAlign: TextAlign.right,
-            style: _noDeco.copyWith(
-              fontSize: 11,
-              fontFamily: 'monospace',
-              color: theme.colorScheme.onSurface.withOpacity(0.7),
+            const SizedBox(width: 4),
+            Expanded(
+              child: Text(
+                '($x1, $y1) • $dirLabel • $dist بكسل',
+                style: _noDeco.copyWith(
+                  fontSize: 11,
+                  fontFamily: 'monospace',
+                  color:
+                      theme.colorScheme.onSurface.withOpacity(0.75),
+                ),
+              ),
             ),
-          ),
+          ],
         ),
       ],
     );
   }
+
+  // النسخة القديمة: نقطتين (لخطوة Swipe العادية)
+  final x1 = step.params['x1']?.toString() ?? '0';
+  final y1 = step.params['y1']?.toString() ?? '0';
+  final x2 = step.params['x2']?.toString() ?? '0';
+  final y2 = step.params['y2']?.toString() ?? '0';
+
+  return Row(
+    children: [
+      Expanded(
+        child: Text(
+          '($x1, $y1)',
+          style: _noDeco.copyWith(
+            fontSize: 11,
+            fontFamily: 'monospace',
+            color: theme.colorScheme.onSurface.withOpacity(0.7),
+          ),
+        ),
+      ),
+      Icon(Icons.arrow_forward_rounded, size: 14, color: _accent),
+      Expanded(
+        child: Text(
+          '($x2, $y2)',
+          textAlign: TextAlign.right,
+          style: _noDeco.copyWith(
+            fontSize: 11,
+            fontFamily: 'monospace',
+            color: theme.colorScheme.onSurface.withOpacity(0.7),
+          ),
+        ),
+      ),
+    ],
+  );
+}
 
   Widget _navBody(ThemeData theme) {
     return Container(
