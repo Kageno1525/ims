@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 import '../models.dart';
 import '../widgets.dart';
 import '../autofill_bridge.dart';
+import '../pages/upload_script_sheet.dart';
 import 'task_model.dart';
 import 'task_storage.dart';
 import 'task_editor_page.dart';
 import 'task_runner.dart';
+import 'config.dart';
 
 class TasksPage extends StatefulWidget {
   final bool isDark;
@@ -160,6 +162,26 @@ class _TasksPageState extends State<TasksPage> with WidgetsBindingObserver {
     }
   }
 
+  // ⭐ رفع المهمة كسكربت للمستخدمين (مباشرة من القائمة)
+  Future<void> _uploadTask(Task task) async {
+    if (_runner.running) return;
+
+    final uploaded = await showUploadScriptSheet(
+      context,
+      isDark: widget.isDark,
+      task: task,
+    );
+
+    if (uploaded == true && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('✅ تم رفع السكربت للمستخدمين'),
+          backgroundColor: Color(0xFF00D68F),
+        ),
+      );
+    }
+  }
+
   Future<void> _runTask(Task task) async {
     if (_runner.running) return;
     setState(() => _runningTask = task);
@@ -288,7 +310,6 @@ class _TasksPageState extends State<TasksPage> with WidgetsBindingObserver {
         borderRadius: BorderRadius.circular(18),
         onTap: () async {
           if (on) {
-            // لو شغال → اسأل إذا عايز يقفله
             final go = await showDialog<bool>(
               context: context,
               builder: (ctx) => AlertDialog(
@@ -333,7 +354,6 @@ class _TasksPageState extends State<TasksPage> with WidgetsBindingObserver {
               _checkAccessibility();
             }
           } else {
-            // لو مقفول → روح مباشرة
             await AutoFillBridge.openAccessibilitySettings();
             await Future.delayed(const Duration(seconds: 1));
             _checkAccessibility();
@@ -727,6 +747,17 @@ class _TasksPageState extends State<TasksPage> with WidgetsBindingObserver {
           Row(
             mainAxisAlignment: MainAxisAlignment.end,
             children: [
+              // ⭐ زر رفع السكربت (للأدمن فقط)
+              if (IS_ADMIN_APP) ...[
+                _miniBtn(
+                  theme,
+                  icon: Icons.cloud_upload_rounded,
+                  label: 'رفع',
+                  color: const Color(0xFF6C5CE7),
+                  onTap: _runner.running ? null : () => _uploadTask(task),
+                ),
+                const SizedBox(width: 8),
+              ],
               _miniBtn(
                 theme,
                 icon: Icons.edit_rounded,
