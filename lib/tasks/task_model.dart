@@ -162,7 +162,10 @@ class TaskStep {
       type == TaskStepType.clickById ||
       type == TaskStepType.clickAt;
 
-  bool get isSearchStep => isClickStep || isWaitStep;
+  bool get isSearchStep =>
+      isClickStep ||
+      type == TaskStepType.waitForElement ||
+      type == TaskStepType.typeText;
 
   bool get hasLoop => repeatCount > 1;
 
