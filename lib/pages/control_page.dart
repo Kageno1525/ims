@@ -38,7 +38,6 @@ class _ControlPageState extends State<ControlPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Header
               Row(
                 children: [
                   IconBtn(
@@ -89,7 +88,6 @@ class _ControlPageState extends State<ControlPage> {
               ),
               const SizedBox(height: 14),
 
-              // Stream للأدمن: يُحدّث تلقائياً
               Expanded(
                 child: StreamBuilder<List<UserProfile>>(
                   stream: FirestoreService.allUsersStream(),
@@ -110,8 +108,7 @@ class _ControlPageState extends State<ControlPage> {
                       itemCount: users.length,
                       separatorBuilder: (_, __) =>
                           const SizedBox(height: 10),
-                      itemBuilder: (_, i) =>
-                          _userCard(theme, users[i]),
+                      itemBuilder: (_, i) => _userCard(theme, users[i]),
                     );
                   },
                 ),
@@ -139,15 +136,14 @@ class _ControlPageState extends State<ControlPage> {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: theme.colorScheme.surface.withOpacity(
-            widget.isDark ? 0.55 : 0.85),
+        color: theme.colorScheme.surface
+            .withOpacity(widget.isDark ? 0.55 : 0.85),
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: borderColor.withOpacity(0.4), width: 1.5),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // الصف الأول: الأيقونة + الاسم + الإيميل
           Row(
             children: [
               Container(
@@ -158,8 +154,14 @@ class _ControlPageState extends State<ControlPage> {
                     colors: isAdmin
                         ? const [Color(0xFF6C5CE7), Color(0xFF8E7CFF)]
                         : isBanned
-                            ? const [Color(0xFFFF6B6B), Color(0xFFFF8E53)]
-                            : const [Color(0xFF00D2FF), Color(0xFF3A7BD5)],
+                            ? const [
+                                Color(0xFFFF6B6B),
+                                Color(0xFFFF8E53)
+                              ]
+                            : const [
+                                Color(0xFF00D2FF),
+                                Color(0xFF3A7BD5)
+                              ],
                   ),
                   borderRadius: BorderRadius.circular(12),
                 ),
@@ -218,8 +220,6 @@ class _ControlPageState extends State<ControlPage> {
             ],
           ),
           const SizedBox(height: 10),
-
-          // الشارات الإضافية
           Wrap(
             spacing: 6,
             runSpacing: 6,
@@ -241,8 +241,6 @@ class _ControlPageState extends State<ControlPage> {
             ],
           ),
           const SizedBox(height: 12),
-
-          // أزرار التحكم
           Row(
             children: [
               Expanded(
@@ -388,6 +386,14 @@ class _ControlPageState extends State<ControlPage> {
               color: theme.colorScheme.onSurface.withOpacity(0.5),
             ),
           ),
+          const SizedBox(height: 8),
+          Text(
+            'اضغط "+" فوق لإضافة أول مستخدم',
+            style: _noDeco.copyWith(
+              fontSize: 12,
+              color: theme.colorScheme.onSurface.withOpacity(0.4),
+            ),
+          ),
         ],
       ),
     );
@@ -441,8 +447,7 @@ class _ControlPageState extends State<ControlPage> {
           style: _noDeco.copyWith(fontWeight: FontWeight.bold),
         ),
         content: Text(
-          'متأكد إنك عايز تحذف "${user.name}"؟\n'
-          'ده هيمسح البروفايل من Firestore (الحساب نفسه في Firebase Auth مش هيتأثر).',
+          'متأكد إنك عايز تحذف "${user.name}"؟',
           style: _noDeco.copyWith(fontSize: 13),
         ),
         actions: [
@@ -469,7 +474,6 @@ class _ControlPageState extends State<ControlPage> {
     final nameCtrl = TextEditingController(text: user.name);
     bool showNumbers = user.showNumbers;
 
-    // اجيب كل السكربتات لتحديد المسموح
     final allScriptsSnap =
         await FirestoreService.allScriptsStream().first;
     final allowed = Set<String>.from(user.allowedScripts);
@@ -580,118 +584,230 @@ class _ControlPageState extends State<ControlPage> {
   }
 
   Future<void> _showAddUserDialog(BuildContext context) async {
-    final emailCtrl = TextEditingController();
+    final userCtrl = TextEditingController();
     final nameCtrl = TextEditingController();
     final passCtrl = TextEditingController();
     bool showNumbers = true;
+    bool busy = false;
+    String? error;
 
     await showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: Theme.of(ctx).colorScheme.surface,
-        shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20)),
-        title: Text('إضافة مستخدم',
-            style: _noDeco.copyWith(
-                fontWeight: FontWeight.bold, fontSize: 16)),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFFFB84D).withOpacity(0.12),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(
-                      color: const Color(0xFFFFB84D).withOpacity(0.4)),
+      barrierDismissible: false,
+      builder: (ctx) {
+        return StatefulBuilder(builder: (ctx, setModal) {
+          return AlertDialog(
+            backgroundColor: Theme.of(ctx).colorScheme.surface,
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20)),
+            title: Row(
+              children: [
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFF6C5CE7), Color(0xFF00D2FF)],
+                    ),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(Icons.person_add_rounded,
+                      color: Colors.white, size: 22),
                 ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.info_outline_rounded,
-                        color: Color(0xFFFFB84D), size: 16),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: Text(
-                        'لازم تنشئ الحساب يدوياً في Firebase Console → Authentication → Users',
-                        style: _noDeco.copyWith(
-                          fontSize: 10.5,
-                          color: const Color(0xFFFFB84D),
+                const SizedBox(width: 10),
+                Text('إضافة مستخدم',
+                    style: _noDeco.copyWith(
+                        fontWeight: FontWeight.bold, fontSize: 16)),
+              ],
+            ),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: userCtrl,
+                    enabled: !busy,
+                    textInputAction: TextInputAction.next,
+                    style: _noDeco.copyWith(fontSize: 14),
+                    decoration: const InputDecoration(
+                      labelText: 'اسم المستخدم',
+                      hintText: 'مثال: ahmed',
+                      prefixIcon: Icon(Icons.person_outline_rounded),
+                      isDense: true,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: nameCtrl,
+                    enabled: !busy,
+                    textInputAction: TextInputAction.next,
+                    style: _noDeco.copyWith(fontSize: 14),
+                    decoration: const InputDecoration(
+                      labelText: 'الاسم (للعرض)',
+                      hintText: 'مثال: أحمد محمد',
+                      prefixIcon: Icon(Icons.badge_outlined),
+                      isDense: true,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: passCtrl,
+                    enabled: !busy,
+                    obscureText: true,
+                    style: _noDeco.copyWith(fontSize: 14),
+                    decoration: const InputDecoration(
+                      labelText: 'كلمة المرور (6+ حروف)',
+                      prefixIcon: Icon(Icons.lock_outline_rounded),
+                      isDense: true,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text('إظهار صفحة الأرقام',
+                        style: _noDeco.copyWith(fontSize: 13)),
+                    value: showNumbers,
+                    onChanged: busy
+                        ? null
+                        : (v) => setModal(() => showNumbers = v),
+                  ),
+                  if (error != null) ...[
+                    const SizedBox(height: 10),
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: Theme.of(ctx)
+                            .colorScheme
+                            .error
+                            .withOpacity(0.12),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                          color: Theme.of(ctx)
+                              .colorScheme
+                              .error
+                              .withOpacity(0.35),
                         ),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.error_outline_rounded,
+                              color: Theme.of(ctx).colorScheme.error,
+                              size: 18),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(error!,
+                                style: _noDeco.copyWith(
+                                  fontSize: 12,
+                                  color:
+                                      Theme.of(ctx).colorScheme.error,
+                                )),
+                          ),
+                        ],
                       ),
                     ),
                   ],
-                ),
+                ],
               ),
-              const SizedBox(height: 14),
-              TextField(
-                controller: emailCtrl,
-                style: _noDeco.copyWith(fontSize: 14),
-                decoration: const InputDecoration(
-                  labelText: 'الإيميل',
-                  isDense: true,
-                ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: busy ? null : () => Navigator.pop(ctx),
+                child: Text('إلغاء', style: _noDeco),
               ),
-              const SizedBox(height: 10),
-              TextField(
-                controller: nameCtrl,
-                style: _noDeco.copyWith(fontSize: 14),
-                decoration: const InputDecoration(
-                  labelText: 'الاسم',
-                  isDense: true,
-                ),
-              ),
-              const SizedBox(height: 10),
-              TextField(
-                controller: passCtrl,
-                style: _noDeco.copyWith(fontSize: 14),
-                decoration: const InputDecoration(
-                  labelText: 'Firebase UID',
-                  helperText: 'من Firebase Console → Users',
-                  helperStyle: TextStyle(fontSize: 10),
-                  isDense: true,
-                ),
-              ),
-              const SizedBox(height: 10),
-              SwitchListTile(
-                contentPadding: EdgeInsets.zero,
-                title: Text('إظهار صفحة الأرقام',
-                    style: _noDeco.copyWith(fontSize: 13)),
-                value: showNumbers,
-                onChanged: (v) => setState(() => showNumbers = v),
+              TextButton(
+                onPressed: busy
+                    ? null
+                    : () async {
+                        final username = userCtrl.text.trim();
+                        final name = nameCtrl.text.trim();
+                        final pass = passCtrl.text;
+
+                        // Validation
+                        if (username.isEmpty || username.length < 3) {
+                          setModal(() => error =
+                              'اسم المستخدم 3 حروف على الأقل');
+                          return;
+                        }
+                        if (!RegExp(r'^[a-z0-9_]+$')
+                            .hasMatch(username.toLowerCase())) {
+                          setModal(() => error =
+                              'اسم المستخدم: حروف إنجليزية وأرقام و _ بس');
+                          return;
+                        }
+                        if (name.isEmpty) {
+                          setModal(() => error = 'اكتب الاسم');
+                          return;
+                        }
+                        if (pass.length < 6) {
+                          setModal(() => error =
+                              'كلمة المرور 6 حروف على الأقل');
+                          return;
+                        }
+
+                        setModal(() {
+                          busy = true;
+                          error = null;
+                        });
+
+                        try {
+                          final newUid = await AuthService.createUser(
+                            username: username,
+                            password: pass,
+                          );
+
+                          if (newUid.isEmpty) {
+                            setModal(() {
+                              busy = false;
+                              error = 'فشل إنشاء الحساب';
+                            });
+                            return;
+                          }
+
+                          await FirestoreService.upsertUserProfile(
+                            uid: newUid,
+                            email: AuthService.usernameToEmail(username),
+                            name: name,
+                            showNumbers: showNumbers,
+                          );
+
+                          if (ctx.mounted) {
+                            Navigator.pop(ctx);
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                    '✅ تم إنشاء "$username" — باس: $pass'),
+                                backgroundColor:
+                                    const Color(0xFF00D68F),
+                                duration: const Duration(seconds: 5),
+                              ),
+                            );
+                          }
+                        } catch (e) {
+                          setModal(() {
+                            busy = false;
+                            error = AuthService.arError(e);
+                          });
+                        }
+                      },
+                child: busy
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2),
+                      )
+                    : Text('إنشاء',
+                        style: _noDeco.copyWith(
+                            fontWeight: FontWeight.bold,
+                            color: const Color(0xFF00D68F))),
               ),
             ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: Text('إلغاء', style: _noDeco),
-          ),
-          TextButton(
-            onPressed: () async {
-              final uid = passCtrl.text.trim();
-              final email = emailCtrl.text.trim();
-              final name = nameCtrl.text.trim();
-              if (uid.isEmpty || email.isEmpty) return;
-              await FirestoreService.upsertUserProfile(
-                uid: uid,
-                email: email,
-                name: name.isEmpty ? email.split('@').first : name,
-                showNumbers: showNumbers,
-              );
-              if (ctx.mounted) Navigator.pop(ctx);
-            },
-            child: Text('إضافة',
-                style: _noDeco.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: const Color(0xFF00D68F))),
-          ),
-        ],
-      ),
+          );
+        });
+      },
     );
 
-    emailCtrl.dispose();
+    userCtrl.dispose();
     nameCtrl.dispose();
     passCtrl.dispose();
   }
