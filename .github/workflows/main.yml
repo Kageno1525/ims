@@ -1,4 +1,4 @@
-name: Build Flutter APK
+name: Build Flutter APKs
 
 on:
   workflow_dispatch:
@@ -41,13 +41,35 @@ jobs:
       - name: Get dependencies
         run: flutter pub get
 
-      - name: Build APK
-        run: flutter build apk --release
+      # ═══════ بناء Admin APK ═══════
+      - name: Build Admin APK
+        run: flutter build apk --release --dart-define=IS_ADMIN=true
 
-      - name: Upload APK
+      - name: Rename Admin APK
+        run: |
+          mv build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/ims-admin.apk
+
+      # ═══════ بناء User APK ═══════
+      - name: Build User APK
+        run: flutter build apk --release --dart-define=IS_ADMIN=false
+
+      - name: Rename User APK
+        run: |
+          mv build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/ims-user.apk
+
+      # ═══════ رفع الـ APK للـ artifacts ═══════
+      - name: Upload Admin APK
         uses: actions/upload-artifact@v4
         with:
-          name: app-release
-          path: build/app/outputs/flutter-apk/app-release.apk
+          name: ims-admin-apk
+          path: build/app/outputs/flutter-apk/ims-admin.apk
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload User APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: ims-user-apk
+          path: build/app/outputs/flutter-apk/ims-user.apk
           if-no-files-found: error
           retention-days: 7
