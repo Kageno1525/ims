@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'config.dart';
 import 'firebase/auth_service.dart';
 import 'firebase/firestore_service.dart';
 import 'firebase/session_manager.dart';
@@ -28,18 +29,17 @@ class _AuthGateState extends State<AuthGate> {
   bool _loading = true;
   String? _error;
   bool _sessionConflict = false;
+  bool _roleMismatch = false;
 
   @override
   void initState() {
     super.initState();
-    // نسمع تغيّر الـ auth state — أول ما يفتح التطبيق
     AuthService.authStateChanges().listen(_onAuthChanged);
   }
 
   Future<void> _onAuthChanged(User? user) async {
     if (!mounted) return;
 
-    // لو مفيش مستخدم → روح لشاشة اللوجين
     if (user == null) {
       setState(() {
         _firebaseUser = null;
@@ -47,21 +47,21 @@ class _AuthGateState extends State<AuthGate> {
         _loading = false;
         _error = null;
         _sessionConflict = false;
+        _roleMismatch = false;
       });
       return;
     }
 
-    // فيه مستخدم → اجيب البروفايل من Firestore
     setState(() {
       _firebaseUser = user;
       _loading = true;
       _error = null;
+      _roleMismatch = false;
     });
 
     try {
       final profile = await FirestoreService.getUserProfile(user.uid);
 
-      // لو البروفايل مش موجود → المستخدم مش مصرح له
       if (profile == null) {
         await AuthService.signOut();
         if (!mounted) return;
@@ -72,7 +72,6 @@ class _AuthGateState extends State<AuthGate> {
         return;
       }
 
-      // اتحظر؟
       if (profile.isBanned) {
         await AuthService.signOut();
         if (!mounted) return;
@@ -83,7 +82,27 @@ class _AuthGateState extends State<AuthGate> {
         return;
       }
 
-      // ── فحص الجهاز الواحد ──
+      // ⭐⭐⭐ منع تطبيق اليوزر من فتح حساب أدمن
+      if (!IS_ADMIN_APP && profile.isAdmin) {
+        // 🔴 حظر فوري + خروج
+        try {
+          await FirestoreService.setUserBanned(user.uid, true);
+          await FirestoreService.updateUser(user.uid, {
+            'securityViolation': true,
+            'violationAt': DateTime.now().toIso8601String(),
+          });
+        } catch (_) {}
+        await AuthService.signOut();
+        await SessionManager.clearLocalSession();
+        if (!mounted) return;
+        setState(() {
+          _loading = false;
+          _roleMismatch = true;
+        });
+        return;
+      }
+
+      // فحص الجلسة
       final ok = await SessionManager.bindSession(user.uid);
       if (!ok) {
         if (!mounted) return;
@@ -95,7 +114,6 @@ class _AuthGateState extends State<AuthGate> {
         return;
       }
 
-      // حدّث آخر دخول
       FirestoreService.updateLastLogin(user.uid);
 
       if (!mounted) return;
@@ -104,16 +122,66 @@ class _AuthGateState extends State<AuthGate> {
         _loading = false;
         _sessionConflict = false;
       });
+
+      // ⭐⭐⭐ نراقب أي تغيير في البروفايل (حظر / دور / حذف)
+      _watchProfile(user.uid);
     } catch (e) {
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _error = 'خطأ في تحميل البيانات: $e';
+        _error = 'خطأ: $e';
       });
     }
   }
 
-  Future<void> _forceLogout() async {
+  // ⭐ Stream للبروفايل — يتابع الحظر والدور والتغييرات
+  void _watchProfile(String uid) {
+    FirestoreService.userProfileStream(uid).listen((profile) {
+      if (!mounted || profile == null) return;
+
+      // لو اتحظر
+      if (profile.isBanned) {
+        _forceLogout(message: 'الحساب ده اتحظر');
+        return;
+      }
+
+      // لو الدور اتغير لتضارب مع نسخة التطبيق
+      if (!IS_ADMIN_APP && profile.isAdmin) {
+        _forceLogout(message: 'ده حساب أدمن — مينفعش يدخل من هنا');
+        return;
+      }
+
+      // حدّث البروفايل الجديد
+      setState(() => _profile = profile);
+    });
+
+    // ⭐ Stream للجلسة — يتابع الجهاز الواحد
+    SessionManager.watchSessionConflict(uid).listen((conflict) {
+      if (!mounted) return;
+      if (conflict && !_sessionConflict) {
+        setState(() => _sessionConflict = true);
+      }
+    });
+  }
+
+  Future<void> _forceLogout({String? message}) async {
+    final uid = AuthService.uid;
+    if (uid != null) {
+      await FirestoreService.clearSession(uid);
+    }
+    await AuthService.signOut();
+    await SessionManager.clearLocalSession();
+    if (!mounted) return;
+    setState(() {
+      _sessionConflict = false;
+      _roleMismatch = false;
+      _error = message;
+      _profile = null;
+      _firebaseUser = null;
+    });
+  }
+
+  Future<void> _forceLogoutManual() async {
     final uid = AuthService.uid;
     if (uid != null) {
       await FirestoreService.clearSession(uid);
@@ -124,6 +192,7 @@ class _AuthGateState extends State<AuthGate> {
       setState(() {
         _sessionConflict = false;
         _error = null;
+        _roleMismatch = false;
       });
     }
   }
@@ -132,7 +201,6 @@ class _AuthGateState extends State<AuthGate> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    // 1) جاري التحميل
     if (_loading) {
       return AnimatedBackground(
         child: Center(
@@ -161,25 +229,34 @@ class _AuthGateState extends State<AuthGate> {
       );
     }
 
-    // 2) مش مسجل دخول → شاشة اللوجين
     if (_firebaseUser == null) {
+      if (_error != null) {
+        return _errorScreen(theme, _error!);
+      }
       return FirebaseLoginPage(
         isDark: widget.isDark,
         onToggleTheme: widget.onToggleTheme,
       );
     }
 
-    // 3) فيه خطأ (حظر / مش مصرح)
+    if (_roleMismatch) {
+      return _errorScreen(
+        theme,
+        '⚠️ ده تطبيق مخصص للمستخدمين فقط\n\n'
+            'حاولت تسجل دخول بحساب أدمن.\n'
+            'الحساب اتحظر للأمان.\n\n'
+            'كلّم المسؤول لو ده حصل بالغلط.',
+      );
+    }
+
     if (_error != null && _profile == null) {
       return _errorScreen(theme, _error!);
     }
 
-    // 4) تضارب جلسة (فتح من جهاز تاني)
     if (_sessionConflict) {
       return _conflictScreen(theme);
     }
 
-    // 5) البروفايل جاهز → التطبيق شغال
     if (_profile != null) {
       return AppShell(
         isDark: widget.isDark,
@@ -188,7 +265,6 @@ class _AuthGateState extends State<AuthGate> {
       );
     }
 
-    // fallback
     return FirebaseLoginPage(
       isDark: widget.isDark,
       onToggleTheme: widget.onToggleTheme,
@@ -223,7 +299,7 @@ class _AuthGateState extends State<AuthGate> {
                 msg,
                 textAlign: TextAlign.center,
                 style: TextStyle(
-                  fontSize: 18,
+                  fontSize: 16,
                   fontWeight: FontWeight.bold,
                   color: theme.colorScheme.onSurface,
                 ),
@@ -234,7 +310,7 @@ class _AuthGateState extends State<AuthGate> {
                 icon: Icons.logout_rounded,
                 gradient: const [Color(0xFFFF6B6B), Color(0xFFFF8E53)],
                 busy: false,
-                onTap: _forceLogout,
+                onTap: _forceLogoutManual,
               ),
             ],
           ),
@@ -291,7 +367,7 @@ class _AuthGateState extends State<AuthGate> {
                 icon: Icons.logout_rounded,
                 gradient: const [Color(0xFFFFB84D), Color(0xFFFF8E53)],
                 busy: false,
-                onTap: _forceLogout,
+                onTap: _forceLogoutManual,
               ),
             ],
           ),
