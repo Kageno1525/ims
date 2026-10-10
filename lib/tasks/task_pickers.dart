@@ -34,6 +34,8 @@ class _StepTypeSheet extends StatelessWidget {
         return Icons.hourglass_top_rounded;
       case TaskStepType.typeText:
         return Icons.keyboard_rounded;
+      case TaskStepType.numberFromFile:
+        return Icons.numbers_rounded;
       case TaskStepType.clickByText:
         return Icons.text_fields_rounded;
       case TaskStepType.clickByDesc:
@@ -48,6 +50,8 @@ class _StepTypeSheet extends StatelessWidget {
         return Icons.delete_sweep_rounded;
       case TaskStepType.swipe:
         return Icons.swipe_rounded;
+      case TaskStepType.swipeToFind:
+        return Icons.search_rounded;
       case TaskStepType.back:
         return Icons.arrow_back_rounded;
       case TaskStepType.home:
@@ -65,6 +69,8 @@ class _StepTypeSheet extends StatelessWidget {
         return const Color(0xFF95A5A6);
       case TaskStepType.typeText:
         return const Color(0xFF00D2FF);
+      case TaskStepType.numberFromFile:
+        return const Color(0xFF8E44AD);
       case TaskStepType.clickByText:
       case TaskStepType.clickByDesc:
       case TaskStepType.clickById:
@@ -77,6 +83,8 @@ class _StepTypeSheet extends StatelessWidget {
         return const Color(0xFFFF6B6B);
       case TaskStepType.swipe:
         return const Color(0xFFFF8E53);
+      case TaskStepType.swipeToFind:
+        return const Color(0xFF9B59B6);
       case TaskStepType.back:
       case TaskStepType.home:
       case TaskStepType.recents:
@@ -226,7 +234,6 @@ class _ElementPickerSheetState extends State<_ElementPickerSheet> {
     final s = _search.text.trim().toLowerCase();
     setState(() {
       _filtered = widget.elements.where((e) {
-        // فلتر النوع
         if (_filter == _ElementFilter.clickable) {
           if (!e.isInteractive) return false;
         } else if (_filter == _ElementFilter.editable) {
@@ -316,7 +323,6 @@ class _ElementPickerSheetState extends State<_ElementPickerSheet> {
             ),
           ),
           const SizedBox(height: 8),
-          // ⭐ 3 فلاتر
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12),
             child: Row(
@@ -912,3 +918,4 @@ class _CountdownDialogState extends State<_CountdownDialog> {
     );
   }
 }
+
