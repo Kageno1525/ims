@@ -42,7 +42,8 @@ class TaskStep {
   final String altDesc;
   final String altViewId;
   final String altTypeText;
-  final int repeatCount; // ⭐ جديد
+  final int repeatCount;
+  final bool speedMode;
 
   TaskStep({
     required this.id,
@@ -60,6 +61,7 @@ class TaskStep {
     this.altViewId = '',
     this.altTypeText = '',
     this.repeatCount = 1,
+    this.speedMode = false,
   });
 
   Map<String, dynamic> toJson() => {
@@ -78,6 +80,7 @@ class TaskStep {
         'altViewId': altViewId,
         'altTypeText': altTypeText,
         'repeatCount': repeatCount,
+        'speedMode': speedMode,
       };
 
   factory TaskStep.fromJson(Map<String, dynamic> json) => TaskStep(
@@ -108,6 +111,7 @@ class TaskStep {
         altViewId: json['altViewId']?.toString() ?? '',
         altTypeText: json['altTypeText']?.toString() ?? '',
         repeatCount: json['repeatCount'] ?? 1,
+        speedMode: json['speedMode'] == true,
       );
 
   TaskStep copyWith({
@@ -126,6 +130,7 @@ class TaskStep {
     String? altViewId,
     String? altTypeText,
     int? repeatCount,
+    bool? speedMode,
   }) =>
       TaskStep(
         id: id ?? this.id,
@@ -143,6 +148,7 @@ class TaskStep {
         altViewId: altViewId ?? this.altViewId,
         altTypeText: altTypeText ?? this.altTypeText,
         repeatCount: repeatCount ?? this.repeatCount,
+        speedMode: speedMode ?? this.speedMode,
       );
 
   bool get isWaitStep => type == TaskStepType.waitForElement;
@@ -253,9 +259,8 @@ class Task {
   final List<TaskStep> steps;
   final DateTime createdAt;
   final DateTime? lastRunAt;
-  // ⭐ Task-level loop
   final int repeatCount;
-  final bool autoIncrement; // كل دورة تاخد الرقم اللي بعده
+  final bool autoIncrement;
 
   Task({
     required this.id,
