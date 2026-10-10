@@ -2,6 +2,7 @@ enum TaskStepType {
   openApp,
   wait,
   typeText,
+  numberFromFile,
   clickByText,
   clickByDesc,
   clickById,
@@ -9,6 +10,7 @@ enum TaskStepType {
   waitForElement,
   clearAppData,
   swipe,
+  swipeToFind,
   back,
   home,
   recents,
@@ -152,6 +154,7 @@ class TaskStep {
       );
 
   bool get isWaitStep => type == TaskStepType.waitForElement;
+  bool get isSwipeFindStep => type == TaskStepType.swipeToFind;
 
   bool get isClickStep =>
       type == TaskStepType.clickByText ||
@@ -171,6 +174,8 @@ class TaskStep {
         return 'انتظار';
       case TaskStepType.typeText:
         return 'كتابة نص';
+      case TaskStepType.numberFromFile:
+        return 'رقم من ملف';
       case TaskStepType.clickByText:
         return 'ضغط على نص';
       case TaskStepType.clickByDesc:
@@ -185,6 +190,8 @@ class TaskStep {
         return 'مسح بيانات تطبيق';
       case TaskStepType.swipe:
         return 'سحب (Swipe)';
+      case TaskStepType.swipeToFind:
+        return 'سحب للبحث';
       case TaskStepType.back:
         return 'رجوع';
       case TaskStepType.home:
@@ -207,6 +214,10 @@ class TaskStep {
         if (id.isNotEmpty) return 'في $id: $v';
         if (hint.isNotEmpty) return 'في "$hint": $v';
         return v;
+      case TaskStepType.numberFromFile:
+        final csv = params['csvName']?.toString() ?? '';
+        final cyc = params['cycles'] ?? 1;
+        return '$csv (${cyc} دورة)';
       case TaskStepType.clickByText:
         return 'النص: ${params['text'] ?? ''}';
       case TaskStepType.clickByDesc:
@@ -245,6 +256,10 @@ class TaskStep {
         return params['package']?.toString() ?? '';
       case TaskStepType.swipe:
         return '(${params['x1']},${params['y1']}) → (${params['x2']},${params['y2']})';
+      case TaskStepType.swipeToFind:
+        final target = params['targetText']?.toString() ?? '';
+        final maxS = params['maxSwipes'] ?? 20;
+        return 'دور على: $target (حتى $maxS سحبة)';
       case TaskStepType.back:
       case TaskStepType.home:
       case TaskStepType.recents:
