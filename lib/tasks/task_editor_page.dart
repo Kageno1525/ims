@@ -576,6 +576,8 @@ class _StepCard extends StatelessWidget {
         return const Color(0xFF95A5A6);
       case TaskStepType.typeText:
         return const Color(0xFF00D2FF);
+      case TaskStepType.numberFromFile:
+        return const Color(0xFF8E44AD);
       case TaskStepType.clickByText:
       case TaskStepType.clickByDesc:
       case TaskStepType.clickById:
@@ -588,6 +590,8 @@ class _StepCard extends StatelessWidget {
         return const Color(0xFFFF6B6B);
       case TaskStepType.swipe:
         return const Color(0xFFFF8E53);
+      case TaskStepType.swipeToFind:
+        return const Color(0xFF9B59B6);
       case TaskStepType.back:
       case TaskStepType.home:
       case TaskStepType.recents:
@@ -603,6 +607,8 @@ class _StepCard extends StatelessWidget {
         return Icons.hourglass_top_rounded;
       case TaskStepType.typeText:
         return Icons.keyboard_rounded;
+      case TaskStepType.numberFromFile:
+        return Icons.numbers_rounded;
       case TaskStepType.clickByText:
         return Icons.text_fields_rounded;
       case TaskStepType.clickByDesc:
@@ -617,6 +623,8 @@ class _StepCard extends StatelessWidget {
         return Icons.delete_sweep_rounded;
       case TaskStepType.swipe:
         return Icons.swipe_rounded;
+      case TaskStepType.swipeToFind:
+        return Icons.search_rounded;
       case TaskStepType.back:
         return Icons.arrow_back_rounded;
       case TaskStepType.home:
@@ -803,6 +811,8 @@ class _StepCard extends StatelessWidget {
         return _waitBody(theme);
       case TaskStepType.typeText:
         return _typeTextBody(theme);
+      case TaskStepType.numberFromFile:
+        return _typeTextBody(theme);
       case TaskStepType.clickByText:
       case TaskStepType.clickByDesc:
       case TaskStepType.clickById:
@@ -812,6 +822,8 @@ class _StepCard extends StatelessWidget {
       case TaskStepType.waitForElement:
         return _waitForElementBody(theme);
       case TaskStepType.swipe:
+        return _swipeBody(theme);
+      case TaskStepType.swipeToFind:
         return _swipeBody(theme);
       case TaskStepType.back:
       case TaskStepType.home:
@@ -1290,7 +1302,6 @@ class _StepCard extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.center,
         mainAxisSize: MainAxisSize.min,
         children: [
-          // ⭐ Drag handle
           ReorderableDragStartListener(
             index: dragIndex,
             child: Container(
@@ -1303,8 +1314,6 @@ class _StepCard extends StatelessWidget {
               ),
             ),
           ),
-
-          // ⭐ زرار السرعة
           Material(
             color: Colors.transparent,
             child: InkWell(
@@ -1335,8 +1344,6 @@ class _StepCard extends StatelessWidget {
               ),
             ),
           ),
-
-          // ⭐ Edit + Delete جنب بعض
           Row(
             mainAxisSize: MainAxisSize.min,
             children: [
