@@ -7,7 +7,7 @@ import 'task_model.dart';
 import 'task_storage.dart';
 import 'task_editor_page.dart';
 import 'task_runner.dart';
-import 'config.dart';
+import '../config.dart';
 
 class TasksPage extends StatefulWidget {
   final bool isDark;
