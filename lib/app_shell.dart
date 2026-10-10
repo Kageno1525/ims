@@ -14,19 +14,24 @@ import 'web_scripts.dart';
 import 'csv_reader.dart';
 import 'autofill_bridge.dart';
 import 'tasks/tasks_page.dart';
+import 'pages/control_page.dart';
+import 'pages/scripts_page.dart';
 
 const String _kLoginUrl = 'https://imssms.org/login';
 const String _kNumbersUrl = 'https://imssms.org/numbers';
 
-enum Stage { home, login, numbers, tasks }
+enum Stage { home, login, numbers, tasks, control, scripts }
 
 class AppShell extends StatefulWidget {
   final bool isDark;
   final VoidCallback onToggleTheme;
+  final UserProfile userProfile;
+
   const AppShell({
     super.key,
     required this.isDark,
     required this.onToggleTheme,
+    required this.userProfile,
   });
 
   @override
@@ -308,7 +313,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     if (!silent && mounted) setState(() => _busy = false);
   }
 
-  Future<void> _logout() async {
+  Future<void> _logoutFromNumbers() async {
     setState(() {
       _isLoggedIn = false;
       _today = 0;
@@ -776,13 +781,10 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     _logs.value = <LogEntry>[];
   }
 
-  void _openTasks() {
-    setState(() => _stage = Stage.tasks);
-  }
-
-  void _closeTasks() {
-    setState(() => _stage = Stage.home);
-  }
+  void _openTasks() => setState(() => _stage = Stage.tasks);
+  void _openControl() => setState(() => _stage = Stage.control);
+  void _openScripts() => setState(() => _stage = Stage.scripts);
+  void _closeToHome() => setState(() => _stage = Stage.home);
 
   @override
   Widget build(BuildContext context) {
@@ -805,16 +807,35 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
 
   Widget _buildStage() {
     switch (_stage) {
+      case Stage.control:
+        return ControlPage(
+          key: const ValueKey('control'),
+          isDark: widget.isDark,
+          onToggleTheme: widget.onToggleTheme,
+          onBack: _closeToHome,
+          adminProfile: widget.userProfile,
+        );
+
+      case Stage.scripts:
+        return ScriptsPage(
+          key: const ValueKey('scripts'),
+          isDark: widget.isDark,
+          onToggleTheme: widget.onToggleTheme,
+          onBack: _closeToHome,
+          profile: widget.userProfile,
+        );
+
       case Stage.tasks:
         return TasksPage(
           key: const ValueKey('tasks'),
           isDark: widget.isDark,
           onToggleTheme: widget.onToggleTheme,
-          onBack: _closeTasks,
+          onBack: _closeToHome,
           onLog: (e) => _log(e.msg, e.level),
           currentNumbers: _currentNumbers,
           currentCsvIndex: _currentIndex,
         );
+
       case Stage.numbers:
         return NumbersPage(
           key: const ValueKey('numbers'),
@@ -866,8 +887,9 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
           onOpenOverlay: _openOverlay,
           logs: _logs,
           onBack: _backToHome,
-          onLogout: _logout,
+          onLogout: _logoutFromNumbers,
         );
+
       case Stage.login:
         return LoginPage(
           key: const ValueKey('login'),
@@ -881,13 +903,17 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
           onSubmit: _submit,
           onBack: _backFromLogin,
         );
+
       case Stage.home:
         return HomePage(
           key: const ValueKey('home'),
           isDark: widget.isDark,
           onToggleTheme: widget.onToggleTheme,
+          profile: widget.userProfile,
           onOpenNumbers: _onOpenNumbers,
           onOpenTasks: _openTasks,
+          onOpenControl: _openControl,
+          onOpenScripts: _openScripts,
         );
     }
   }
