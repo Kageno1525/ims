@@ -93,6 +93,14 @@ class _TaskEditorPageState extends State<TaskEditorPage> {
     setState(() => _steps.removeAt(index));
   }
 
+  void _toggleSpeed(int index) {
+    setState(() {
+      _steps[index] = _steps[index].copyWith(
+        speedMode: !_steps[index].speedMode,
+      );
+    });
+  }
+
   void _onReorder(int oldIndex, int newIndex) {
     setState(() {
       if (newIndex > oldIndex) newIndex--;
@@ -282,7 +290,7 @@ class _TaskEditorPageState extends State<TaskEditorPage> {
                   const Spacer(),
                   if (_steps.length > 1)
                     Text(
-                      'اسحب الخطوة للتحريك',
+                      'اسحب • ⚡ للسرعة',
                       style: _noDeco.copyWith(
                         fontSize: 10,
                         color:
@@ -334,7 +342,6 @@ class _TaskEditorPageState extends State<TaskEditorPage> {
     );
   }
 
-  // ⭐ قسم loop المهمة
   Widget _buildTaskLoopSection(ThemeData theme) {
     return Container(
       padding: const EdgeInsets.all(12),
@@ -526,6 +533,7 @@ class _TaskEditorPageState extends State<TaskEditorPage> {
           isDark: widget.isDark,
           onEdit: () => _editStep(i),
           onDelete: () => _removeStep(i),
+          onToggleSpeed: () => _toggleSpeed(i),
           dragIndex: i,
         ),
       ),
@@ -541,6 +549,7 @@ class _StepCard extends StatelessWidget {
   final bool isDark;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
+  final VoidCallback onToggleSpeed;
   final int dragIndex;
 
   const _StepCard({
@@ -550,6 +559,7 @@ class _StepCard extends StatelessWidget {
     required this.isDark,
     required this.onEdit,
     required this.onDelete,
+    required this.onToggleSpeed,
     required this.dragIndex,
   });
 
@@ -619,6 +629,9 @@ class _StepCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final accent = step.speedMode
+        ? const Color(0xFFFFD93D)
+        : _accent;
 
     return Container(
       decoration: BoxDecoration(
@@ -626,13 +639,13 @@ class _StepCard extends StatelessWidget {
             .withOpacity(isDark ? 0.6 : 0.9),
         borderRadius: BorderRadius.circular(18),
         border: Border.all(
-          color: _accent.withOpacity(0.35),
-          width: 1.2,
+          color: accent.withOpacity(0.35),
+          width: step.speedMode ? 1.8 : 1.2,
         ),
         boxShadow: [
           BoxShadow(
-            color: _accent.withOpacity(0.08),
-            blurRadius: 12,
+            color: accent.withOpacity(step.speedMode ? 0.15 : 0.08),
+            blurRadius: step.speedMode ? 16 : 12,
             offset: const Offset(0, 6),
           ),
         ],
@@ -643,14 +656,14 @@ class _StepCard extends StatelessWidget {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Container(width: 5, color: _accent),
+              Container(width: 5, color: accent),
               Expanded(
                 child: Padding(
                   padding: const EdgeInsets.all(12),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _buildHeader(theme),
+                      _buildHeader(theme, accent),
                       const SizedBox(height: 8),
                       _buildBody(theme),
                       const SizedBox(height: 8),
@@ -667,7 +680,7 @@ class _StepCard extends StatelessWidget {
     );
   }
 
-  Widget _buildHeader(ThemeData theme) {
+  Widget _buildHeader(ThemeData theme, Color accent) {
     return Row(
       children: [
         Container(
@@ -676,8 +689,8 @@ class _StepCard extends StatelessWidget {
           decoration: BoxDecoration(
             gradient: LinearGradient(
               colors: [
-                _accent,
-                _accent.withOpacity(0.7),
+                accent,
+                accent.withOpacity(0.7),
               ],
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
@@ -704,13 +717,45 @@ class _StepCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                step.typeLabel,
-                style: _noDeco.copyWith(
-                  fontSize: 14,
-                  fontWeight: FontWeight.bold,
-                  color: _accent,
-                ),
+              Row(
+                children: [
+                  Text(
+                    step.typeLabel,
+                    style: _noDeco.copyWith(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: accent,
+                    ),
+                  ),
+                  if (step.speedMode) ...[
+                    const SizedBox(width: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color:
+                            const Color(0xFFFFD93D).withOpacity(0.25),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.bolt_rounded,
+                              size: 11, color: Color(0xFFF39C12)),
+                          const SizedBox(width: 2),
+                          Text(
+                            'سريع',
+                            style: _noDeco.copyWith(
+                              fontSize: 9,
+                              fontWeight: FontWeight.bold,
+                              color: const Color(0xFFF39C12),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ],
               ),
               if (step.hasLoop) ...[
                 const SizedBox(height: 2),
@@ -1199,11 +1244,14 @@ class _StepCard extends StatelessWidget {
       children: [
         if (step.waitAfterMs > 0)
           _chip(theme, Icons.hourglass_top_rounded,
-              '${step.waitAfterMs}م', const Color(0xFF95A5A6)),
+              'انتظار ${step.waitAfterMs}م', const Color(0xFF95A5A6)),
         if (step.isSearchStep && step.timeoutMs > 0)
           _chip(theme, Icons.timer_rounded,
               'مهلة ${(step.timeoutMs / 1000).toStringAsFixed(0)}ث',
               const Color(0xFFFFB84D)),
+        if (step.speedMode)
+          _chip(theme, Icons.bolt_rounded,
+              'بحث سريع', const Color(0xFFF39C12)),
       ],
     );
   }
@@ -1235,28 +1283,60 @@ class _StepCard extends StatelessWidget {
     );
   }
 
-  // ⭐ أزرار جنب بعض + Drag handle
   Widget _buildControls(ThemeData theme) {
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 4),
+      padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 2),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Drag handle
+          // ⭐ Drag handle
           ReorderableDragStartListener(
             index: dragIndex,
             child: Container(
               padding: const EdgeInsets.symmetric(
-                  horizontal: 6, vertical: 8),
+                  horizontal: 6, vertical: 6),
               child: Icon(
                 Icons.drag_indicator_rounded,
-                size: 22,
-                color: theme.colorScheme.primary.withOpacity(0.7),
+                size: 20,
+                color: theme.colorScheme.primary.withOpacity(0.6),
               ),
             ),
           ),
-          // Edit + Delete جنب بعض
+
+          // ⭐ زرار السرعة
+          Material(
+            color: Colors.transparent,
+            child: InkWell(
+              borderRadius: BorderRadius.circular(8),
+              onTap: onToggleSpeed,
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: step.speedMode
+                      ? const Color(0xFFFFD93D).withOpacity(0.25)
+                      : Colors.transparent,
+                  borderRadius: BorderRadius.circular(8),
+                  border: step.speedMode
+                      ? Border.all(
+                          color: const Color(0xFFFFD93D),
+                          width: 1.2,
+                        )
+                      : null,
+                ),
+                child: Icon(
+                  Icons.bolt_rounded,
+                  size: 18,
+                  color: step.speedMode
+                      ? const Color(0xFFF39C12)
+                      : theme.colorScheme.onSurface.withOpacity(0.4),
+                ),
+              ),
+            ),
+          ),
+
+          // ⭐ Edit + Delete جنب بعض
           Row(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -1265,7 +1345,7 @@ class _StepCard extends StatelessWidget {
                 color: const Color(0xFF00D2FF),
                 onTap: onEdit,
               ),
-              const SizedBox(width: 4),
+              const SizedBox(width: 3),
               _actionBtn(
                 icon: Icons.close_rounded,
                 color: const Color(0xFFFF6B6B),
@@ -1286,15 +1366,15 @@ class _StepCard extends StatelessWidget {
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(6),
         onTap: onTap,
         child: Container(
-          padding: const EdgeInsets.all(6),
+          padding: const EdgeInsets.all(5),
           decoration: BoxDecoration(
             color: color.withOpacity(0.12),
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: BorderRadius.circular(6),
           ),
-          child: Icon(icon, size: 16, color: color),
+          child: Icon(icon, size: 14, color: color),
         ),
       ),
     );
