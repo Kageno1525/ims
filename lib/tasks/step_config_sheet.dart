@@ -42,6 +42,7 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
   late int _skipCount;
   late OnAppearAction _onAppear;
   late NotFoundAction _onNotFound;
+  late bool _speedMode;
   late TextEditingController _timeoutCtrl;
   late TextEditingController _skipCountCtrl;
   late TextEditingController _repeatCtrl;
@@ -65,6 +66,7 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
     _skipCount = widget.step.skipCount;
     _onAppear = widget.step.onAppear;
     _onNotFound = widget.step.onNotFound;
+    _speedMode = widget.step.speedMode;
     _timeoutCtrl = TextEditingController(text: _timeoutMs.toString());
     _skipCountCtrl = TextEditingController(text: _skipCount.toString());
     _repeatCtrl = TextEditingController(text: _repeatCount.toString());
@@ -333,6 +335,7 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
         altViewId: _altViewIdCtrl.text,
         altTypeText: _altTypeCtrl.text,
         repeatCount: _repeatCount,
+        speedMode: _speedMode,
       ),
     );
   }
@@ -395,6 +398,12 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
 
               ..._buildContent(theme),
 
+              // ⭐ قسم السرعة (يظهر لخطوات البحث بس)
+              if (_isSearchStep) ...[
+                const SizedBox(height: 4),
+                _buildSpeedSection(theme),
+              ],
+
               // ⭐ حقل التكرار
               const SizedBox(height: 14),
               _buildRepeatField(theme),
@@ -424,6 +433,64 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  // ⭐ قسم السرعة القصوى
+  Widget _buildSpeedSection(ThemeData theme) {
+    return Container(
+      padding:
+          const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: _speedMode
+            ? const Color(0xFFFFD93D).withOpacity(0.12)
+            : theme.colorScheme.surface.withOpacity(0.4),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: _speedMode
+              ? const Color(0xFFFFD93D)
+              : theme.colorScheme.primary.withOpacity(0.15),
+          width: _speedMode ? 1.5 : 1,
+        ),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.bolt_rounded,
+              size: 22, color: Color(0xFFF39C12)),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'السرعة القصوى',
+                  style: _noDeco.copyWith(
+                    fontSize: 13,
+                    fontWeight: FontWeight.bold,
+                    color: _speedMode
+                        ? const Color(0xFFF39C12)
+                        : theme.colorScheme.onSurface,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'polling كل 20ms + cache للعناصر',
+                  style: _noDeco.copyWith(
+                    fontSize: 10,
+                    color:
+                        theme.colorScheme.onSurface.withOpacity(0.6),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Switch(
+            value: _speedMode,
+            onChanged: (v) => setState(() => _speedMode = v),
+            activeColor: const Color(0xFFF39C12),
+          ),
+        ],
       ),
     );
   }
@@ -615,7 +682,8 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
   List<Widget> _buildAppSection(ThemeData theme,
       {required bool warn}) {
     final pkg = _ctrls['package']?.text ?? '';
-    final color = warn ? const Color(0xFFFF6B6B) : theme.colorScheme.primary;
+    final color =
+        warn ? const Color(0xFFFF6B6B) : theme.colorScheme.primary;
 
     return [
       if (warn)
