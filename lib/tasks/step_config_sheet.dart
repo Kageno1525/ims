@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import '../widgets.dart';
 import '../autofill_bridge.dart';
-import '../models.dart' show InstalledApp;
+import '../csv_reader.dart';
+import '../models.dart' show InstalledApp, CsvFile;
 import 'task_model.dart';
 import 'task_pickers.dart';
 
@@ -51,8 +52,12 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
   late TextEditingController _altDescCtrl;
   late TextEditingController _altViewIdCtrl;
   late TextEditingController _altTypeCtrl;
+  late TextEditingController _cyclesCtrl;
+  late TextEditingController _maxSwipesCtrl;
   String? _selectedAppName;
+  String? _selectedCsvName;
   String? _lastHint;
+  List<CsvFile> _csvFiles = [];
 
   @override
   void initState() {
@@ -78,6 +83,11 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
         TextEditingController(text: widget.step.altViewId);
     _altTypeCtrl =
         TextEditingController(text: widget.step.altTypeText);
+    _cyclesCtrl = TextEditingController(
+        text: (widget.step.params['cycles']?.toString() ?? '1'));
+    _maxSwipesCtrl = TextEditingController(
+        text: (widget.step.params['maxSwipes']?.toString() ?? '20'));
+    _selectedCsvName = widget.step.params['csvName']?.toString();
 
     final keys = _fieldKeysFor(_currentType);
     for (final k in keys) {
@@ -86,6 +96,22 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
             _defaultValueFor(_currentType, k),
       );
     }
+
+    if (_currentType == TaskStepType.numberFromFile) {
+      Future.microtask(_loadCsvFiles);
+    }
+  }
+
+  Future<void> _loadCsvFiles() async {
+    final list = await CsvReader.listFiles();
+    if (!mounted) return;
+    setState(() {
+      _csvFiles = list;
+      if ((_selectedCsvName == null || _selectedCsvName!.isEmpty) &&
+          list.isNotEmpty) {
+        _selectedCsvName = list.first.name;
+      }
+    });
   }
 
   List<String> _fieldKeysFor(TaskStepType t) {
@@ -94,7 +120,8 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
       case TaskStepType.clearAppData:
         return ['package'];
       case TaskStepType.typeText:
-        return ['text', 'viewId', 'hint', 'className', 'elementIndex'];
+      case TaskStepType.numberFromFile:
+        return ['viewId', 'hint', 'className', 'elementIndex'];
       case TaskStepType.clickByText:
       case TaskStepType.clickByDesc:
       case TaskStepType.clickById:
@@ -104,6 +131,8 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
         return ['x', 'y'];
       case TaskStepType.swipe:
         return ['x1', 'y1', 'x2', 'y2', 'duration'];
+      case TaskStepType.swipeToFind:
+        return ['targetText', 'x1', 'y1', 'x2', 'y2', 'duration'];
       case TaskStepType.wait:
         return ['ms'];
       default:
@@ -114,6 +143,7 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
   String _defaultValueFor(TaskStepType t, String key) {
     if (t == TaskStepType.wait && key == 'ms') return '1000';
     if (t == TaskStepType.swipe && key == 'duration') return '300';
+    if (t == TaskStepType.swipeToFind && key == 'duration') return '300';
     if (key == 'elementIndex') return '0';
     return '';
   }
@@ -131,6 +161,8 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
     _altDescCtrl.dispose();
     _altViewIdCtrl.dispose();
     _altTypeCtrl.dispose();
+    _cyclesCtrl.dispose();
+    _maxSwipesCtrl.dispose();
     super.dispose();
   }
 
@@ -141,6 +173,25 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
         _ctrls['package']?.text = app.package;
         _selectedAppName = app.name;
       });
+    }
+  }
+
+  Future<void> _pickCsv() async {
+    if (_csvFiles.isEmpty) await _loadCsvFiles();
+    if (!mounted) return;
+    final picked = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (ctx) => _CsvPickerSheet(
+        files: _csvFiles,
+        selected: _selectedCsvName,
+        isDark: widget.isDark,
+        onRefresh: _loadCsvFiles,
+      ),
+    );
+    if (picked != null && mounted) {
+      setState(() => _selectedCsvName = picked);
     }
   }
 
@@ -170,6 +221,10 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
       _currentType = newType;
       _lastHint = null;
     });
+
+    if (newType == TaskStepType.numberFromFile && _csvFiles.isEmpty) {
+      await _loadCsvFiles();
+    }
   }
 
   Future<void> _inspectScreen() async {
@@ -201,8 +256,43 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
     _applyPickedElement(picked, sameIdx);
   }
 
+  // ⭐ التقاط نقطة سحب (بداية أو نهاية)
+  Future<void> _capturePoint({required bool isStart}) async {
+    final captured = await showCountdownAndCapture(context);
+    if (captured == null || captured.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text('مفيش عناصر. تأكد من Accessibility.')),
+        );
+      }
+      return;
+    }
+    if (!mounted) return;
+
+    final picked = await showElementPicker(
+      context: context,
+      elements: captured,
+      isDark: widget.isDark,
+    );
+    if (picked == null) return;
+
+    setState(() {
+      if (isStart) {
+        _ctrls['x1']?.text = picked.x.toString();
+        _ctrls['y1']?.text = picked.y.toString();
+        _lastHint = 'بداية السحب: (${picked.x}, ${picked.y})';
+      } else {
+        _ctrls['x2']?.text = picked.x.toString();
+        _ctrls['y2']?.text = picked.y.toString();
+        _lastHint = 'نهاية السحب: (${picked.x}, ${picked.y})';
+      }
+    });
+  }
+
   void _applyPickedElement(ScreenElement picked, int sameIdx) {
-    if (_currentType == TaskStepType.typeText) {
+    if (_currentType == TaskStepType.typeText ||
+        _currentType == TaskStepType.numberFromFile) {
       setState(() {
         if (picked.hasId) _ctrls['viewId']?.text = picked.id;
         if (picked.hasHint) _ctrls['hint']?.text = picked.hint;
@@ -290,6 +380,7 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
       case TaskStepType.clickById:
       case TaskStepType.clickAt:
       case TaskStepType.typeText:
+      case TaskStepType.numberFromFile:
       case TaskStepType.waitForElement:
         return true;
       default:
@@ -313,10 +404,23 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
   bool get _isWaitForElement =>
       _currentType == TaskStepType.waitForElement;
 
+  bool get _isNumberFromFile =>
+      _currentType == TaskStepType.numberFromFile;
+
+  bool get _isSwipeToFind =>
+      _currentType == TaskStepType.swipeToFind;
+
   void _save() {
     final params = <String, dynamic>{};
     for (final e in _ctrls.entries) {
       params[e.key] = e.value.text;
+    }
+    if (_isNumberFromFile) {
+      params['csvName'] = _selectedCsvName ?? '';
+      params['cycles'] = _cyclesCtrl.text;
+    }
+    if (_isSwipeToFind) {
+      params['maxSwipes'] = _maxSwipesCtrl.text;
     }
     Navigator.pop(
       context,
@@ -398,13 +502,11 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
 
               ..._buildContent(theme),
 
-              // ⭐ قسم السرعة (يظهر لخطوات البحث بس)
               if (_isSearchStep) ...[
                 const SizedBox(height: 4),
                 _buildSpeedSection(theme),
               ],
 
-              // ⭐ حقل التكرار
               const SizedBox(height: 14),
               _buildRepeatField(theme),
 
@@ -647,6 +749,8 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
         return [_buildMsField(theme)];
       case TaskStepType.typeText:
         return _buildTypeTextFields(theme);
+      case TaskStepType.numberFromFile:
+        return _buildNumberFromFileFields(theme);
       case TaskStepType.clickByText:
       case TaskStepType.clickByDesc:
       case TaskStepType.clickById:
@@ -656,6 +760,8 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
         return [_buildXYRow(theme)];
       case TaskStepType.swipe:
         return _buildSwipeFields(theme);
+      case TaskStepType.swipeToFind:
+        return _buildSwipeToFindFields(theme);
       case TaskStepType.back:
       case TaskStepType.home:
       case TaskStepType.recents:
@@ -677,6 +783,432 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
           ),
         ];
     }
+  }
+
+  // ⭐ حقول "رقم من ملف"
+  List<Widget> _buildNumberFromFileFields(ThemeData theme) {
+    return [
+      // اختيار الملف
+      _buildCsvPicker(theme),
+      const SizedBox(height: 10),
+
+      // عدد الدورات
+      Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surface.withOpacity(0.4),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+              color: theme.colorScheme.primary.withOpacity(0.15)),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.replay_rounded,
+                size: 18, color: theme.colorScheme.primary),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'عدد الدورات على الملف',
+                    style: _noDeco.copyWith(
+                        fontSize: 13, fontWeight: FontWeight.bold),
+                  ),
+                  Text(
+                    '1 = مرة واحدة • أكثر = يلف على الملف N مرة',
+                    style: _noDeco.copyWith(
+                      fontSize: 10,
+                      color: theme.colorScheme.onSurface
+                          .withOpacity(0.55),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            SizedBox(
+              width: 60,
+              child: TextField(
+                controller: _cyclesCtrl,
+                textAlign: TextAlign.center,
+                keyboardType: TextInputType.number,
+                style: _noDeco.copyWith(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: theme.colorScheme.primary,
+                ),
+                decoration: const InputDecoration(
+                  isDense: true,
+                  contentPadding: EdgeInsets.symmetric(vertical: 8),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+      const SizedBox(height: 12),
+
+      // حقول الحقل المستهدف
+      Container(
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surface.withOpacity(0.3),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Text(
+          'الحقل اللي هيتكتب فيه الرقم — استخدم "التقاط الشاشة" لملئها',
+          style: _noDeco.copyWith(
+            fontSize: 10,
+            color: theme.colorScheme.onSurface.withOpacity(0.6),
+          ),
+        ),
+      ),
+      const SizedBox(height: 10),
+      TextField(
+        controller: _ctrls['viewId'],
+        style: _noDeco.copyWith(fontSize: 15),
+        decoration: InputDecoration(
+          labelText: 'الـ id (اختياري)',
+          labelStyle: _noDeco.copyWith(
+              color: theme.colorScheme.onSurface.withOpacity(0.6)),
+          prefixIcon: const Icon(Icons.tag_rounded, size: 18),
+        ),
+      ),
+      const SizedBox(height: 10),
+      TextField(
+        controller: _ctrls['hint'],
+        style: _noDeco.copyWith(fontSize: 15),
+        decoration: InputDecoration(
+          labelText: 'نص الإرشاد hint (اختياري)',
+          labelStyle: _noDeco.copyWith(
+              color: theme.colorScheme.onSurface.withOpacity(0.6)),
+          prefixIcon: const Icon(Icons.lightbulb_outline_rounded,
+              size: 18),
+        ),
+      ),
+      const SizedBox(height: 10),
+      Row(
+        children: [
+          Expanded(
+            child: TextField(
+              controller: _ctrls['className'],
+              style: _noDeco.copyWith(fontSize: 14),
+              decoration: InputDecoration(
+                labelText: 'className',
+                labelStyle: _noDeco.copyWith(
+                    color:
+                        theme.colorScheme.onSurface.withOpacity(0.6)),
+                isDense: true,
+                contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 12, vertical: 12),
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          SizedBox(
+            width: 90,
+            child: TextField(
+              controller: _ctrls['elementIndex'],
+              textAlign: TextAlign.center,
+              keyboardType: TextInputType.number,
+              style: _noDeco.copyWith(
+                  fontSize: 14, fontWeight: FontWeight.bold),
+              decoration: InputDecoration(
+                labelText: '# ترتيب',
+                labelStyle: _noDeco.copyWith(
+                    color: theme.colorScheme.onSurface
+                        .withOpacity(0.6),
+                    fontSize: 11),
+                isDense: true,
+                contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 8, vertical: 12),
+              ),
+            ),
+          ),
+        ],
+      ),
+    ];
+  }
+
+  Widget _buildCsvPicker(ThemeData theme) {
+    final current = _selectedCsvName;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: _pickCsv,
+        child: Container(
+          padding:
+              const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surface.withOpacity(0.5),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: current != null && current.isNotEmpty
+                  ? const Color(0xFF00D68F).withOpacity(0.5)
+                  : theme.colorScheme.primary.withOpacity(0.25),
+            ),
+          ),
+          child: Row(
+            children: [
+              Icon(Icons.folder_rounded,
+                  size: 22,
+                  color: current != null && current.isNotEmpty
+                      ? const Color(0xFF00D68F)
+                      : theme.colorScheme.primary),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'الرنج / ملف الأرقام',
+                      style: _noDeco.copyWith(
+                        fontSize: 11,
+                        color: theme.colorScheme.onSurface
+                            .withOpacity(0.6),
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      current == null || current.isEmpty
+                          ? 'اضغط لاختيار ملف من Download/ranges'
+                          : current,
+                      style: _noDeco.copyWith(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                        color: current == null || current.isEmpty
+                            ? theme.colorScheme.onSurface
+                                .withOpacity(0.5)
+                            : const Color(0xFF00D68F),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(Icons.arrow_forward_ios_rounded,
+                  size: 14,
+                  color: theme.colorScheme.onSurface.withOpacity(0.4)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ⭐ حقول "سحب للبحث"
+  List<Widget> _buildSwipeToFindFields(ThemeData theme) {
+    return [
+      // النص المستهدف
+      TextField(
+        controller: _ctrls['targetText'],
+        style: _noDeco.copyWith(fontSize: 15),
+        decoration: InputDecoration(
+          labelText: 'النص اللي بندور عليه',
+          hintText: 'مثال: اسم شخص / عنصر',
+          labelStyle: _noDeco.copyWith(
+              color: theme.colorScheme.onSurface.withOpacity(0.6)),
+          hintStyle: _noDeco.copyWith(
+              color: theme.colorScheme.onSurface.withOpacity(0.4)),
+          prefixIcon: const Icon(Icons.search_rounded, size: 20),
+        ),
+      ),
+      const SizedBox(height: 12),
+
+      // زرار التقاط نقطة البداية
+      Row(
+        children: [
+          Expanded(
+            child: _capturePointButton(
+              theme,
+              label: '📍 بداية السحب',
+              onTap: () => _capturePoint(isStart: true),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: _capturePointButton(
+              theme,
+              label: '🏁 نهاية السحب',
+              onTap: () => _capturePoint(isStart: false),
+            ),
+          ),
+        ],
+      ),
+      const SizedBox(height: 10),
+
+      // إحداثيات البداية
+      _coordRow(
+        theme,
+        keyX: 'x1',
+        keyY: 'y1',
+        label: 'البداية (X, Y)',
+      ),
+      const SizedBox(height: 10),
+
+      // إحداثيات النهاية
+      _coordRow(
+        theme,
+        keyX: 'x2',
+        keyY: 'y2',
+        label: 'النهاية (X, Y)',
+      ),
+      const SizedBox(height: 10),
+
+      // المدة
+      TextField(
+        controller: _ctrls['duration'],
+        keyboardType: TextInputType.number,
+        style: _noDeco.copyWith(fontSize: 15),
+        decoration: InputDecoration(
+          labelText: 'مدة السحبة (مللي ثانية)',
+          labelStyle: _noDeco.copyWith(
+              color: theme.colorScheme.onSurface.withOpacity(0.6)),
+          prefixIcon: const Icon(Icons.speed_rounded, size: 18),
+          helperText: '300 = سريع، 800 = بطيء',
+          helperStyle: TextStyle(
+            fontSize: 10,
+            color: theme.colorScheme.primary.withOpacity(0.7),
+          ),
+        ),
+      ),
+      const SizedBox(height: 12),
+
+      // عدد السحبات الأقصى
+      Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: const Color(0xFFFF6B6B).withOpacity(0.08),
+          borderRadius: BorderRadius.circular(12),
+          border:
+              Border.all(color: const Color(0xFFFF6B6B).withOpacity(0.3)),
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.swipe_vertical_rounded,
+                size: 18, color: Color(0xFFFF6B6B)),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'أقصى عدد سحبات',
+                    style: _noDeco.copyWith(
+                        fontSize: 13,
+                        fontWeight: FontWeight.bold,
+                        color: const Color(0xFFFF6B6B)),
+                  ),
+                  Text(
+                    'لو النص مش ظهر، يوقف بعد العدد ده',
+                    style: _noDeco.copyWith(
+                      fontSize: 10,
+                      color: theme.colorScheme.onSurface
+                          .withOpacity(0.55),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            SizedBox(
+              width: 60,
+              child: TextField(
+                controller: _maxSwipesCtrl,
+                textAlign: TextAlign.center,
+                keyboardType: TextInputType.number,
+                style: _noDeco.copyWith(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: const Color(0xFFFF6B6B),
+                ),
+                decoration: const InputDecoration(
+                  isDense: true,
+                  contentPadding: EdgeInsets.symmetric(vertical: 8),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    ];
+  }
+
+  Widget _capturePointButton(
+    ThemeData theme, {
+    required String label,
+    required VoidCallback onTap,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              colors: [Color(0xFF6C5CE7), Color(0xFF00D2FF)],
+            ),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Center(
+            child: Text(
+              label,
+              style: _noDeco.copyWith(
+                color: Colors.white,
+                fontSize: 12.5,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _coordRow(
+    ThemeData theme, {
+    required String keyX,
+    required String keyY,
+    required String label,
+  }) {
+    return Row(
+      children: [
+        Expanded(
+          child: TextField(
+            controller: _ctrls[keyX],
+            keyboardType: TextInputType.number,
+            style: _noDeco.copyWith(fontSize: 14),
+            decoration: InputDecoration(
+              labelText: '$label X',
+              labelStyle: _noDeco.copyWith(
+                  color: theme.colorScheme.onSurface.withOpacity(0.6),
+                  fontSize: 12),
+              isDense: true,
+              contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 12, vertical: 12),
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: TextField(
+            controller: _ctrls[keyY],
+            keyboardType: TextInputType.number,
+            style: _noDeco.copyWith(fontSize: 14),
+            decoration: InputDecoration(
+              labelText: '$label Y',
+              labelStyle: _noDeco.copyWith(
+                  color: theme.colorScheme.onSurface.withOpacity(0.6),
+                  fontSize: 12),
+              isDense: true,
+              contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 12, vertical: 12),
+            ),
+          ),
+        ),
+      ],
+    );
   }
 
   List<Widget> _buildAppSection(ThemeData theme,
@@ -809,7 +1341,7 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
               color: theme.colorScheme.onSurface.withOpacity(0.6)),
           prefixIcon: const Icon(Icons.keyboard_rounded),
           helperText:
-              'يدعم: {num} = الرقم الحالي • {num:0} = أول رقم • {num:5} = السادس • {date} • {time}',
+              'يدعم: {num} = الرقم الحالي • {num:0} = أول رقم • {date} • {time}',
           helperStyle: TextStyle(
             fontSize: 10,
             color: theme.colorScheme.primary.withOpacity(0.7),
@@ -1775,6 +2307,194 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+// ═══════════ CSV Picker Sheet ═══════════
+class _CsvPickerSheet extends StatefulWidget {
+  final List<CsvFile> files;
+  final String? selected;
+  final bool isDark;
+  final Future<void> Function() onRefresh;
+
+  const _CsvPickerSheet({
+    required this.files,
+    required this.selected,
+    required this.isDark,
+    required this.onRefresh,
+  });
+
+  @override
+  State<_CsvPickerSheet> createState() => _CsvPickerSheetState();
+}
+
+class _CsvPickerSheetState extends State<_CsvPickerSheet> {
+  late List<CsvFile> _files;
+  bool _loading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _files = widget.files;
+    Future.microtask(_refresh);
+  }
+
+  Future<void> _refresh() async {
+    setState(() => _loading = true);
+    await widget.onRefresh();
+    if (mounted) setState(() => _loading = false);
+  }
+
+  @override
+  void didUpdateWidget(_CsvPickerSheet old) {
+    super.didUpdateWidget(old);
+    if (old.files != widget.files) {
+      setState(() => _files = widget.files);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      height: MediaQuery.of(context).size.height * 0.6,
+      decoration: BoxDecoration(
+        color: theme.scaffoldBackgroundColor,
+        borderRadius:
+            const BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      child: Column(
+        children: [
+          const SizedBox(height: 12),
+          Container(
+            width: 50,
+            height: 5,
+            decoration: BoxDecoration(
+              color: theme.colorScheme.onSurface.withOpacity(0.2),
+              borderRadius: BorderRadius.circular(3),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                'اختر ملف من Download/ranges',
+                style: _noDeco.copyWith(
+                    fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(width: 8),
+              IconButton(
+                onPressed: _refresh,
+                icon: Icon(Icons.refresh_rounded,
+                    size: 20, color: theme.colorScheme.primary),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Expanded(
+            child: _loading
+                ? const Center(child: CircularProgressIndicator())
+                : _files.isEmpty
+                    ? Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.folder_off_rounded,
+                                size: 60,
+                                color: theme.colorScheme.onSurface
+                                    .withOpacity(0.3)),
+                            const SizedBox(height: 12),
+                            Text(
+                              'مفيش ملفات في Download/ranges',
+                              style: _noDeco.copyWith(
+                                fontSize: 13,
+                                color: theme.colorScheme.onSurface
+                                    .withOpacity(0.5),
+                              ),
+                            ),
+                          ],
+                        ),
+                      )
+                    : ListView.builder(
+                        padding:
+                            const EdgeInsets.symmetric(horizontal: 12),
+                        itemCount: _files.length,
+                        itemBuilder: (_, i) {
+                          final f = _files[i];
+                          final sel = f.name == widget.selected;
+                          return Padding(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 4, vertical: 4),
+                            child: Material(
+                              color: sel
+                                  ? theme.colorScheme.primary
+                                      .withOpacity(0.15)
+                                  : theme.colorScheme.surface
+                                      .withOpacity(0.4),
+                              borderRadius: BorderRadius.circular(12),
+                              child: InkWell(
+                                borderRadius: BorderRadius.circular(12),
+                                onTap: () =>
+                                    Navigator.pop(context, f.name),
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 14, vertical: 14),
+                                  child: Row(
+                                    children: [
+                                      Icon(
+                                        sel
+                                            ? Icons
+                                                .radio_button_checked_rounded
+                                            : Icons
+                                                .radio_button_unchecked_rounded,
+                                        color: sel
+                                            ? theme.colorScheme.primary
+                                            : theme.colorScheme.onSurface
+                                                .withOpacity(0.4),
+                                        size: 20,
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              f.name,
+                                              style: _noDeco.copyWith(
+                                                fontSize: 14,
+                                                fontWeight: sel
+                                                    ? FontWeight.bold
+                                                    : FontWeight.normal,
+                                              ),
+                                            ),
+                                            const SizedBox(height: 2),
+                                            Text(
+                                              '${f.count} رقم',
+                                              style: _noDeco.copyWith(
+                                                fontSize: 11,
+                                                color: theme.colorScheme
+                                                    .onSurface
+                                                    .withOpacity(0.5),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+          ),
+          const SizedBox(height: 12),
+        ],
       ),
     );
   }
