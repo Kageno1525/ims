@@ -1,8 +1,13 @@
 import 'package:flutter/material.dart';
-import 'app_shell.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'auth_gate.dart';
+import 'config.dart';
 
-void main() {
+
+
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp();
   runApp(const ImsApp());
 }
 
@@ -21,12 +26,11 @@ class _ImsAppState extends State<ImsApp> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'IMS',
+      title: IS_ADMIN_APP ? 'IMS Admin' : 'IMS',
       debugShowCheckedModeBanner: false,
       themeMode: _mode,
       theme: _theme(Brightness.light),
       darkTheme: _theme(Brightness.dark),
-      // ⭐ اللف العام ده هو اللي بيقتل الخط الأصفر
       builder: (context, child) {
         return DefaultTextStyle(
           style: const TextStyle(
@@ -37,7 +41,7 @@ class _ImsAppState extends State<ImsApp> {
           child: child!,
         );
       },
-      home: AppShell(
+      home: AuthGate(
         isDark: _mode == ThemeMode.dark,
         onToggleTheme: _toggle,
       ),
@@ -53,7 +57,6 @@ ThemeData _theme(Brightness b) {
   final base =
       ThemeData(useMaterial3: true, colorScheme: scheme, brightness: b);
 
-  // ⭐ نطبق decoration: none على كل الـ TextTheme
   final cleanTextTheme = base.textTheme.apply(
     decoration: TextDecoration.none,
     decorationColor: Colors.transparent,
