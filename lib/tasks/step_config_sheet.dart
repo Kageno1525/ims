@@ -117,12 +117,14 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
     });
   }
 
+  // ⭐⭐ التعديل الأول: ضيفنا 'text' لحقول typeText
   List<String> _fieldKeysFor(TaskStepType t) {
     switch (t) {
       case TaskStepType.openApp:
       case TaskStepType.clearAppData:
         return ['package'];
       case TaskStepType.typeText:
+        return ['text', 'viewId', 'hint', 'className', 'elementIndex'];
       case TaskStepType.numberFromFile:
         return ['viewId', 'hint', 'className', 'elementIndex'];
       case TaskStepType.clickByText:
@@ -260,7 +262,6 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
     _applyPickedElement(picked, sameIdx);
   }
 
-  // ⭐ التقاط عنصر واحد — لنقطة بداية السحب أو لأي غرض آخر
   Future<void> _captureElement({String purpose = 'start'}) async {
     final captured = await showCountdownAndCapture(context);
     if (captured == null || captured.isEmpty) {
@@ -387,6 +388,7 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
     }
   }
 
+  // ⭐⭐ التعديل التاني: ضيفنا typeText في search steps
   bool get _isSearchStep {
     switch (_currentType) {
       case TaskStepType.clickByText:
@@ -394,6 +396,7 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
       case TaskStepType.clickById:
       case TaskStepType.clickAt:
       case TaskStepType.waitForElement:
+      case TaskStepType.typeText:
         return true;
       default:
         return false;
@@ -783,7 +786,6 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
     }
   }
 
-  // ⭐⭐ حقول "رقم من ملف"
   List<Widget> _buildNumberFromFileFields(ThemeData theme) {
     return [
       _buildCsvPicker(theme),
@@ -989,13 +991,11 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
     );
   }
 
-  // ⭐⭐ حقول "سحب للبحث" — نسخة جديدة بالعنصر الواحد + الاتجاه
   List<Widget> _buildSwipeToFindFields(ThemeData theme) {
     final hasPoint = (_ctrls['x1']?.text.isNotEmpty ?? false) &&
         (_ctrls['y1']?.text.isNotEmpty ?? false);
 
     return [
-      // 1) النص المستهدف
       TextField(
         controller: _ctrls['targetText'],
         style: _noDeco.copyWith(fontSize: 15),
@@ -1011,7 +1011,6 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
       ),
       const SizedBox(height: 14),
 
-      // 2) زرار التقاط العنصر (النقطة الثابتة)
       Material(
         color: Colors.transparent,
         child: InkWell(
@@ -1064,7 +1063,6 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
       ),
       const SizedBox(height: 10),
 
-      // 3) عرض الإحداثيات الملتقطة
       if (hasPoint)
         Container(
           padding: const EdgeInsets.symmetric(
@@ -1095,7 +1093,6 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
         ),
       const SizedBox(height: 14),
 
-      // 4) اختيار الاتجاه
       Row(
         children: [
           Icon(Icons.swap_vert_rounded,
@@ -1135,7 +1132,6 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
       ),
       const SizedBox(height: 14),
 
-      // 5) المسافة
       TextField(
         controller: _ctrls['distance'],
         keyboardType: TextInputType.number,
@@ -1154,7 +1150,6 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
       ),
       const SizedBox(height: 12),
 
-      // 6) مدة السحبة
       TextField(
         controller: _ctrls['duration'],
         keyboardType: TextInputType.number,
@@ -1173,7 +1168,6 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
       ),
       const SizedBox(height: 12),
 
-      // 7) أقصى عدد سحبات
       Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
