@@ -20,12 +20,12 @@ class InstalledApp {
   InstalledApp({required this.package, required this.name});
 }
 
-// ⭐ جديد: بروفايل المستخدم
+// ⭐ بروفايل المستخدم
 class UserProfile {
   final String uid;
-  final String email;
-  final String name;
-  final String role; // "admin" | "user"
+  final String email;      // داخلي — مش بيتعرض للمستخدم
+  final String name;       // الاسم للعرض
+  final String role;       // "admin" | "user"
   final List<String> allowedScripts;
   final bool showNumbers;
   final bool isBanned;
@@ -46,13 +46,20 @@ class UserProfile {
 
   bool get isAdmin => role == 'admin';
 
+  // ⭐ استخراج الـ username من الإيميل (بدون @ims.app)
+  String get username {
+    if (email.isEmpty) return '';
+    final idx = email.indexOf('@');
+    if (idx == -1) return email;
+    return email.substring(0, idx);
+  }
+
   factory UserProfile.fromDoc(String uid, Map<String, dynamic> data) {
     DateTime? parseTs(dynamic v) {
       if (v == null) return null;
       try {
         if (v is DateTime) return v;
         if (v is String) return DateTime.tryParse(v);
-        // Firestore Timestamp
         final d = v.toDate();
         if (d is DateTime) return d;
       } catch (_) {}
@@ -84,7 +91,6 @@ class UserProfile {
       };
 }
 
-// ⭐ جديد: السكربت (نفس بنية المهمة)
 class ScriptDoc {
   final String id;
   final String name;
