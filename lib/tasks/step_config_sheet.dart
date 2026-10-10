@@ -44,6 +44,7 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
   late OnAppearAction _onAppear;
   late NotFoundAction _onNotFound;
   late bool _speedMode;
+  late String _swipeDirection;
   late TextEditingController _timeoutCtrl;
   late TextEditingController _skipCountCtrl;
   late TextEditingController _repeatCtrl;
@@ -72,6 +73,8 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
     _onAppear = widget.step.onAppear;
     _onNotFound = widget.step.onNotFound;
     _speedMode = widget.step.speedMode;
+    _swipeDirection =
+        widget.step.params['direction']?.toString() ?? 'down';
     _timeoutCtrl = TextEditingController(text: _timeoutMs.toString());
     _skipCountCtrl = TextEditingController(text: _skipCount.toString());
     _repeatCtrl = TextEditingController(text: _repeatCount.toString());
@@ -132,7 +135,7 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
       case TaskStepType.swipe:
         return ['x1', 'y1', 'x2', 'y2', 'duration'];
       case TaskStepType.swipeToFind:
-        return ['targetText', 'x1', 'y1', 'x2', 'y2', 'duration'];
+        return ['targetText', 'x1', 'y1', 'duration', 'distance'];
       case TaskStepType.wait:
         return ['ms'];
       default:
@@ -144,6 +147,7 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
     if (t == TaskStepType.wait && key == 'ms') return '1000';
     if (t == TaskStepType.swipe && key == 'duration') return '300';
     if (t == TaskStepType.swipeToFind && key == 'duration') return '300';
+    if (t == TaskStepType.swipeToFind && key == 'distance') return '400';
     if (key == 'elementIndex') return '0';
     return '';
   }
@@ -256,8 +260,8 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
     _applyPickedElement(picked, sameIdx);
   }
 
-  // ⭐ التقاط نقطة سحب (بداية أو نهاية)
-  Future<void> _capturePoint({required bool isStart}) async {
+  // ⭐ التقاط عنصر واحد — لنقطة بداية السحب أو لأي غرض آخر
+  Future<void> _captureElement({String purpose = 'start'}) async {
     final captured = await showCountdownAndCapture(context);
     if (captured == null || captured.isEmpty) {
       if (mounted) {
@@ -270,23 +274,18 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
     }
     if (!mounted) return;
 
- final picked = await showElementPicker(
-  context,               // ✅ صح
-  elements: captured,
-  isDark: widget.isDark,
-);
+    final picked = await showElementPicker(
+      context,
+      elements: captured,
+      isDark: widget.isDark,
+    );
     if (picked == null) return;
 
     setState(() {
-      if (isStart) {
-        _ctrls['x1']?.text = picked.x.toString();
-        _ctrls['y1']?.text = picked.y.toString();
-        _lastHint = 'بداية السحب: (${picked.x}, ${picked.y})';
-      } else {
-        _ctrls['x2']?.text = picked.x.toString();
-        _ctrls['y2']?.text = picked.y.toString();
-        _lastHint = 'نهاية السحب: (${picked.x}, ${picked.y})';
-      }
+      _ctrls['x1']?.text = picked.x.toString();
+      _ctrls['y1']?.text = picked.y.toString();
+      _lastHint =
+          'النقطة الثابتة: (${picked.x}, ${picked.y}) — ${picked.bestLabel}';
     });
   }
 
@@ -421,6 +420,7 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
     }
     if (_isSwipeToFind) {
       params['maxSwipes'] = _maxSwipesCtrl.text;
+      params['direction'] = _swipeDirection;
     }
     Navigator.pop(
       context,
@@ -539,7 +539,6 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
     );
   }
 
-  // ⭐ قسم السرعة القصوى
   Widget _buildSpeedSection(ThemeData theme) {
     return Container(
       padding:
@@ -597,7 +596,6 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
     );
   }
 
-  // ⭐ حقل تكرار الخطوة
   Widget _buildRepeatField(ThemeData theme) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -785,14 +783,11 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
     }
   }
 
-  // ⭐ حقول "رقم من ملف"
+  // ⭐⭐ حقول "رقم من ملف"
   List<Widget> _buildNumberFromFileFields(ThemeData theme) {
     return [
-      // اختيار الملف
       _buildCsvPicker(theme),
       const SizedBox(height: 10),
-
-      // عدد الدورات
       Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
@@ -847,8 +842,6 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
         ),
       ),
       const SizedBox(height: 12),
-
-      // حقول الحقل المستهدف
       Container(
         padding: const EdgeInsets.all(10),
         decoration: BoxDecoration(
@@ -996,10 +989,13 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
     );
   }
 
-  // ⭐ حقول "سحب للبحث"
+  // ⭐⭐ حقول "سحب للبحث" — نسخة جديدة بالعنصر الواحد + الاتجاه
   List<Widget> _buildSwipeToFindFields(ThemeData theme) {
+    final hasPoint = (_ctrls['x1']?.text.isNotEmpty ?? false) &&
+        (_ctrls['y1']?.text.isNotEmpty ?? false);
+
     return [
-      // النص المستهدف
+      // 1) النص المستهدف
       TextField(
         controller: _ctrls['targetText'],
         style: _noDeco.copyWith(fontSize: 15),
@@ -1013,49 +1009,152 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
           prefixIcon: const Icon(Icons.search_rounded, size: 20),
         ),
       ),
-      const SizedBox(height: 12),
+      const SizedBox(height: 14),
 
-      // زرار التقاط نقطة البداية
-      Row(
-        children: [
-          Expanded(
-            child: _capturePointButton(
-              theme,
-              label: '📍 بداية السحب',
-              onTap: () => _capturePoint(isStart: true),
+      // 2) زرار التقاط العنصر (النقطة الثابتة)
+      Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(14),
+          onTap: () => _captureElement(purpose: 'start'),
+          child: Container(
+            padding: const EdgeInsets.symmetric(
+                horizontal: 16, vertical: 14),
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [Color(0xFF6C5CE7), Color(0xFF00D2FF)],
+              ),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.touch_app_rounded,
+                    color: Colors.white, size: 22),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        hasPoint
+                            ? 'تغيير النقطة الثابتة'
+                            : 'اختر العنصر (نقطة التمركز)',
+                        style: _noDeco.copyWith(
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
+                      Text(
+                        'هيفضل يدوس على نفس النقطة دي كل مرة',
+                        style: _noDeco.copyWith(
+                          fontSize: 11,
+                          color: Colors.white.withOpacity(0.85),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const Icon(Icons.arrow_forward_ios_rounded,
+                    size: 14, color: Colors.white),
+              ],
             ),
           ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: _capturePointButton(
-              theme,
-              label: '🏁 نهاية السحب',
-              onTap: () => _capturePoint(isStart: false),
+        ),
+      ),
+      const SizedBox(height: 10),
+
+      // 3) عرض الإحداثيات الملتقطة
+      if (hasPoint)
+        Container(
+          padding: const EdgeInsets.symmetric(
+              horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            color: const Color(0xFF00D68F).withOpacity(0.1),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+                color: const Color(0xFF00D68F).withOpacity(0.4)),
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.location_on_rounded,
+                  size: 18, color: Color(0xFF00D68F)),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'النقطة الثابتة: (${_ctrls['x1']?.text}, ${_ctrls['y1']?.text})',
+                  style: _noDeco.copyWith(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.bold,
+                    color: const Color(0xFF00D68F),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      const SizedBox(height: 14),
+
+      // 4) اختيار الاتجاه
+      Row(
+        children: [
+          Icon(Icons.swap_vert_rounded,
+              size: 18, color: theme.colorScheme.primary),
+          const SizedBox(width: 6),
+          Text(
+            'الاتجاه',
+            style: _noDeco.copyWith(
+              fontSize: 13,
+              fontWeight: FontWeight.bold,
+              color: theme.colorScheme.onSurface,
             ),
           ),
         ],
       ),
-      const SizedBox(height: 10),
-
-      // إحداثيات البداية
-      _coordRow(
-        theme,
-        keyX: 'x1',
-        keyY: 'y1',
-        label: 'البداية (X, Y)',
+      const SizedBox(height: 8),
+      Row(
+        children: [
+          Expanded(
+            child: _directionBtn(
+              theme,
+              label: '⬆️ لـ فوق',
+              value: 'up',
+              color: const Color(0xFF00D2FF),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: _directionBtn(
+              theme,
+              label: '⬇️ لـ تحت',
+              value: 'down',
+              color: const Color(0xFFFF8E53),
+            ),
+          ),
+        ],
       ),
-      const SizedBox(height: 10),
+      const SizedBox(height: 14),
 
-      // إحداثيات النهاية
-      _coordRow(
-        theme,
-        keyX: 'x2',
-        keyY: 'y2',
-        label: 'النهاية (X, Y)',
+      // 5) المسافة
+      TextField(
+        controller: _ctrls['distance'],
+        keyboardType: TextInputType.number,
+        style: _noDeco.copyWith(fontSize: 15),
+        decoration: InputDecoration(
+          labelText: 'المسافة (بكسل)',
+          labelStyle: _noDeco.copyWith(
+              color: theme.colorScheme.onSurface.withOpacity(0.6)),
+          prefixIcon: const Icon(Icons.straighten_rounded, size: 18),
+          helperText: '400 = سحبة قصيرة • 800 = سحبة طويلة',
+          helperStyle: TextStyle(
+            fontSize: 10,
+            color: theme.colorScheme.primary.withOpacity(0.7),
+          ),
+        ),
       ),
-      const SizedBox(height: 10),
+      const SizedBox(height: 12),
 
-      // المدة
+      // 6) مدة السحبة
       TextField(
         controller: _ctrls['duration'],
         keyboardType: TextInputType.number,
@@ -1074,7 +1173,7 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
       ),
       const SizedBox(height: 12),
 
-      // عدد السحبات الأقصى
+      // 7) أقصى عدد سحبات
       Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
@@ -1133,81 +1232,46 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
     ];
   }
 
-  Widget _capturePointButton(
+  Widget _directionBtn(
     ThemeData theme, {
     required String label,
-    required VoidCallback onTap,
+    required String value,
+    required Color color,
   }) {
+    final selected = _swipeDirection == value;
     return Material(
       color: Colors.transparent,
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
-        onTap: onTap,
+        onTap: () => setState(() => _swipeDirection = value),
         child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 12),
+          padding: const EdgeInsets.symmetric(vertical: 14),
           decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              colors: [Color(0xFF6C5CE7), Color(0xFF00D2FF)],
-            ),
+            color: selected
+                ? color.withOpacity(0.2)
+                : theme.colorScheme.surface.withOpacity(0.4),
             borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: selected
+                  ? color
+                  : theme.colorScheme.primary.withOpacity(0.15),
+              width: selected ? 1.8 : 1,
+            ),
           ),
           child: Center(
             child: Text(
               label,
               style: _noDeco.copyWith(
-                color: Colors.white,
-                fontSize: 12.5,
+                fontSize: 14,
                 fontWeight: FontWeight.bold,
+                color: selected
+                    ? color
+                    : theme.colorScheme.onSurface.withOpacity(0.6),
               ),
             ),
           ),
         ),
       ),
-    );
-  }
-
-  Widget _coordRow(
-    ThemeData theme, {
-    required String keyX,
-    required String keyY,
-    required String label,
-  }) {
-    return Row(
-      children: [
-        Expanded(
-          child: TextField(
-            controller: _ctrls[keyX],
-            keyboardType: TextInputType.number,
-            style: _noDeco.copyWith(fontSize: 14),
-            decoration: InputDecoration(
-              labelText: '$label X',
-              labelStyle: _noDeco.copyWith(
-                  color: theme.colorScheme.onSurface.withOpacity(0.6),
-                  fontSize: 12),
-              isDense: true,
-              contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 12, vertical: 12),
-            ),
-          ),
-        ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: TextField(
-            controller: _ctrls[keyY],
-            keyboardType: TextInputType.number,
-            style: _noDeco.copyWith(fontSize: 14),
-            decoration: InputDecoration(
-              labelText: '$label Y',
-              labelStyle: _noDeco.copyWith(
-                  color: theme.colorScheme.onSurface.withOpacity(0.6),
-                  fontSize: 12),
-              isDense: true,
-              contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 12, vertical: 12),
-            ),
-          ),
-        ),
-      ],
     );
   }
 
