@@ -918,4 +918,3 @@ class _CountdownDialogState extends State<_CountdownDialog> {
     );
   }
 }
-
