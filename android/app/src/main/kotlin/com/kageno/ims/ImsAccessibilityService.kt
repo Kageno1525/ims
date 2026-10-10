@@ -22,6 +22,8 @@ import android.view.accessibility.AccessibilityWindowInfo
 import org.json.JSONArray
 import org.json.JSONObject
 import java.lang.ref.WeakReference
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 
 class ImsAccessibilityService : AccessibilityService() {
 
@@ -85,6 +87,13 @@ class ImsAccessibilityService : AccessibilityService() {
 
         fun swipeStatic(x1: Int, y1: Int, x2: Int, y2: Int, d: Int): Boolean =
             instance?.swipeInternal(x1, y1, x2, y2, d) ?: false
+
+        // ⭐ جديد: scroll بالـ Accessibility action (مش محتاج Gesture)
+        fun scrollForwardStatic(): Boolean =
+            instance?.scrollInternal(forward = true) ?: false
+
+        fun scrollBackwardStatic(): Boolean =
+            instance?.scrollInternal(forward = false) ?: false
 
         fun globalBackStatic(): Boolean =
             instance?.performGlobalAction(GLOBAL_ACTION_BACK) ?: false
@@ -706,245 +715,224 @@ class ImsAccessibilityService : AccessibilityService() {
 
     // ═══════════════ مسح بيانات تطبيق ═══════════════
     private fun clearAppDataInternal(pkg: String): Boolean {
-    try {
-        if (pkg.isEmpty()) return false
+        try {
+            if (pkg.isEmpty()) return false
 
-        Log.d(TAG, "clearAppData: starting for $pkg")
+            Log.d(TAG, "clearAppData: starting for $pkg")
 
-        // 1) افتح صفحة التطبيق في الإعدادات
-        val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
-        intent.data = Uri.parse("package:$pkg")
-        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        startActivity(intent)
+            val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+            intent.data = Uri.parse("package:$pkg")
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            startActivity(intent)
 
-        try { Thread.sleep(2000) } catch (_: Exception) {}
+            try { Thread.sleep(2000) } catch (_: Exception) {}
 
-        // 2) فتح صفحة التخزين
-        val storageOpened = clickByAnyText(
-            timeoutMs = 6000,
-            maxAttempts = 30,
-            keywords = arrayOf(
-                "Storage & cache",
-                "Storage and cache",
-                "Storage & cache usage",
-                "Storage usage",
-                "Storage",
-                "App storage",
-                "Manage storage",
-                "Memory",
-                "التخزين والذاكرة",
-                "التخزين والذاكرة المؤقتة",
-                "التخزين",
-                "مساحة التخزين",
-                "ذاكرة التخزين",
-                "استخدام التخزين",
-                "إدارة التخزين",
-                "التخزين المؤقت",
-                "الذاكرة والتخزين",
-                "المساحة والتخزين",
-                "التخزين و التخزين المؤقت",
-                "التخزين والتخزين المؤقت"
+            val storageOpened = clickByAnyText(
+                timeoutMs = 6000,
+                maxAttempts = 30,
+                keywords = arrayOf(
+                    "Storage & cache",
+                    "Storage and cache",
+                    "Storage & cache usage",
+                    "Storage usage",
+                    "Storage",
+                    "App storage",
+                    "Manage storage",
+                    "Memory",
+                    "التخزين والذاكرة",
+                    "التخزين والذاكرة المؤقتة",
+                    "التخزين",
+                    "مساحة التخزين",
+                    "ذاكرة التخزين",
+                    "استخدام التخزين",
+                    "إدارة التخزين",
+                    "التخزين المؤقت",
+                    "الذاكرة والتخزين",
+                    "المساحة والتخزين"
+                )
             )
-        )
-        Log.d(TAG, "clearAppData: storage opened = $storageOpened")
+            Log.d(TAG, "clearAppData: storage opened = $storageOpened")
 
-        try { Thread.sleep(1500) } catch (_: Exception) {}
+            try { Thread.sleep(1500) } catch (_: Exception) {}
 
-        // 3) زر المسح الفعلي (اللي بيفتح الديالوج)
-        //    ملاحظة: بعد ما ندوس عليه، بيفتح ديالوج جديد
-        val clearClicked = clickByAnyText(
-            timeoutMs = 6000,
-            maxAttempts = 30,
-            keywords = arrayOf(
-                "Clear storage",
-                "Clear data",
-                "Clear app data",
+            val clearClicked = clickByAnyText(
+                timeoutMs = 6000,
+                maxAttempts = 30,
+                keywords = arrayOf(
+                    "Clear storage",
+                    "Clear data",
+                    "Clear app data",
+                    "Clear all data",
+                    "Clear user data",
+                    "Clear cache and data",
+                    "Reset app",
+                    "Erase data",
+                    "Delete data",
+                    "Delete app data",
+                    "Delete all data",
+                    "مسح التخزين",
+                    "مسح البيانات",
+                    "مسح بيانات التطبيق",
+                    "مسح كل البيانات",
+                    "محو التخزين",
+                    "محو البيانات",
+                    "محو كل البيانات",
+                    "محو",
+                    "مسح",
+                    "حذف التخزين",
+                    "حذف البيانات",
+                    "حذف كل البيانات",
+                    "إعادة تعيين التطبيق",
+                    "إعادة التعيين",
+                    "تفريغ التخزين",
+                    "تفريغ البيانات",
+                    "إزالة البيانات",
+                    "إزالة التخزين"
+                )
+            )
+            Log.d(TAG, "clearAppData: clear clicked = $clearClicked")
+            if (!clearClicked) return false
+
+            try { Thread.sleep(1800) } catch (_: Exception) {}
+
+            if (clickAndroidDialogButton()) {
+                Log.d(TAG, "clearAppData: dialog button clicked via ID")
+                try { Thread.sleep(1000) } catch (_: Exception) {}
+                return true
+            }
+
+            val confirmKeywords = arrayOf(
                 "Clear all data",
-                "Clear user data",
-                "Clear cache and data",
-                "Reset app",
-                "Erase data",
+                "Clear data",
+                "Clear storage",
+                "Delete",
+                "Delete all",
                 "Delete data",
-                "Delete app data",
-                "Delete all data",
-                "مسح التخزين",
+                "Erase",
+                "Erase all",
+                "Erase data",
+                "OK",
+                "Ok",
+                "ok",
+                "Yes",
+                "yes",
+                "Yes, clear",
+                "Yes, clear all",
+                "Yes, delete",
+                "Confirm",
+                "Confirm clear",
+                "Confirm delete",
+                "Continue",
+                "Proceed",
+                "Reset",
+                "Reset app",
+                "Allow",
+                "Agree",
+                "Accept",
+                "Got it",
+                "Understood",
+                "I understand",
+                "Done",
+                "مسح الكل",
                 "مسح البيانات",
-                "مسح بيانات التطبيق",
-                "مسح كل البيانات",
-                "محو التخزين",
+                "مسح التخزين",
+                "محو الكل",
                 "محو البيانات",
-                "محو كل البيانات",
+                "محو التخزين",
+                "حذف الكل",
+                "حذف البيانات",
+                "حذف التخزين",
+                "حذف",
                 "محو",
                 "مسح",
-                "حذف التخزين",
-                "حذف البيانات",
-                "حذف كل البيانات",
-                "إعادة تعيين التطبيق",
+                "موافق",
+                "أوافق",
+                "الموافقة",
+                "نعم",
+                "حسناً",
+                "حسنا",
+                "تمام",
+                "طيب",
+                "متابعة",
+                "استمرار",
+                "تأكيد",
+                "تأكيد المسح",
+                "إعادة تعيين",
                 "إعادة التعيين",
-                "تفريغ التخزين",
-                "تفريغ البيانات",
-                "إزالة البيانات",
-                "إزالة التخزين"
+                "أفهم",
+                "فهمت",
+                "إزالة",
+                "إزالة الكل",
+                "تفريغ",
+                "تفريغ الكل",
+                "السماح",
+                "قبول"
             )
-        )
-        Log.d(TAG, "clearAppData: clear clicked = $clearClicked")
-        if (!clearClicked) return false
 
-        // 4) ⭐⭐ استنى الديالوج يظهر
-        try { Thread.sleep(1800) } catch (_: Exception) {}
+            for (i in 0 until 5) {
+                val ok = clickByAnyText(
+                    timeoutMs = 2500,
+                    maxAttempts = 15,
+                    keywords = confirmKeywords
+                )
+                Log.d(TAG, "clearAppData: confirm attempt $i = $ok")
+                if (!ok) break
+                try { Thread.sleep(900) } catch (_: Exception) {}
+            }
 
-        // 5) ⭐⭐ اضغط التأكيد بعدة طرق
-
-        // أ. جرّب الأزرار بالـ ID المشهورة في Android dialogs
-        if (clickAndroidDialogButton()) {
-            Log.d(TAG, "clearAppData: dialog button clicked via ID")
-            try { Thread.sleep(1000) } catch (_: Exception) {}
             return true
+        } catch (e: Exception) {
+            Log.e(TAG, "clearAppData", e)
+            return false
         }
-
-        // ب. جرّب بالكلمات المفتاحية
-        val confirmKeywords = arrayOf(
-            // English
-            "Clear all data",
-            "Clear data",
-            "Clear storage",
-            "Delete",
-            "Delete all",
-            "Delete data",
-            "Erase",
-            "Erase all",
-            "Erase data",
-            "OK",
-            "Ok",
-            "ok",
-            "Yes",
-            "yes",
-            "Yes, clear",
-            "Yes, clear all",
-            "Yes, delete",
-            "Confirm",
-            "Confirm clear",
-            "Confirm delete",
-            "Continue",
-            "Proceed",
-            "Reset",
-            "Reset app",
-            "Allow",
-            "Agree",
-            "Accept",
-            "Got it",
-            "Understood",
-            "I understand",
-            "Done",
-            // Arabic
-            "مسح الكل",
-            "مسح البيانات",
-            "مسح التخزين",
-            "محو الكل",
-            "محو البيانات",
-            "محو التخزين",
-            "حذف الكل",
-            "حذف البيانات",
-            "حذف التخزين",
-            "حذف",
-            "محو",
-            "مسح",
-            "موافق",
-            "أوافق",
-            "الموافقة",
-            "نعم",
-            "حسناً",
-            "حسنا",
-            "تمام",
-            "طيب",
-            "متابعة",
-            "استمرار",
-            "تأكيد",
-            "تأكيد المسح",
-            "إعادة تعيين",
-            "إعادة التعيين",
-            "أفهم",
-            "فهمت",
-            "إزالة",
-            "إزالة الكل",
-            "تفريغ",
-            "تفريغ الكل",
-            "السماح",
-            "قبول"
-        )
-
-        // نحاول 5 مرات
-        for (i in 0 until 5) {
-            val ok = clickByAnyText(
-                timeoutMs = 2500,
-                maxAttempts = 15,
-                keywords = confirmKeywords
-            )
-            Log.d(TAG, "clearAppData: confirm attempt $i = $ok")
-            if (!ok) break
-            try { Thread.sleep(900) } catch (_: Exception) {}
-        }
-
-        return true
-    } catch (e: Exception) {
-        Log.e(TAG, "clearAppData", e)
-        return false
     }
-}
 
-/// يحاول يدوس على زرار الديالوج بالـ ID (android:id/button1/button2)
-/// button1 = الأزرار الإيجابية (Delete / OK / نعم)
-/// button2 = الأزرار السلبية (Cancel / إلغاء) — نتجنبها
-private fun clickAndroidDialogButton(): Boolean {
-    try {
-        val all = collectAllNodes()
-        // جرّب أول button1 (ده اللي في 90% من الحالات هو Confirm)
-        for (node in all) {
-            try {
-                val viewId = node.viewIdResourceName ?: ""
-                if (viewId == "android:id/button1" && node.isVisibleToUser) {
-                    // تأكد إن النص مش "Cancel" أو "إلغاء"
-                    val t = node.text?.toString()?.trim() ?: ""
-                    if (t.contains("Cancel", ignoreCase = true) ||
-                        t.contains("إلغاء") ||
-                        t.contains("لا")
-                    ) {
-                        continue
-                    }
-                    if (performClickOnNode(node)) {
-                        Log.d(TAG, "clicked android:id/button1 ($t)")
-                        return true
-                    }
-                }
-            } catch (_: Exception) {}
-        }
-        // جرّب button2 كـ fallback (بس لو نصه إيجابي)
-        for (node in all) {
-            try {
-                val viewId = node.viewIdResourceName ?: ""
-                if (viewId == "android:id/button2" && node.isVisibleToUser) {
-                    val t = node.text?.toString()?.trim() ?: ""
-                    if (t.contains("Delete", ignoreCase = true) ||
-                        t.contains("OK", ignoreCase = true) ||
-                        t.contains("Yes", ignoreCase = true) ||
-                        t.contains("حذف") ||
-                        t.contains("محو") ||
-                        t.contains("موافق") ||
-                        t.contains("نعم")
-                    ) {
+    private fun clickAndroidDialogButton(): Boolean {
+        try {
+            val all = collectAllNodes()
+            for (node in all) {
+                try {
+                    val viewId = node.viewIdResourceName ?: ""
+                    if (viewId == "android:id/button1" && node.isVisibleToUser) {
+                        val t = node.text?.toString()?.trim() ?: ""
+                        if (t.contains("Cancel", ignoreCase = true) ||
+                            t.contains("إلغاء") ||
+                            t.contains("لا")
+                        ) {
+                            continue
+                        }
                         if (performClickOnNode(node)) {
-                            Log.d(TAG, "clicked android:id/button2 ($t)")
+                            Log.d(TAG, "clicked android:id/button1 ($t)")
                             return true
                         }
                     }
-                }
-            } catch (_: Exception) {}
-        }
-    } catch (_: Exception) {}
-    return false
-}
+                } catch (_: Exception) {}
+            }
+            for (node in all) {
+                try {
+                    val viewId = node.viewIdResourceName ?: ""
+                    if (viewId == "android:id/button2" && node.isVisibleToUser) {
+                        val t = node.text?.toString()?.trim() ?: ""
+                        if (t.contains("Delete", ignoreCase = true) ||
+                            t.contains("OK", ignoreCase = true) ||
+                            t.contains("Yes", ignoreCase = true) ||
+                            t.contains("حذف") ||
+                            t.contains("محو") ||
+                            t.contains("موافق") ||
+                            t.contains("نعم")
+                        ) {
+                            if (performClickOnNode(node)) {
+                                Log.d(TAG, "clicked android:id/button2 ($t)")
+                                return true
+                            }
+                        }
+                    }
+                } catch (_: Exception) {}
+            }
+        } catch (_: Exception) {}
+        return false
+    }
 
-    /// دوّر على عنصر بأي كلمة من الكلمات المفتاحية واضغط عليه
     private fun clickByAnyText(
         timeoutMs: Long,
         maxAttempts: Int,
@@ -1031,6 +1019,7 @@ private fun clickAndroidDialogButton(): Boolean {
         }
     }
 
+    // ⭐ clickAt — دلوقتي بيستنى الـ gesture ينتهي فعلاً
     private fun clickAtInternal(x: Int, y: Int): Boolean {
         return try {
             val path = Path().apply {
@@ -1038,14 +1027,32 @@ private fun clickAndroidDialogButton(): Boolean {
             }
             val stroke = GestureDescription.StrokeDescription(path, 0, 50)
             val gesture = GestureDescription.Builder()
-                .addStroke(stroke).build()
-            dispatchGesture(gesture, null, null)
-            true
+                .addStroke(stroke)
+                .build()
+
+            val done = CountDownLatch(1)
+            var success = false
+
+            dispatchGesture(gesture, object : GestureResultCallback() {
+                override fun onCompleted(g: GestureDescription?) {
+                    success = true
+                    done.countDown()
+                }
+
+                override fun onCancelled(g: GestureDescription?) {
+                    done.countDown()
+                }
+            }, mainHandler)
+
+            done.await(1500, TimeUnit.MILLISECONDS)
+            success
         } catch (e: Exception) {
+            Log.e(TAG, "clickAt failed", e)
             false
         }
     }
 
+    // ⭐⭐ swipe — دلوقتي بيستنى الـ gesture ينتهي فعلاً + إصلاحات
     private fun swipeInternal(
         x1: Int,
         y1: Int,
@@ -1054,17 +1061,103 @@ private fun clickAndroidDialogButton(): Boolean {
         duration: Int
     ): Boolean {
         return try {
+            // تأكد إن المسافة مش صغيرة أوي
+            val dx = x2 - x1
+            val dy = y2 - y1
+            val distance = Math.sqrt((dx * dx + dy * dy).toDouble())
+            if (distance < 30) {
+                Log.w(TAG, "swipe: distance too small ($distance)")
+                return false
+            }
+
+            // استخدم مسار فيه نقاط متعددة — أهم للـ scroll
             val path = Path().apply {
                 moveTo(x1.toFloat(), y1.toFloat())
-                lineTo(x2.toFloat(), y2.toFloat())
+                // نقاط وسيطة لتنعيم الحركة
+                val steps = 10
+                for (i in 1..steps) {
+                    val t = i.toFloat() / steps
+                    lineTo(
+                        x1 + dx * t,
+                        y1 + dy * t
+                    )
+                }
             }
-            val dur = duration.toLong().coerceAtLeast(80L)
+
+            val dur = duration.toLong().coerceIn(100L, 3000L)
             val stroke = GestureDescription.StrokeDescription(path, 0, dur)
             val gesture = GestureDescription.Builder()
-                .addStroke(stroke).build()
-            dispatchGesture(gesture, null, null)
-            true
-        } catch (_: Exception) {
+                .addStroke(stroke)
+                .build()
+
+            val done = CountDownLatch(1)
+            var success = false
+
+            val dispatched = dispatchGesture(
+                gesture,
+                object : GestureResultCallback() {
+                    override fun onCompleted(g: GestureDescription?) {
+                        Log.d(TAG, "swipe: gesture completed")
+                        success = true
+                        done.countDown()
+                    }
+
+                    override fun onCancelled(g: GestureDescription?) {
+                        Log.w(TAG, "swipe: gesture cancelled")
+                        done.countDown()
+                    }
+                },
+                mainHandler
+            )
+
+            if (!dispatched) {
+                Log.w(TAG, "swipe: dispatchGesture returned false")
+                return false
+            }
+
+            // استنى لحد 3 ثواني
+            done.await(3000, TimeUnit.MILLISECONDS)
+
+            Log.d(
+                TAG,
+                "swipe: ($x1,$y1) → ($x2,$y2) dur=$dur success=$success"
+            )
+            success
+        } catch (e: Exception) {
+            Log.e(TAG, "swipe failed", e)
+            false
+        }
+    }
+
+    // ⭐⭐ جديد: scroll بالـ Accessibility Action
+    //       — مش محتاج Gesture خالص
+    //       — أسرع وأخف من السحبة
+    private fun scrollInternal(forward: Boolean): Boolean {
+        return try {
+            val all = collectAllNodes()
+            // دوّر على أول scrollable node ظاهر
+            val scrollable = all.firstOrNull { node ->
+                try {
+                    node.refresh()
+                    node.isScrollable && node.isVisibleToUser
+                } catch (_: Exception) {
+                    false
+                }
+            }
+            if (scrollable == null) {
+                Log.w(TAG, "scroll: no scrollable node found")
+                return false
+            }
+            val action = if (forward) {
+                AccessibilityNodeInfo.ACTION_SCROLL_FORWARD
+            } else {
+                AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD
+            }
+            val ok = scrollable.performAction(action)
+            Log.d(TAG, "scroll forward=$forward → $ok")
+            ok
+        } catch (e: Exception) {
+            Log.e(TAG, "scroll failed", e)
             false
         }
     }
