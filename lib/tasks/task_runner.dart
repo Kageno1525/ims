@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'task_model.dart';
 import 'template_resolver.dart';
 import '../autofill_bridge.dart';
+import '../csv_reader.dart';
 import '../models.dart';
 
 enum StepStatus { pending, running, ok, failed, skipped }
@@ -21,6 +22,11 @@ class TaskRunner extends ChangeNotifier {
   int _currentTaskRound = 0;
   int _totalTaskRounds = 1;
 
+  // ⭐ cache أرقام CSV لكل رنج
+  final Map<String, List<String>> _csvCache = {};
+  // ⭐ index الحالي لكل رنج
+  final Map<String, int> _csvIndex = {};
+
   List<StepResult> get results => List.unmodifiable(_results);
   bool get running => _running;
   int get currentIndex => _currentIndex;
@@ -35,6 +41,8 @@ class TaskRunner extends ChangeNotifier {
   }) async {
     if (_running) return false;
     _running = true;
+    _csvCache.clear();
+    _csvIndex.clear();
 
     final totalRounds = task.repeatCount < 1 ? 1 : task.repeatCount;
     _totalTaskRounds = totalRounds;
@@ -139,30 +147,23 @@ class TaskRunner extends ChangeNotifier {
           ));
         }
 
+        // ⭐ step types خاصة
         if (resolved.type == TaskStepType.waitForElement) {
           final outcome = await _runWaitForElement(
             resolved, i, task.steps.length, onLog, numbers, currentIndex,
           );
-
           if (outcome == _WaitOutcome.found) {
             stepOk = true;
           } else {
             final nfResult = await _handleNotFound(
               resolved, i, task.steps.length, onLog, numbers, currentIndex,
             );
-
             if (nfResult == _NotFoundOutcome.stop) {
               _results[i] = StepResult(
-                stepId: step.id,
-                status: StepStatus.failed,
-                message: 'فشل',
-              );
+                  stepId: step.id, status: StepStatus.failed, message: 'فشل');
               notifyListeners();
-              onLog(LogEntry(
-                '❌ فشل الخطوة ${i + 1} - وقف المهمة',
-                DateTime.now(),
-                LogLevel.error,
-              ));
+              onLog(LogEntry('❌ فشل الخطوة ${i + 1}',
+                  DateTime.now(), LogLevel.error));
               return false;
             } else if (nfResult == _NotFoundOutcome.skipped) {
               needSkip = true;
@@ -170,11 +171,42 @@ class TaskRunner extends ChangeNotifier {
               break;
             } else {
               stepOk = true;
-              onLog(LogEntry(
-                '⚠️ العنصر ما ظهرش — اتعمل إجراء بديل',
-                DateTime.now(),
-                LogLevel.wait,
-              ));
+            }
+          }
+        } else if (resolved.type == TaskStepType.numberFromFile) {
+          final ok = await _executeNumberFromFile(resolved, onLog);
+          if (ok) {
+            stepOk = true;
+          } else {
+            if (step.onFail == FailureAction.skip) {
+              needSkip = true;
+              skipTotal = 1 + step.skipCount;
+              break;
+            } else {
+              _results[i] = StepResult(
+                  stepId: step.id, status: StepStatus.failed, message: 'فشل');
+              notifyListeners();
+              onLog(LogEntry('❌ فشل الخطوة ${i + 1}',
+                  DateTime.now(), LogLevel.error));
+              return false;
+            }
+          }
+        } else if (resolved.type == TaskStepType.swipeToFind) {
+          final ok = await _executeSwipeToFind(resolved, onLog);
+          if (ok) {
+            stepOk = true;
+          } else {
+            if (step.onFail == FailureAction.skip) {
+              needSkip = true;
+              skipTotal = 1 + step.skipCount;
+              break;
+            } else {
+              _results[i] = StepResult(
+                  stepId: step.id, status: StepStatus.failed, message: 'فشل');
+              notifyListeners();
+              onLog(LogEntry('❌ فشل الخطوة ${i + 1}',
+                  DateTime.now(), LogLevel.error));
+              return false;
             }
           }
         } else {
@@ -188,16 +220,10 @@ class TaskRunner extends ChangeNotifier {
               break;
             } else {
               _results[i] = StepResult(
-                stepId: step.id,
-                status: StepStatus.failed,
-                message: 'فشل',
-              );
+                  stepId: step.id, status: StepStatus.failed, message: 'فشل');
               notifyListeners();
-              onLog(LogEntry(
-                '❌ فشل الخطوة ${i + 1} - وقف المهمة',
-                DateTime.now(),
-                LogLevel.error,
-              ));
+              onLog(LogEntry('❌ فشل الخطوة ${i + 1}',
+                  DateTime.now(), LogLevel.error));
               return false;
             }
           }
@@ -215,11 +241,8 @@ class TaskRunner extends ChangeNotifier {
           );
         }
         notifyListeners();
-        onLog(LogEntry(
-          '⏭️ تخطي $skipTotal خطوة والاستمرار',
-          DateTime.now(),
-          LogLevel.wait,
-        ));
+        onLog(LogEntry('⏭️ تخطي $skipTotal خطوة',
+            DateTime.now(), LogLevel.wait));
         if (step.waitAfterMs > 0) {
           await Future.delayed(Duration(milliseconds: step.waitAfterMs));
         }
@@ -230,9 +253,8 @@ class TaskRunner extends ChangeNotifier {
       if (stepOk) {
         _results[i] = StepResult(stepId: step.id, status: StepStatus.ok);
         notifyListeners();
-        onLog(LogEntry(
-            '✅ خطوة ${i + 1} نجحت', DateTime.now(), LogLevel.ok));
-        // ⭐ الفاصل اللي المستخدم حطه — مش بنشيله
+        onLog(LogEntry('✅ خطوة ${i + 1} نجحت',
+            DateTime.now(), LogLevel.ok));
         if (step.waitAfterMs > 0) {
           await Future.delayed(Duration(milliseconds: step.waitAfterMs));
         }
@@ -241,6 +263,161 @@ class TaskRunner extends ChangeNotifier {
     }
 
     return true;
+  }
+
+  // ═══════════════ رقم من ملف ═══════════════
+  Future<bool> _executeNumberFromFile(
+    TaskStep step,
+    Function(LogEntry) onLog,
+  ) async {
+    try {
+      final csvName = step.params['csvName']?.toString() ?? '';
+      if (csvName.isEmpty) {
+        onLog(LogEntry('⚠️ مفيش رنج محدد', DateTime.now(),
+            LogLevel.error));
+        return false;
+      }
+
+      // 1) حمّل الأرقام لو مش محمّلة
+      if (!_csvCache.containsKey(csvName)) {
+        final files = await CsvReader.listFiles();
+        final file = files.firstWhere(
+          (f) => f.name == csvName,
+          orElse: () => CsvFile(name: '', path: '', count: 0),
+        );
+        if (file.path.isEmpty) {
+          onLog(LogEntry('⚠️ مش لاقي ملف "$csvName"',
+              DateTime.now(), LogLevel.error));
+          return false;
+        }
+        final nums = await CsvReader.readColumnC(file.path);
+        if (nums.isEmpty) {
+          onLog(LogEntry('⚠️ ملف "$csvName" فاضي',
+              DateTime.now(), LogLevel.error));
+          return false;
+        }
+        _csvCache[csvName] = nums;
+        _csvIndex[csvName] = 0;
+        onLog(LogEntry('📄 حمّلت $csvName (${nums.length} رقم)',
+            DateTime.now(), LogLevel.info));
+      }
+
+      final nums = _csvCache[csvName]!;
+      final cycles = int.tryParse(
+              step.params['cycles']?.toString() ?? '1') ??
+          1;
+
+      int idx = _csvIndex[csvName] ?? 0;
+
+      // لو خلصنا الملف، نرجع للأول (لو الـ cycles > 1)
+      if (idx >= nums.length) {
+        if (cycles <= 1) {
+          onLog(LogEntry('✅ خلصنا كل الأرقام في "$csvName"',
+              DateTime.now(), LogLevel.ok));
+          return false;
+        }
+        idx = 0;
+        _csvIndex[csvName] = 0;
+        onLog(LogEntry('🔁 دورة جديدة على "$csvName"',
+            DateTime.now(), LogLevel.info));
+      }
+
+      final number = nums[idx];
+      _csvIndex[csvName] = idx + 1;
+
+      onLog(LogEntry('📱 [$csvName] رقم ${idx + 1}/${nums.length}: $number',
+          DateTime.now(), LogLevel.info));
+
+      // 2) اكتب الرقم في الحقل
+      final viewId = step.params['viewId']?.toString() ?? '';
+      final hint = step.params['hint']?.toString() ?? '';
+      final className = step.params['className']?.toString() ?? '';
+      final elementIdx = int.tryParse(
+              step.params['elementIndex']?.toString() ?? '0') ??
+          0;
+
+      final ok = await AutoFillBridge.smartType(
+        value: number,
+        viewId: viewId,
+        hint: hint,
+        className: className,
+        index: elementIdx,
+      );
+
+      if (ok) {
+        onLog(LogEntry('✅ اتكتب $number', DateTime.now(),
+            LogLevel.ok));
+      } else {
+        onLog(LogEntry('⚠️ فشل الكتابة', DateTime.now(),
+            LogLevel.error));
+      }
+      return ok;
+    } catch (e) {
+      onLog(LogEntry('خطأ: $e', DateTime.now(), LogLevel.error));
+      return false;
+    }
+  }
+
+  // ═══════════════ سحب للبحث ═══════════════
+  Future<bool> _executeSwipeToFind(
+    TaskStep step,
+    Function(LogEntry) onLog,
+  ) async {
+    try {
+      final target = step.params['targetText']?.toString() ?? '';
+      if (target.isEmpty) {
+        onLog(LogEntry('⚠️ مفيش نص محدد', DateTime.now(),
+            LogLevel.error));
+        return false;
+      }
+
+      final x1 = int.tryParse(step.params['x1']?.toString() ?? '0') ?? 0;
+      final y1 = int.tryParse(step.params['y1']?.toString() ?? '0') ?? 0;
+      final x2 = int.tryParse(step.params['x2']?.toString() ?? '0') ?? 0;
+      final y2 = int.tryParse(step.params['y2']?.toString() ?? '0') ?? 0;
+      final maxSwipes = int.tryParse(
+              step.params['maxSwipes']?.toString() ?? '20') ??
+          20;
+      final duration = int.tryParse(
+              step.params['duration']?.toString() ?? '300') ??
+          300;
+
+      onLog(LogEntry('🔍 بدور على "$target"',
+          DateTime.now(), LogLevel.info));
+
+      // 1) شوف لو النص موجود حالياً
+      final found = await AutoFillBridge.findElement(text: target);
+      if (found) {
+        onLog(LogEntry('✅ "$target" موجود من الأول',
+            DateTime.now(), LogLevel.ok));
+        return true;
+      }
+
+      // 2) ابدأ السحب والبحث
+      for (int i = 1; i <= maxSwipes; i++) {
+        if (!_running) return false;
+
+        onLog(LogEntry('  ↕️ سحبة $i/$maxSwipes',
+            DateTime.now(), LogLevel.wait));
+
+        await AutoFillBridge.swipe(x1, y1, x2, y2, duration);
+        await Future.delayed(Duration(milliseconds: 400));
+
+        final f = await AutoFillBridge.findElement(text: target);
+        if (f) {
+          onLog(LogEntry('✅ لقيت "$target" بعد $i سحبة',
+              DateTime.now(), LogLevel.ok));
+          return true;
+        }
+      }
+
+      onLog(LogEntry('⚠️ مفيش "$target" بعد $maxSwipes سحبة',
+          DateTime.now(), LogLevel.error));
+      return false;
+    } catch (e) {
+      onLog(LogEntry('خطأ: $e', DateTime.now(), LogLevel.error));
+      return false;
+    }
   }
 
   TaskStep _resolveStep(
@@ -298,7 +475,6 @@ class TaskRunner extends ChangeNotifier {
     final deadline = DateTime.now().add(Duration(milliseconds: timeout));
     int attempt = 0;
 
-    // ⭐ polling interval حسب وضع السرعة
     final pollMs = step.speedMode ? 20 : 100;
 
     while (DateTime.now().isBefore(deadline)) {
@@ -343,8 +519,6 @@ class TaskRunner extends ChangeNotifier {
         return _WaitOutcome.found;
       }
 
-      // ⭐ في وضع السرعة: 20ms ثابت
-      // ⭐ في الوضع العادي: 100ms مع backoff أقصى 700ms
       int delay;
       if (step.speedMode) {
         delay = pollMs;
@@ -360,7 +534,7 @@ class TaskRunner extends ChangeNotifier {
     }
 
     onLog(LogEntry(
-      '⏱️ العنصر ما ظهرش بعد ${(timeout / 1000).toStringAsFixed(0)}ث ($attempt محاولة)',
+      '⏱️ العنصر ما ظهرش بعد ${(timeout / 1000).toStringAsFixed(0)}ث',
       DateTime.now(),
       LogLevel.error,
     ));
@@ -411,7 +585,6 @@ class TaskRunner extends ChangeNotifier {
     notifyListeners();
   }
 
-  // ═══════════════ Execute with timeout ═══════════════
   Future<bool> _executeStepWithTimeout(
       TaskStep step, Function(LogEntry) onLog) async {
     if (!step.isSearchStep || step.timeoutMs <= 0) {
@@ -421,7 +594,6 @@ class TaskRunner extends ChangeNotifier {
         DateTime.now().add(Duration(milliseconds: step.timeoutMs));
     int attempt = 0;
 
-    // ⭐ polling interval حسب وضع السرعة
     final baseDelay = step.speedMode ? 20 : 100;
 
     while (DateTime.now().isBefore(deadline)) {
@@ -440,8 +612,6 @@ class TaskRunner extends ChangeNotifier {
         return true;
       }
 
-      // ⭐ في وضع السرعة: 20ms ثابت
-      // ⭐ في الوضع العادي: backoff أقصى 900ms
       int delay;
       if (step.speedMode) {
         delay = baseDelay;
@@ -561,6 +731,11 @@ class TaskRunner extends ChangeNotifier {
 
         case TaskStepType.recents:
           return await AutoFillBridge.globalRecents();
+
+        // هيتعاملوا منفصلين في الـ run
+        case TaskStepType.numberFromFile:
+        case TaskStepType.swipeToFind:
+          return false;
       }
     } catch (e) {
       onLog(LogEntry('خطأ: $e', DateTime.now(), LogLevel.error));
