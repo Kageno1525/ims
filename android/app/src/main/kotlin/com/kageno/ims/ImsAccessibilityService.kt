@@ -18,7 +18,6 @@ import android.util.Log
 import android.view.KeyEvent
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
-import android.view.accessibility.AccessibilityWindowInfo
 import org.json.JSONArray
 import org.json.JSONObject
 import java.lang.ref.WeakReference
@@ -88,12 +87,14 @@ class ImsAccessibilityService : AccessibilityService() {
         fun swipeStatic(x1: Int, y1: Int, x2: Int, y2: Int, d: Int): Boolean =
             instance?.swipeInternal(x1, y1, x2, y2, d) ?: false
 
-        // ⭐ جديد: scroll بالـ Accessibility action (مش محتاج Gesture)
         fun scrollForwardStatic(): Boolean =
             instance?.scrollInternal(forward = true) ?: false
 
         fun scrollBackwardStatic(): Boolean =
             instance?.scrollInternal(forward = false) ?: false
+
+        fun testGestureStatic(): String =
+            instance?.testGestureInternal() ?: "no-instance"
 
         fun globalBackStatic(): Boolean =
             instance?.performGlobalAction(GLOBAL_ACTION_BACK) ?: false
@@ -128,6 +129,9 @@ class ImsAccessibilityService : AccessibilityService() {
                     AccessibilityServiceInfo.FLAG_REQUEST_ENHANCED_WEB_ACCESSIBILITY
             info.notificationTimeout = 30
             serviceInfo = info
+            Log.d(TAG, "Service connected. canPerformGestures from XML: ${
+                (info.flags and AccessibilityServiceInfo.FLAG_REQUEST_TOUCH_EXPLORATION_MODE) != 0
+            }")
         } catch (e: Exception) {
             Log.e(TAG, "config", e)
         }
@@ -154,6 +158,57 @@ class ImsAccessibilityService : AccessibilityService() {
                 }
             }
         } catch (_: Exception) {
+        }
+    }
+
+    // ═══════════════ تشخيص: هل الـ Gesture شغال؟ ═══════════════
+    // بيعمل swipe صغير في وسط الشاشة ويرجع نتيجة مفصلة
+    fun testGestureInternal(): String {
+        return try {
+            val metrics = resources.displayMetrics
+            val cx = metrics.widthPixels / 2
+            val cy = metrics.heightPixels / 2
+
+            val path = Path().apply {
+                moveTo(cx.toFloat(), cy.toFloat())
+                lineTo(cx.toFloat(), cy.toFloat() - 100)
+            }
+            val stroke = GestureDescription.StrokeDescription(path, 0, 200)
+            val gesture = GestureDescription.Builder()
+                .addStroke(stroke)
+                .build()
+
+            val latch = CountDownLatch(1)
+            var result = "unknown"
+
+            val dispatched = dispatchGesture(
+                gesture,
+                object : GestureResultCallback() {
+                    override fun onCompleted(g: GestureDescription?) {
+                        result = "completed"
+                        latch.countDown()
+                    }
+                    override fun onCancelled(g: GestureDescription?) {
+                        result = "cancelled"
+                        latch.countDown()
+                    }
+                },
+                mainHandler
+            )
+
+            Log.d(TAG, "testGesture dispatched=$dispatched")
+
+            if (!dispatched) {
+                return "dispatch-failed (canPerformGestures مفعّل؟)"
+            }
+
+            val ok = latch.await(3, TimeUnit.SECONDS)
+            if (!ok) return "timeout"
+
+            return result
+        } catch (e: Exception) {
+            Log.e(TAG, "testGesture error", e)
+            "error: ${e.message}"
         }
     }
 
@@ -488,7 +543,6 @@ class ImsAccessibilityService : AccessibilityService() {
         return doSetText(target, value) && verifyText(target, value)
     }
 
-    // ═══════════════ كتابة عامة ═══════════════
     private fun typeTextInternal(text: String): Boolean {
         val delays = longArrayOf(0L, 120L, 220L, 350L)
         for (delay in delays) {
@@ -623,47 +677,20 @@ class ImsAccessibilityService : AccessibilityService() {
             val rect = Rect()
             node.getBoundsInScreen(rect)
             if (rect.width() <= 0 || rect.height() <= 0) return false
-            val path = Path().apply {
-                moveTo(rect.exactCenterX(), rect.exactCenterY())
-            }
-            val stroke = GestureDescription.StrokeDescription(path, 0, 50)
-            val gesture = GestureDescription.Builder()
-                .addStroke(stroke).build()
 
-            val completed = java.util.concurrent.atomic.AtomicBoolean(false)
-            val done = java.util.concurrent.atomic.AtomicBoolean(false)
+            val ok1 = clickAtInternal(
+                rect.exactCenterX().toInt(),
+                rect.exactCenterY().toInt()
+            )
+            if (!ok1) return false
 
-            dispatchGesture(gesture, object : GestureResultCallback() {
-                override fun onCompleted(g: GestureDescription?) {
-                    completed.set(true)
-                    done.set(true)
-                }
-
-                override fun onCancelled(g: GestureDescription?) {
-                    done.set(true)
-                }
-            }, mainHandler)
-
-            val start = System.currentTimeMillis()
-            while (!done.get() &&
-                System.currentTimeMillis() - start < 1000
-            ) {
-                try {
-                    Thread.sleep(20)
-                } catch (_: InterruptedException) {
-                }
-            }
-            if (!completed.get()) return false
-            try {
-                Thread.sleep(100)
-            } catch (_: InterruptedException) {
-            }
+            try { Thread.sleep(120) } catch (_: InterruptedException) {}
 
             var ok = false
             try {
                 ok = node.performAction(AccessibilityNodeInfo.ACTION_PASTE)
-            } catch (_: Exception) {
-            }
+            } catch (_: Exception) {}
+
             if (!ok) {
                 val focused = findFocusedInput()
                 if (focused != null) {
@@ -671,14 +698,11 @@ class ImsAccessibilityService : AccessibilityService() {
                         ok = focused.performAction(
                             AccessibilityNodeInfo.ACTION_PASTE
                         )
-                    } catch (_: Exception) {
-                    }
+                    } catch (_: Exception) {}
                 }
             }
-            try {
-                Thread.sleep(80)
-            } catch (_: InterruptedException) {
-            }
+            try { Thread.sleep(80) } catch (_: InterruptedException) {}
+
             if (safeRefresh(node)) {
                 val now = node.text?.toString() ?: ""
                 if (now.contains(text)) return true
@@ -717,7 +741,6 @@ class ImsAccessibilityService : AccessibilityService() {
     private fun clearAppDataInternal(pkg: String): Boolean {
         try {
             if (pkg.isEmpty()) return false
-
             Log.d(TAG, "clearAppData: starting for $pkg")
 
             val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
@@ -727,31 +750,16 @@ class ImsAccessibilityService : AccessibilityService() {
 
             try { Thread.sleep(2000) } catch (_: Exception) {}
 
-            val storageOpened = clickByAnyText(
+            clickByAnyText(
                 timeoutMs = 6000,
                 maxAttempts = 30,
                 keywords = arrayOf(
-                    "Storage & cache",
-                    "Storage and cache",
-                    "Storage & cache usage",
-                    "Storage usage",
-                    "Storage",
-                    "App storage",
-                    "Manage storage",
-                    "Memory",
-                    "التخزين والذاكرة",
-                    "التخزين والذاكرة المؤقتة",
-                    "التخزين",
-                    "مساحة التخزين",
-                    "ذاكرة التخزين",
-                    "استخدام التخزين",
-                    "إدارة التخزين",
-                    "التخزين المؤقت",
-                    "الذاكرة والتخزين",
-                    "المساحة والتخزين"
+                    "Storage & cache", "Storage and cache", "Storage",
+                    "App storage", "Manage storage", "Memory",
+                    "التخزين والذاكرة", "التخزين", "مساحة التخزين",
+                    "ذاكرة التخزين", "استخدام التخزين", "إدارة التخزين"
                 )
             )
-            Log.d(TAG, "clearAppData: storage opened = $storageOpened")
 
             try { Thread.sleep(1500) } catch (_: Exception) {}
 
@@ -759,114 +767,28 @@ class ImsAccessibilityService : AccessibilityService() {
                 timeoutMs = 6000,
                 maxAttempts = 30,
                 keywords = arrayOf(
-                    "Clear storage",
-                    "Clear data",
-                    "Clear app data",
-                    "Clear all data",
-                    "Clear user data",
-                    "Clear cache and data",
-                    "Reset app",
-                    "Erase data",
-                    "Delete data",
-                    "Delete app data",
-                    "Delete all data",
-                    "مسح التخزين",
-                    "مسح البيانات",
-                    "مسح بيانات التطبيق",
-                    "مسح كل البيانات",
-                    "محو التخزين",
-                    "محو البيانات",
-                    "محو كل البيانات",
-                    "محو",
-                    "مسح",
-                    "حذف التخزين",
-                    "حذف البيانات",
-                    "حذف كل البيانات",
-                    "إعادة تعيين التطبيق",
-                    "إعادة التعيين",
-                    "تفريغ التخزين",
-                    "تفريغ البيانات",
-                    "إزالة البيانات",
-                    "إزالة التخزين"
+                    "Clear storage", "Clear data", "Clear all data",
+                    "Delete data", "Delete all data",
+                    "مسح التخزين", "مسح البيانات", "مسح كل البيانات",
+                    "حذف البيانات", "محو البيانات", "إعادة تعيين التطبيق"
                 )
             )
-            Log.d(TAG, "clearAppData: clear clicked = $clearClicked")
             if (!clearClicked) return false
 
             try { Thread.sleep(1800) } catch (_: Exception) {}
 
             if (clickAndroidDialogButton()) {
-                Log.d(TAG, "clearAppData: dialog button clicked via ID")
                 try { Thread.sleep(1000) } catch (_: Exception) {}
                 return true
             }
 
             val confirmKeywords = arrayOf(
-                "Clear all data",
-                "Clear data",
-                "Clear storage",
-                "Delete",
-                "Delete all",
-                "Delete data",
-                "Erase",
-                "Erase all",
-                "Erase data",
-                "OK",
-                "Ok",
-                "ok",
-                "Yes",
-                "yes",
-                "Yes, clear",
-                "Yes, clear all",
-                "Yes, delete",
-                "Confirm",
-                "Confirm clear",
-                "Confirm delete",
-                "Continue",
-                "Proceed",
-                "Reset",
-                "Reset app",
-                "Allow",
-                "Agree",
-                "Accept",
-                "Got it",
-                "Understood",
-                "I understand",
-                "Done",
-                "مسح الكل",
-                "مسح البيانات",
-                "مسح التخزين",
-                "محو الكل",
-                "محو البيانات",
-                "محو التخزين",
-                "حذف الكل",
-                "حذف البيانات",
-                "حذف التخزين",
-                "حذف",
-                "محو",
-                "مسح",
-                "موافق",
-                "أوافق",
-                "الموافقة",
-                "نعم",
-                "حسناً",
-                "حسنا",
-                "تمام",
-                "طيب",
-                "متابعة",
-                "استمرار",
-                "تأكيد",
-                "تأكيد المسح",
-                "إعادة تعيين",
-                "إعادة التعيين",
-                "أفهم",
-                "فهمت",
-                "إزالة",
-                "إزالة الكل",
-                "تفريغ",
-                "تفريغ الكل",
-                "السماح",
-                "قبول"
+                "Clear all data", "Clear data", "Delete", "Delete all",
+                "Erase", "OK", "Yes", "Confirm", "Continue",
+                "Reset", "Allow", "Got it", "Done",
+                "مسح الكل", "مسح البيانات", "محو الكل", "حذف الكل",
+                "حذف", "محو", "مسح", "موافق", "نعم", "حسناً", "تمام",
+                "تأكيد", "إعادة تعيين", "فهمت", "إزالة", "تفريغ", "قبول"
             )
 
             for (i in 0 until 5) {
@@ -875,11 +797,9 @@ class ImsAccessibilityService : AccessibilityService() {
                     maxAttempts = 15,
                     keywords = confirmKeywords
                 )
-                Log.d(TAG, "clearAppData: confirm attempt $i = $ok")
                 if (!ok) break
                 try { Thread.sleep(900) } catch (_: Exception) {}
             }
-
             return true
         } catch (e: Exception) {
             Log.e(TAG, "clearAppData", e)
@@ -896,36 +816,9 @@ class ImsAccessibilityService : AccessibilityService() {
                     if (viewId == "android:id/button1" && node.isVisibleToUser) {
                         val t = node.text?.toString()?.trim() ?: ""
                         if (t.contains("Cancel", ignoreCase = true) ||
-                            t.contains("إلغاء") ||
-                            t.contains("لا")
-                        ) {
-                            continue
-                        }
-                        if (performClickOnNode(node)) {
-                            Log.d(TAG, "clicked android:id/button1 ($t)")
-                            return true
-                        }
-                    }
-                } catch (_: Exception) {}
-            }
-            for (node in all) {
-                try {
-                    val viewId = node.viewIdResourceName ?: ""
-                    if (viewId == "android:id/button2" && node.isVisibleToUser) {
-                        val t = node.text?.toString()?.trim() ?: ""
-                        if (t.contains("Delete", ignoreCase = true) ||
-                            t.contains("OK", ignoreCase = true) ||
-                            t.contains("Yes", ignoreCase = true) ||
-                            t.contains("حذف") ||
-                            t.contains("محو") ||
-                            t.contains("موافق") ||
-                            t.contains("نعم")
-                        ) {
-                            if (performClickOnNode(node)) {
-                                Log.d(TAG, "clicked android:id/button2 ($t)")
-                                return true
-                            }
-                        }
+                            t.contains("إلغاء") || t.contains("لا")
+                        ) continue
+                        if (performClickOnNode(node)) return true
                     }
                 } catch (_: Exception) {}
             }
@@ -940,10 +833,7 @@ class ImsAccessibilityService : AccessibilityService() {
     ): Boolean {
         val deadline = System.currentTimeMillis() + timeoutMs
         var attempt = 0
-
-        while (System.currentTimeMillis() < deadline &&
-            attempt < maxAttempts
-        ) {
+        while (System.currentTimeMillis() < deadline && attempt < maxAttempts) {
             attempt++
             try {
                 val all = collectAllNodes()
@@ -951,57 +841,41 @@ class ImsAccessibilityService : AccessibilityService() {
                     try {
                         if (!node.isVisibleToUser) continue
                         val text = node.text?.toString()?.trim() ?: ""
-                        val desc = node.contentDescription
-                            ?.toString()?.trim() ?: ""
+                        val desc = node.contentDescription?.toString()?.trim() ?: ""
                         for (kw in keywords) {
                             if (text.equals(kw, ignoreCase = true) ||
                                 text.contains(kw, ignoreCase = true) ||
                                 desc.equals(kw, ignoreCase = true) ||
                                 desc.contains(kw, ignoreCase = true)
                             ) {
-                                if (performClickOnNode(node)) {
-                                    Log.d(TAG, "clicked: $text / $desc")
-                                    return true
-                                }
+                                if (performClickOnNode(node)) return true
                             }
                         }
-                    } catch (_: Exception) {
-                    }
+                    } catch (_: Exception) {}
                 }
-            } catch (_: Exception) {
-            }
-            try {
-                Thread.sleep(200)
-            } catch (_: Exception) {
-            }
+            } catch (_: Exception) {}
+            try { Thread.sleep(200) } catch (_: Exception) {}
         }
         return false
     }
 
-    // ═══════════════ click على عنصر ═══════════════
-    private fun performClickOnNode(
-        node: AccessibilityNodeInfo
-    ): Boolean {
+    private fun performClickOnNode(node: AccessibilityNodeInfo): Boolean {
         try {
             if (node.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
                 return true
             }
-        } catch (_: Exception) {
-        }
+        } catch (_: Exception) {}
         try {
             var p = node.parent
             var depth = 0
             while (p != null && depth < 6) {
                 if (p.isClickable &&
                     p.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-                ) {
-                    return true
-                }
+                ) return true
                 p = p.parent
                 depth++
             }
-        } catch (_: Exception) {
-        }
+        } catch (_: Exception) {}
         return clickAtNodeCenter(node)
     }
 
@@ -1019,7 +893,7 @@ class ImsAccessibilityService : AccessibilityService() {
         }
     }
 
-    // ⭐ clickAt — دلوقتي بيستنى الـ gesture ينتهي فعلاً
+    // ⭐ clickAt — بيستنى الـ gesture يخلص فعلاً
     private fun clickAtInternal(x: Int, y: Int): Boolean {
         return try {
             val path = Path().apply {
@@ -1030,21 +904,25 @@ class ImsAccessibilityService : AccessibilityService() {
                 .addStroke(stroke)
                 .build()
 
-            val done = CountDownLatch(1)
+            val latch = CountDownLatch(1)
             var success = false
 
-            dispatchGesture(gesture, object : GestureResultCallback() {
-                override fun onCompleted(g: GestureDescription?) {
-                    success = true
-                    done.countDown()
-                }
+            val dispatched = dispatchGesture(
+                gesture,
+                object : GestureResultCallback() {
+                    override fun onCompleted(g: GestureDescription?) {
+                        success = true
+                        latch.countDown()
+                    }
+                    override fun onCancelled(g: GestureDescription?) {
+                        latch.countDown()
+                    }
+                },
+                mainHandler
+            )
 
-                override fun onCancelled(g: GestureDescription?) {
-                    done.countDown()
-                }
-            }, mainHandler)
-
-            done.await(1500, TimeUnit.MILLISECONDS)
+            if (!dispatched) return false
+            latch.await(1500, TimeUnit.MILLISECONDS)
             success
         } catch (e: Exception) {
             Log.e(TAG, "clickAt failed", e)
@@ -1052,16 +930,11 @@ class ImsAccessibilityService : AccessibilityService() {
         }
     }
 
-    // ⭐⭐ swipe — دلوقتي بيستنى الـ gesture ينتهي فعلاً + إصلاحات
+    // ⭐⭐ swipe — بيستنى الـ gesture + مسار فيه نقاط وسيطة
     private fun swipeInternal(
-        x1: Int,
-        y1: Int,
-        x2: Int,
-        y2: Int,
-        duration: Int
+        x1: Int, y1: Int, x2: Int, y2: Int, duration: Int
     ): Boolean {
         return try {
-            // تأكد إن المسافة مش صغيرة أوي
             val dx = x2 - x1
             val dy = y2 - y1
             val distance = Math.sqrt((dx * dx + dy * dy).toDouble())
@@ -1070,17 +943,12 @@ class ImsAccessibilityService : AccessibilityService() {
                 return false
             }
 
-            // استخدم مسار فيه نقاط متعددة — أهم للـ scroll
             val path = Path().apply {
                 moveTo(x1.toFloat(), y1.toFloat())
-                // نقاط وسيطة لتنعيم الحركة
-                val steps = 10
+                val steps = 15
                 for (i in 1..steps) {
                     val t = i.toFloat() / steps
-                    lineTo(
-                        x1 + dx * t,
-                        y1 + dy * t
-                    )
+                    lineTo(x1 + dx * t, y1 + dy * t)
                 }
             }
 
@@ -1090,21 +958,18 @@ class ImsAccessibilityService : AccessibilityService() {
                 .addStroke(stroke)
                 .build()
 
-            val done = CountDownLatch(1)
+            val latch = CountDownLatch(1)
             var success = false
 
             val dispatched = dispatchGesture(
                 gesture,
                 object : GestureResultCallback() {
                     override fun onCompleted(g: GestureDescription?) {
-                        Log.d(TAG, "swipe: gesture completed")
                         success = true
-                        done.countDown()
+                        latch.countDown()
                     }
-
                     override fun onCancelled(g: GestureDescription?) {
-                        Log.w(TAG, "swipe: gesture cancelled")
-                        done.countDown()
+                        latch.countDown()
                     }
                 },
                 mainHandler
@@ -1115,13 +980,7 @@ class ImsAccessibilityService : AccessibilityService() {
                 return false
             }
 
-            // استنى لحد 3 ثواني
-            done.await(3000, TimeUnit.MILLISECONDS)
-
-            Log.d(
-                TAG,
-                "swipe: ($x1,$y1) → ($x2,$y2) dur=$dur success=$success"
-            )
+            latch.await(3000, TimeUnit.MILLISECONDS)
             success
         } catch (e: Exception) {
             Log.e(TAG, "swipe failed", e)
@@ -1129,30 +988,34 @@ class ImsAccessibilityService : AccessibilityService() {
         }
     }
 
-    // ⭐⭐ جديد: scroll بالـ Accessibility Action
-    //       — مش محتاج Gesture خالص
-    //       — أسرع وأخف من السحبة
+    // ⭐⭐ scroll — بديل مضمون بيستخدم ACTION_SCROLL
     private fun scrollInternal(forward: Boolean): Boolean {
         return try {
             val all = collectAllNodes()
-            // دوّر على أول scrollable node ظاهر
-            val scrollable = all.firstOrNull { node ->
+
+            // ابحث عن أول scrollable ظاهر
+            var scrollable: AccessibilityNodeInfo? = null
+            for (node in all) {
                 try {
                     node.refresh()
-                    node.isScrollable && node.isVisibleToUser
-                } catch (_: Exception) {
-                    false
-                }
+                    if (node.isScrollable && node.isVisibleToUser) {
+                        scrollable = node
+                        break
+                    }
+                } catch (_: Exception) {}
             }
+
             if (scrollable == null) {
                 Log.w(TAG, "scroll: no scrollable node found")
                 return false
             }
+
             val action = if (forward) {
                 AccessibilityNodeInfo.ACTION_SCROLL_FORWARD
             } else {
                 AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD
             }
+
             val ok = scrollable.performAction(action)
             Log.d(TAG, "scroll forward=$forward → $ok")
             ok
@@ -1167,11 +1030,7 @@ class ImsAccessibilityService : AccessibilityService() {
             val n = lastEditableRef?.get()
             if (n != null && safeRefresh(n) &&
                 n.isEditable && n.isVisibleToUser
-            ) {
-                n
-            } else {
-                null
-            }
+            ) n else null
         } catch (_: Exception) {
             null
         }
@@ -1183,28 +1042,19 @@ class ImsAccessibilityService : AccessibilityService() {
             if (!wins.isNullOrEmpty()) {
                 for (w in wins) {
                     val root = w.root ?: continue
-                    val f = root.findFocus(
-                        AccessibilityNodeInfo.FOCUS_INPUT
-                    )
+                    val f = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
                     if (f != null && safeRefresh(f) &&
                         f.isEditable && f.isVisibleToUser
-                    ) {
-                        return f
-                    }
+                    ) return f
                 }
             }
-        } catch (_: Exception) {
-        }
+        } catch (_: Exception) {}
         return try {
             val root = rootInActiveWindow
             val f = root?.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
             if (f != null && safeRefresh(f) &&
                 f.isEditable && f.isVisibleToUser
-            ) {
-                f
-            } else {
-                null
-            }
+            ) f else null
         } catch (_: Exception) {
             null
         }
@@ -1220,8 +1070,7 @@ class ImsAccessibilityService : AccessibilityService() {
                     if (e != null) return e
                 }
             }
-        } catch (_: Exception) {
-        }
+        } catch (_: Exception) {}
         val active = rootInActiveWindow ?: return null
         return findFirstEditable(active)
     }
@@ -1233,23 +1082,14 @@ class ImsAccessibilityService : AccessibilityService() {
         try {
             if (safeRefresh(node) && node.isEditable &&
                 node.isVisibleToUser
-            ) {
-                return node
-            }
+            ) return node
         } catch (_: Exception) {
             return null
         }
-        val cnt = try {
-            node.childCount
-        } catch (_: Exception) {
-            0
-        }
+        val cnt = try { node.childCount } catch (_: Exception) { 0 }
         for (i in 0 until cnt) {
-            val c = try {
-                node.getChild(i)
-            } catch (_: Exception) {
-                null
-            } ?: continue
+            val c = try { node.getChild(i) } catch (_: Exception) { null }
+                ?: continue
             val r = findFirstEditable(c)
             if (r != null) return r
         }
@@ -1264,7 +1104,6 @@ class ImsAccessibilityService : AccessibilityService() {
                 onVolumeKey?.invoke("vol_up")
                 return true
             }
-
             KeyEvent.KEYCODE_VOLUME_DOWN -> {
                 onVolumeKey?.invoke("vol_down")
                 return true
