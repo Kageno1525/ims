@@ -270,11 +270,11 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
     }
     if (!mounted) return;
 
-    final picked = await showElementPicker(
-      context: context,
-      elements: captured,
-      isDark: widget.isDark,
-    );
+ final picked = await showElementPicker(
+  context,               // ✅ صح
+  elements: captured,
+  isDark: widget.isDark,
+);
     if (picked == null) return;
 
     setState(() {
