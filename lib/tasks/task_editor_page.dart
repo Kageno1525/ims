@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import '../widgets.dart';
 import '../autofill_bridge.dart';
+import '../pages/upload_script_sheet.dart';
 import 'task_model.dart';
 import 'task_pickers.dart';
 import 'step_config_sheet.dart';
+import 'task_storage.dart';
+import 'config.dart';
 
 class TaskEditorPage extends StatefulWidget {
   final bool isDark;
@@ -147,17 +150,8 @@ class _TaskEditorPageState extends State<TaskEditorPage> {
     );
   }
 
-  Future<void> _save() async {
-    final name = _nameCtrl.text.trim();
-    if (name.isEmpty) {
-      _showMsg('من فضلك اكتب اسم المهمة الأول');
-      return;
-    }
-    if (_steps.isEmpty) {
-      _showMsg('ضيف خطوة على الأقل قبل الحفظ');
-      return;
-    }
-
+  // ⭐ حلّل الـ packages في الخطوات
+  Future<List<TaskStep>?> _resolvePackages() async {
     final fixedSteps = <TaskStep>[];
     for (final step in _steps) {
       if (step.type == TaskStepType.openApp ||
@@ -169,12 +163,12 @@ class _TaskEditorPageState extends State<TaskEditorPage> {
                 ? 'فيه خطوة "فتح تطبيق" مش محدّد فيها أي تطبيق'
                 : 'فيه خطوة "مسح بيانات" مش محدّد فيها أي تطبيق',
           );
-          return;
+          return null;
         }
         final resolved = await AutoFillBridge.resolvePackage(pkg);
         if (resolved == null) {
           _showMsg('مش لاقي تطبيق "$pkg"');
-          return;
+          return null;
         }
         fixedSteps.add(step.copyWith(
           params: {...step.params, 'package': resolved},
@@ -183,6 +177,24 @@ class _TaskEditorPageState extends State<TaskEditorPage> {
         fixedSteps.add(step);
       }
     }
+    return fixedSteps;
+  }
+
+  // ⭐ حفظ محلي فقط
+  Future<void> _save() async {
+    final name = _nameCtrl.text.trim();
+    if (name.isEmpty) {
+      _showMsg('من فضلك اكتب اسم المهمة الأول');
+      return;
+    }
+    if (_steps.isEmpty) {
+      _showMsg('ضيف خطوة على الأقل قبل الحفظ');
+      return;
+    }
+
+    final fixedSteps = await _resolvePackages();
+    if (fixedSteps == null) return;
+    if (!mounted) return;
 
     final task = Task(
       id: widget.initialTask?.id ?? _uid(),
@@ -194,6 +206,55 @@ class _TaskEditorPageState extends State<TaskEditorPage> {
       autoIncrement: _autoIncrement,
     );
     if (mounted) Navigator.pop(context, task);
+  }
+
+  // ⭐ رفع كسكربت للمستخدمين
+  Future<void> _uploadAsScript() async {
+    final name = _nameCtrl.text.trim();
+    if (name.isEmpty) {
+      _showMsg('اكتب اسم المهمة الأول');
+      return;
+    }
+    if (_steps.isEmpty) {
+      _showMsg('ضيف خطوة على الأقل قبل الرفع');
+      return;
+    }
+
+    final fixedSteps = await _resolvePackages();
+    if (fixedSteps == null) return;
+    if (!mounted) return;
+
+    final task = Task(
+      id: widget.initialTask?.id ?? _uid(),
+      name: name,
+      steps: fixedSteps,
+      createdAt: widget.initialTask?.createdAt ?? DateTime.now(),
+      lastRunAt: widget.initialTask?.lastRunAt,
+      repeatCount: _taskRepeat,
+      autoIncrement: _autoIncrement,
+    );
+
+    // افتح شاشة اختيار المستخدمين
+    final uploaded = await showUploadScriptSheet(
+      context,
+      isDark: widget.isDark,
+      task: task,
+    );
+
+    if (!mounted) return;
+
+    if (uploaded == true) {
+      // احفظ المهمة محلياً كمان
+      await TaskStorage.upsert(task);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('✅ تم رفع السكربت بنجاح'),
+          backgroundColor: Color(0xFF00D68F),
+        ),
+      );
+      Navigator.pop(context, task);
+    }
   }
 
   @override
@@ -335,6 +396,20 @@ class _TaskEditorPageState extends State<TaskEditorPage> {
                   ),
                 ],
               ),
+              // ⭐ زر رفع السكربت (للأدمن فقط)
+              if (IS_ADMIN_APP) ...[
+                const SizedBox(height: 10),
+                ActionBtn(
+                  label: 'رفع كسكربت للمستخدمين',
+                  icon: Icons.cloud_upload_rounded,
+                  gradient: const [
+                    Color(0xFF6C5CE7),
+                    Color(0xFF00D2FF),
+                  ],
+                  busy: false,
+                  onTap: _uploadAsScript,
+                ),
+              ],
             ],
           ),
         ),
@@ -1196,98 +1271,98 @@ class _StepCard extends StatelessWidget {
     );
   }
 
-Widget _swipeBody(ThemeData theme) {
-  // ⭐ نسخة جديدة: نقطة واحدة + اتجاه
-  if (step.type == TaskStepType.swipeToFind) {
-    final target = step.params['targetText']?.toString() ?? '';
-    final direction = step.params['direction']?.toString() ?? 'down';
-    final x1 = step.params['x1']?.toString() ?? '0';
-    final y1 = step.params['y1']?.toString() ?? '0';
-    final dist = step.params['distance']?.toString() ?? '400';
-    final dirLabel = direction == 'up' ? '⬆️ فوق' : '⬇️ تحت';
+  Widget _swipeBody(ThemeData theme) {
+    // ⭐ نسخة جديدة: نقطة واحدة + اتجاه (لخطوة swipeToFind)
+    if (step.type == TaskStepType.swipeToFind) {
+      final target = step.params['targetText']?.toString() ?? '';
+      final direction = step.params['direction']?.toString() ?? 'down';
+      final x1 = step.params['x1']?.toString() ?? '0';
+      final y1 = step.params['y1']?.toString() ?? '0';
+      final dist = step.params['distance']?.toString() ?? '400';
+      final dirLabel = direction == 'up' ? '⬆️ فوق' : '⬇️ تحت';
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        if (target.isNotEmpty) ...[
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (target.isNotEmpty) ...[
+            Row(
+              children: [
+                Icon(Icons.search_rounded, size: 12, color: _accent),
+                const SizedBox(width: 4),
+                Expanded(
+                  child: Text(
+                    'دور على: $target',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: _noDeco.copyWith(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.bold,
+                      color: _accent,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+          ],
           Row(
             children: [
-              Icon(Icons.search_rounded, size: 12, color: _accent),
+              Icon(
+                Icons.location_on_rounded,
+                size: 12,
+                color: theme.colorScheme.onSurface.withOpacity(0.7),
+              ),
               const SizedBox(width: 4),
               Expanded(
                 child: Text(
-                  'دور على: $target',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                  '($x1, $y1) • $dirLabel • $dist بكسل',
                   style: _noDeco.copyWith(
-                    fontSize: 11.5,
-                    fontWeight: FontWeight.bold,
-                    color: _accent,
+                    fontSize: 11,
+                    fontFamily: 'monospace',
+                    color:
+                        theme.colorScheme.onSurface.withOpacity(0.75),
                   ),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 6),
         ],
-        Row(
-          children: [
-            Icon(
-              Icons.location_on_rounded,
-              size: 12,
+      );
+    }
+
+    // النسخة القديمة: نقطتين (لخطوة Swipe العادية)
+    final x1 = step.params['x1']?.toString() ?? '0';
+    final y1 = step.params['y1']?.toString() ?? '0';
+    final x2 = step.params['x2']?.toString() ?? '0';
+    final y2 = step.params['y2']?.toString() ?? '0';
+
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            '($x1, $y1)',
+            style: _noDeco.copyWith(
+              fontSize: 11,
+              fontFamily: 'monospace',
               color: theme.colorScheme.onSurface.withOpacity(0.7),
             ),
-            const SizedBox(width: 4),
-            Expanded(
-              child: Text(
-                '($x1, $y1) • $dirLabel • $dist بكسل',
-                style: _noDeco.copyWith(
-                  fontSize: 11,
-                  fontFamily: 'monospace',
-                  color:
-                      theme.colorScheme.onSurface.withOpacity(0.75),
-                ),
-              ),
+          ),
+        ),
+        Icon(Icons.arrow_forward_rounded, size: 14, color: _accent),
+        Expanded(
+          child: Text(
+            '($x2, $y2)',
+            textAlign: TextAlign.right,
+            style: _noDeco.copyWith(
+              fontSize: 11,
+              fontFamily: 'monospace',
+              color: theme.colorScheme.onSurface.withOpacity(0.7),
             ),
-          ],
+          ),
         ),
       ],
     );
   }
-
-  // النسخة القديمة: نقطتين (لخطوة Swipe العادية)
-  final x1 = step.params['x1']?.toString() ?? '0';
-  final y1 = step.params['y1']?.toString() ?? '0';
-  final x2 = step.params['x2']?.toString() ?? '0';
-  final y2 = step.params['y2']?.toString() ?? '0';
-
-  return Row(
-    children: [
-      Expanded(
-        child: Text(
-          '($x1, $y1)',
-          style: _noDeco.copyWith(
-            fontSize: 11,
-            fontFamily: 'monospace',
-            color: theme.colorScheme.onSurface.withOpacity(0.7),
-          ),
-        ),
-      ),
-      Icon(Icons.arrow_forward_rounded, size: 14, color: _accent),
-      Expanded(
-        child: Text(
-          '($x2, $y2)',
-          textAlign: TextAlign.right,
-          style: _noDeco.copyWith(
-            fontSize: 11,
-            fontFamily: 'monospace',
-            color: theme.colorScheme.onSurface.withOpacity(0.7),
-          ),
-        ),
-      ),
-    ],
-  );
-}
 
   Widget _navBody(ThemeData theme) {
     return Container(
