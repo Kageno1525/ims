@@ -78,7 +78,7 @@ class HomePage extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // ═══ Header ═══
+              // Header
               Row(
                 children: [
                   Expanded(
@@ -93,7 +93,7 @@ class HomePage extends StatelessWidget {
                         ),
                         const SizedBox(height: 2),
                         Text(
-                          'أهلاً ${profile.name.isNotEmpty ? profile.name : profile.email}',
+                          'أهلاً ${profile.name.isNotEmpty ? profile.name : profile.username}',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: theme.textTheme.bodySmall?.copyWith(
@@ -118,13 +118,12 @@ class HomePage extends StatelessWidget {
               ),
               const SizedBox(height: 24),
 
-              // ═══ كارت معلومات المستخدم ═══
-              _profileCard(theme),
+              // كارت معلومات المستخدم
+              _profileCard(theme, isAdmin),
               const SizedBox(height: 20),
 
-              // ═══ الكروت الرئيسية ═══
+              // الكروت الرئيسية
               if (isAdmin) ...[
-                // الأدمن: الأرقام + المهام + التحكم
                 Row(
                   children: [
                     Expanded(
@@ -155,18 +154,37 @@ class HomePage extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: 14),
-                _wideCard(
-                  title: 'التحكم',
-                  subtitle: 'إدارة المستخدمين والسكربتات',
-                  icon: Icons.admin_panel_settings_rounded,
-                  colors: const [
-                    Color(0xFF00B894),
-                    Color(0xFF00D68F),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _MainCard(
+                        title: 'السكربتات',
+                        subtitle: 'إدارة السكربتات',
+                        icon: Icons.folder_special_rounded,
+                        colors: const [
+                          Color(0xFF00D2FF),
+                          Color(0xFF3A7BD5),
+                        ],
+                        onTap: onOpenScripts,
+                      ),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: _MainCard(
+                        title: 'التحكم',
+                        subtitle: 'إدارة المستخدمين',
+                        icon: Icons.admin_panel_settings_rounded,
+                        colors: const [
+                          Color(0xFF00B894),
+                          Color(0xFF00D68F),
+                        ],
+                        onTap: onOpenControl,
+                      ),
+                    ),
                   ],
-                  onTap: onOpenControl,
                 ),
               ] else ...[
-                // المستخدم: الأرقام (لو مسموح) + السكربتات
+                // المستخدم: الأرقام (اختياري) + السكربتات
                 if (profile.showNumbers) ...[
                   _wideCard(
                     title: 'الأرقام',
@@ -182,7 +200,7 @@ class HomePage extends StatelessWidget {
                 ],
                 _wideCard(
                   title: 'السكربتات',
-                  subtitle: 'شغّل السكربتات المسموح بها',
+                  subtitle: 'شغّل السكربتات المساحة لك',
                   icon: Icons.auto_awesome_rounded,
                   colors: const [
                     Color(0xFF6C5CE7),
@@ -192,44 +210,17 @@ class HomePage extends StatelessWidget {
                 ),
               ],
 
-              const SizedBox(height: 24),
-
-              // ═══ معلومات سريعة ═══
-              Text(
-                'معلومات سريعة',
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.bold,
-                  color: theme.colorScheme.onSurface.withOpacity(0.7),
-                ),
-              ),
-              const SizedBox(height: 12),
-              _quickInfo(
-                theme,
-                icon: Icons.tips_and_updates_rounded,
-                color: const Color(0xFFFFB84D),
-                title: 'الكتابة التلقائية',
-                subtitle:
-                    'فعّل الـ Accessibility من الإعدادات عشان الأرقام تتكتب تلقائياً',
-              ),
-              const SizedBox(height: 10),
-              _quickInfo(
-                theme,
-                icon: Icons.folder_rounded,
-                color: const Color(0xFF00D2FF),
-                title: 'ملفات CSV',
-                subtitle: 'الملفات بتتحفظ في Download/ranges',
-              ),
               const Spacer(),
 
-              // ═══ Footer ═══
+              // Footer
               Center(
                 child: Text(
-                  'IMS • v1.0',
+                  'Kageno',
                   style: TextStyle(
-                    color: theme.colorScheme.onSurface.withOpacity(0.3),
-                    fontSize: 11,
-                    letterSpacing: 1,
+                    color: theme.colorScheme.onSurface.withOpacity(0.4),
+                    fontSize: 13,
+                    letterSpacing: 3,
+                    fontWeight: FontWeight.bold,
                   ),
                 ),
               ),
@@ -240,8 +231,7 @@ class HomePage extends StatelessWidget {
     );
   }
 
-  Widget _profileCard(ThemeData theme) {
-    final isAdmin = profile.isAdmin;
+  Widget _profileCard(ThemeData theme, bool isAdmin) {
     final color = isAdmin
         ? const Color(0xFF6C5CE7)
         : const Color(0xFF00D2FF);
@@ -286,8 +276,11 @@ class HomePage extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // ⭐ الأدمن يشوف الدور، اليوزر يشوف اسمه
                 Text(
-                  isAdmin ? 'أدمن' : 'مستخدم',
+                  isAdmin ? 'أدمن' : profile.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.bold,
@@ -295,66 +288,14 @@ class HomePage extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 2),
+                // ⭐ الأدمن يشوف الإيميل، اليوزر يشوف الـ username
                 Text(
-                  profile.email,
+                  isAdmin ? profile.email : '@${profile.username}',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     fontSize: 11,
                     color: theme.colorScheme.onSurface.withOpacity(0.6),
-                    decoration: TextDecoration.none,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _quickInfo(
-    ThemeData theme, {
-    required IconData icon,
-    required Color color,
-    required String title,
-    required String subtitle,
-  }) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surface.withOpacity(0.5),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: color.withOpacity(0.2)),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 36,
-            height: 36,
-            decoration: BoxDecoration(
-              color: color.withOpacity(0.15),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Icon(icon, color: color, size: 18),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title,
-                    style: const TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.bold,
-                      decoration: TextDecoration.none,
-                    )),
-                const SizedBox(height: 2),
-                Text(
-                  subtitle,
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: theme.colorScheme.onSurface.withOpacity(0.55),
                     decoration: TextDecoration.none,
                   ),
                 ),
@@ -438,7 +379,6 @@ class HomePage extends StatelessWidget {
   }
 }
 
-// ═══════ الكارت الرئيسي ═══════
 class _MainCard extends StatelessWidget {
   final String title;
   final String subtitle;
@@ -462,7 +402,7 @@ class _MainCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(22),
         onTap: onTap,
         child: Container(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
             gradient: LinearGradient(
               colors: colors,
@@ -482,19 +422,19 @@ class _MainCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Container(
-                width: 46,
-                height: 46,
+                width: 42,
+                height: 42,
                 decoration: BoxDecoration(
                   color: Colors.white.withOpacity(0.22),
-                  borderRadius: BorderRadius.circular(14),
+                  borderRadius: BorderRadius.circular(12),
                 ),
-                child: Icon(icon, color: Colors.white, size: 24),
+                child: Icon(icon, color: Colors.white, size: 22),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 12),
               Text(title,
                   style: const TextStyle(
                     color: Colors.white,
-                    fontSize: 20,
+                    fontSize: 16,
                     fontWeight: FontWeight.bold,
                     decoration: TextDecoration.none,
                   )),
@@ -502,7 +442,7 @@ class _MainCard extends StatelessWidget {
               Text(subtitle,
                   style: TextStyle(
                     color: Colors.white.withOpacity(0.85),
-                    fontSize: 12,
+                    fontSize: 11,
                     decoration: TextDecoration.none,
                   )),
             ],
