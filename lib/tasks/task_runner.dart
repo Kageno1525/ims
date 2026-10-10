@@ -57,7 +57,6 @@ class TaskRunner extends ChangeNotifier {
         ));
       }
 
-      // كل دورة تبدأ من أول خطوة
       _results.clear();
       for (final s in task.steps) {
         _results.add(StepResult(stepId: s.id, status: StepStatus.pending));
@@ -65,7 +64,6 @@ class TaskRunner extends ChangeNotifier {
       _currentIndex = 0;
       notifyListeners();
 
-      // لو autoIncrement، الرقم يتقدم مع كل دورة
       final effectiveIndex = task.autoIncrement
           ? currentIndex + round
           : currentIndex;
@@ -79,7 +77,6 @@ class TaskRunner extends ChangeNotifier {
 
       if (!roundOk) {
         allOk = false;
-        // نكمل الدورات أو نوقف حسب onFail؟ — نوقف
         break;
       }
     }
@@ -103,13 +100,10 @@ class TaskRunner extends ChangeNotifier {
     required List<String> numbers,
     required int currentIndex,
   }) async {
-    bool allOk = true;
     int i = 0;
 
     while (i < task.steps.length) {
-      if (!_running) {
-        return false;
-      }
+      if (!_running) return false;
 
       _currentIndex = i;
       _results[i] = StepResult(
@@ -121,16 +115,18 @@ class TaskRunner extends ChangeNotifier {
       final step = task.steps[i];
       onLog(LogEntry(
         '▶️ خطوة ${i + 1}/${task.steps.length}: ${step.typeLabel}'
-        '${step.repeatCount > 1 ? " (×${step.repeatCount})" : ""}',
+        '${step.repeatCount > 1 ? " (×${step.repeatCount})" : ""}'
+        '${step.speedMode ? " ⚡" : ""}',
         DateTime.now(),
         LogLevel.info,
       ));
 
       final resolved = _resolveStep(step, numbers, currentIndex);
 
-      // ⭐ تنفيذ الخطوة (مع التكرار لو فيه)
       final stepRepeat = resolved.repeatCount < 1 ? 1 : resolved.repeatCount;
       bool stepOk = false;
+      bool needSkip = false;
+      int skipTotal = 0;
 
       for (int r = 0; r < stepRepeat; r++) {
         if (!_running) return false;
@@ -169,28 +165,9 @@ class TaskRunner extends ChangeNotifier {
               ));
               return false;
             } else if (nfResult == _NotFoundOutcome.skipped) {
-              final skipTotal = 1 + resolved.skipCount;
-              for (int k = 0;
-                  k < skipTotal && i + k < task.steps.length;
-                  k++) {
-                _results[i + k] = StepResult(
-                  stepId: task.steps[i + k].id,
-                  status: StepStatus.skipped,
-                  message: k == 0 ? 'العنصر ما ظهرش' : 'اتخطت',
-                );
-              }
-              notifyListeners();
-              onLog(LogEntry(
-                '⏭️ تخطي $skipTotal خطوة والاستمرار',
-                DateTime.now(),
-                LogLevel.wait,
-              ));
-              if (step.waitAfterMs > 0) {
-                await Future.delayed(Duration(milliseconds: step.waitAfterMs));
-              }
-              i += skipTotal;
-              // خروج من الحلقة كاملة
-              return _continueRound(task, i, onLog, numbers, currentIndex);
+              needSkip = true;
+              skipTotal = 1 + resolved.skipCount;
+              break;
             } else {
               stepOk = true;
               onLog(LogEntry(
@@ -206,28 +183,9 @@ class TaskRunner extends ChangeNotifier {
             stepOk = true;
           } else {
             if (step.onFail == FailureAction.skip) {
-              final skipTotal = 1 + step.skipCount;
-              for (int k = 0;
-                  k < skipTotal && i + k < task.steps.length;
-                  k++) {
-                _results[i + k] = StepResult(
-                  stepId: task.steps[i + k].id,
-                  status: StepStatus.skipped,
-                  message: k == 0 ? 'اتخطت' : 'تم تخطيها',
-                );
-              }
-              notifyListeners();
-              onLog(LogEntry(
-                '⏭️ تخطي $skipTotal خطوة والاستمرار',
-                DateTime.now(),
-                LogLevel.wait,
-              ));
-              if (step.waitAfterMs > 0) {
-                await Future.delayed(Duration(milliseconds: step.waitAfterMs));
-              }
-              i += skipTotal;
-              return _continueRound(
-                  task, i, onLog, numbers, currentIndex);
+              needSkip = true;
+              skipTotal = 1 + step.skipCount;
+              break;
             } else {
               _results[i] = StepResult(
                 stepId: step.id,
@@ -246,119 +204,35 @@ class TaskRunner extends ChangeNotifier {
         }
       }
 
+      if (needSkip) {
+        for (int k = 0;
+            k < skipTotal && i + k < task.steps.length;
+            k++) {
+          _results[i + k] = StepResult(
+            stepId: task.steps[i + k].id,
+            status: StepStatus.skipped,
+            message: k == 0 ? 'اتخطت' : 'تم تخطيها',
+          );
+        }
+        notifyListeners();
+        onLog(LogEntry(
+          '⏭️ تخطي $skipTotal خطوة والاستمرار',
+          DateTime.now(),
+          LogLevel.wait,
+        ));
+        if (step.waitAfterMs > 0) {
+          await Future.delayed(Duration(milliseconds: step.waitAfterMs));
+        }
+        i += skipTotal;
+        continue;
+      }
+
       if (stepOk) {
         _results[i] = StepResult(stepId: step.id, status: StepStatus.ok);
         notifyListeners();
         onLog(LogEntry(
             '✅ خطوة ${i + 1} نجحت', DateTime.now(), LogLevel.ok));
-        if (step.waitAfterMs > 0) {
-          await Future.delayed(Duration(milliseconds: step.waitAfterMs));
-        }
-        i++;
-      }
-    }
-
-    return allOk;
-  }
-
-  Future<bool> _continueRound(
-    Task task,
-    int startIndex,
-    Function(LogEntry) onLog,
-    List<String> numbers,
-    int currentIndex,
-  ) async {
-    // نكمل من الـ startIndex جوه نفس الدورة
-    int i = startIndex;
-    while (i < task.steps.length) {
-      if (!_running) return false;
-
-      _currentIndex = i;
-      _results[i] = StepResult(
-        stepId: task.steps[i].id,
-        status: StepStatus.running,
-      );
-      notifyListeners();
-
-      final step = task.steps[i];
-      onLog(LogEntry(
-        '▶️ خطوة ${i + 1}/${task.steps.length}: ${step.typeLabel}',
-        DateTime.now(),
-        LogLevel.info,
-      ));
-
-      final resolved = _resolveStep(step, numbers, currentIndex);
-      final stepRepeat = resolved.repeatCount < 1 ? 1 : resolved.repeatCount;
-      bool stepOk = false;
-
-      for (int r = 0; r < stepRepeat; r++) {
-        if (!_running) return false;
-
-        if (resolved.type == TaskStepType.waitForElement) {
-          final outcome = await _runWaitForElement(
-            resolved, i, task.steps.length, onLog, numbers, currentIndex,
-          );
-          if (outcome == _WaitOutcome.found) {
-            stepOk = true;
-          } else {
-            final nfResult = await _handleNotFound(
-              resolved, i, task.steps.length, onLog, numbers, currentIndex,
-            );
-            if (nfResult == _NotFoundOutcome.stop) {
-              return false;
-            } else if (nfResult == _NotFoundOutcome.skipped) {
-              final skipTotal = 1 + resolved.skipCount;
-              for (int k = 0;
-                  k < skipTotal && i + k < task.steps.length;
-                  k++) {
-                _results[i + k] = StepResult(
-                  stepId: task.steps[i + k].id,
-                  status: StepStatus.skipped,
-                  message: k == 0 ? 'العنصر ما ظهرش' : 'اتخطت',
-                );
-              }
-              notifyListeners();
-              i += skipTotal;
-              continue;
-            } else {
-              stepOk = true;
-            }
-          }
-        } else {
-          final ok = await _executeStepWithTimeout(resolved, onLog);
-          if (ok) {
-            stepOk = true;
-          } else {
-            if (step.onFail == FailureAction.skip) {
-              final skipTotal = 1 + step.skipCount;
-              for (int k = 0;
-                  k < skipTotal && i + k < task.steps.length;
-                  k++) {
-                _results[i + k] = StepResult(
-                  stepId: task.steps[i + k].id,
-                  status: StepStatus.skipped,
-                  message: k == 0 ? 'اتخطت' : 'تم تخطيها',
-                );
-              }
-              notifyListeners();
-              i += skipTotal;
-              continue;
-            } else {
-              _results[i] = StepResult(
-                stepId: step.id,
-                status: StepStatus.failed,
-                message: 'فشل',
-              );
-              notifyListeners();
-              return false;
-            }
-          }
-        }
-      }
-
-      if (stepOk) {
-        _results[i] = StepResult(stepId: step.id, status: StepStatus.ok);
-        notifyListeners();
+        // ⭐ الفاصل اللي المستخدم حطه — مش بنشيله
         if (step.waitAfterMs > 0) {
           await Future.delayed(Duration(milliseconds: step.waitAfterMs));
         }
@@ -403,6 +277,7 @@ class TaskRunner extends ChangeNotifier {
     );
   }
 
+  // ═══════════════ Wait For Element ═══════════════
   Future<_WaitOutcome> _runWaitForElement(
     TaskStep step,
     int stepIndex,
@@ -423,10 +298,13 @@ class TaskRunner extends ChangeNotifier {
     final deadline = DateTime.now().add(Duration(milliseconds: timeout));
     int attempt = 0;
 
+    // ⭐ polling interval حسب وضع السرعة
+    final pollMs = step.speedMode ? 20 : 100;
+
     while (DateTime.now().isBefore(deadline)) {
       if (!_running) return _WaitOutcome.notFound;
       attempt++;
-      if (attempt > 1) {
+      if (!step.speedMode && attempt > 1 && attempt % 5 == 0) {
         onLog(LogEntry('🔄 محاولة $attempt…', DateTime.now(),
             LogLevel.wait));
       }
@@ -465,7 +343,15 @@ class TaskRunner extends ChangeNotifier {
         return _WaitOutcome.found;
       }
 
-      final delay = (100 * attempt).clamp(100, 700);
+      // ⭐ في وضع السرعة: 20ms ثابت
+      // ⭐ في الوضع العادي: 100ms مع backoff أقصى 700ms
+      int delay;
+      if (step.speedMode) {
+        delay = pollMs;
+      } else {
+        delay = (100 * attempt).clamp(100, 700);
+      }
+
       final remaining =
           deadline.difference(DateTime.now()).inMilliseconds;
       if (remaining <= 0) break;
@@ -495,11 +381,8 @@ class TaskRunner extends ChangeNotifier {
       case NotFoundAction.skip:
         return _NotFoundOutcome.skipped;
       case NotFoundAction.clickAlt:
-        onLog(LogEntry(
-          '🖱️ اضغط على البديل',
-          DateTime.now(),
-          LogLevel.info,
-        ));
+        onLog(LogEntry('🖱️ اضغط على البديل', DateTime.now(),
+            LogLevel.info));
         await AutoFillBridge.smartClick(
           text: step.altText,
           desc: step.altDesc,
@@ -508,11 +391,8 @@ class TaskRunner extends ChangeNotifier {
         );
         return _NotFoundOutcome.handled;
       case NotFoundAction.typeAlt:
-        onLog(LogEntry(
-          '⌨️ اكتب البديل: "${step.altTypeText}"',
-          DateTime.now(),
-          LogLevel.info,
-        ));
+        onLog(LogEntry('⌨️ اكتب البديل: "${step.altTypeText}"',
+            DateTime.now(), LogLevel.info));
         await AutoFillBridge.typeText(step.altTypeText);
         return _NotFoundOutcome.handled;
       case NotFoundAction.back:
@@ -531,6 +411,7 @@ class TaskRunner extends ChangeNotifier {
     notifyListeners();
   }
 
+  // ═══════════════ Execute with timeout ═══════════════
   Future<bool> _executeStepWithTimeout(
       TaskStep step, Function(LogEntry) onLog) async {
     if (!step.isSearchStep || step.timeoutMs <= 0) {
@@ -539,10 +420,14 @@ class TaskRunner extends ChangeNotifier {
     final deadline =
         DateTime.now().add(Duration(milliseconds: step.timeoutMs));
     int attempt = 0;
+
+    // ⭐ polling interval حسب وضع السرعة
+    final baseDelay = step.speedMode ? 20 : 100;
+
     while (DateTime.now().isBefore(deadline)) {
       if (!_running) return false;
       attempt++;
-      if (attempt > 1) {
+      if (!step.speedMode && attempt > 1 && attempt % 3 == 0) {
         onLog(LogEntry('🔄 محاولة $attempt…', DateTime.now(),
             LogLevel.wait));
       }
@@ -554,7 +439,16 @@ class TaskRunner extends ChangeNotifier {
         }
         return true;
       }
-      final delay = (100 * attempt).clamp(100, 900);
+
+      // ⭐ في وضع السرعة: 20ms ثابت
+      // ⭐ في الوضع العادي: backoff أقصى 900ms
+      int delay;
+      if (step.speedMode) {
+        delay = baseDelay;
+      } else {
+        delay = (100 * attempt).clamp(100, 900);
+      }
+
       final remaining =
           deadline.difference(DateTime.now()).inMilliseconds;
       if (remaining <= 0) break;
