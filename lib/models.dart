@@ -28,7 +28,8 @@ class UserProfile {
   final List<String> allowedScripts;
   final bool showNumbers;
   final bool isBanned;
-  final String hwid;           // ⭐ جديد — بصمة الجهاز المربوط
+  final String hwid;
+  final DateTime? hwidBoundAt;
   final DateTime? createdAt;
   final DateTime? lastLoginAt;
 
@@ -40,14 +41,14 @@ class UserProfile {
     this.allowedScripts = const [],
     this.showNumbers = true,
     this.isBanned = false,
-    this.hwid = '',            // ⭐ جديد
+    this.hwid = '',
+    this.hwidBoundAt,
     this.createdAt,
     this.lastLoginAt,
   });
 
   bool get isAdmin => role == 'admin';
 
-  // ⭐ هل الجهاز مربوط؟
   bool get hasBoundDevice => hwid.isNotEmpty;
 
   String get username {
@@ -58,17 +59,6 @@ class UserProfile {
   }
 
   factory UserProfile.fromDoc(String uid, Map<String, dynamic> data) {
-    DateTime? parseTs(dynamic v) {
-      if (v == null) return null;
-      try {
-        if (v is DateTime) return v;
-        if (v is String) return DateTime.tryParse(v);
-        final d = v.toDate();
-        if (d is DateTime) return d;
-      } catch (_) {}
-      return null;
-    }
-
     return UserProfile(
       uid: uid,
       email: data['email']?.toString() ?? '',
@@ -80,8 +70,9 @@ class UserProfile {
       showNumbers: data['showNumbers'] != false,
       isBanned: data['isBanned'] == true,
       hwid: data['hwid']?.toString() ?? '',
-      createdAt: parseTs(data['createdAt']),
-      lastLoginAt: parseTs(data['lastLoginAt']),
+      hwidBoundAt: _parseTs(data['hwidBoundAt']),
+      createdAt: _parseTs(data['createdAt']),
+      lastLoginAt: _parseTs(data['lastLoginAt']),
     );
   }
 
@@ -94,6 +85,17 @@ class UserProfile {
         'isBanned': isBanned,
         'hwid': hwid,
       };
+
+  static DateTime? _parseTs(dynamic v) {
+    if (v == null) return null;
+    try {
+      if (v is DateTime) return v;
+      if (v is String) return DateTime.tryParse(v);
+      final d = v.toDate();
+      if (d is DateTime) return d;
+    } catch (_) {}
+    return null;
+  }
 }
 
 class ScriptDoc {
@@ -116,17 +118,6 @@ class ScriptDoc {
   });
 
   factory ScriptDoc.fromDoc(String id, Map<String, dynamic> data) {
-    DateTime? parseTs(dynamic v) {
-      if (v == null) return null;
-      try {
-        if (v is DateTime) return v;
-        if (v is String) return DateTime.tryParse(v);
-        final d = v.toDate();
-        if (d is DateTime) return d;
-      } catch (_) {}
-      return null;
-    }
-
     return ScriptDoc(
       id: id,
       name: data['name']?.toString() ?? '',
@@ -137,8 +128,8 @@ class ScriptDoc {
           .map((e) => e.toString())
           .toList(),
       createdBy: data['createdBy']?.toString() ?? '',
-      createdAt: parseTs(data['createdAt']),
-      updatedAt: parseTs(data['updatedAt']),
+      createdAt: _parseTs(data['createdAt']),
+      updatedAt: _parseTs(data['updatedAt']),
     );
   }
 
@@ -148,4 +139,15 @@ class ScriptDoc {
         'assignedTo': assignedTo,
         'createdBy': createdBy,
       };
+
+  static DateTime? _parseTs(dynamic v) {
+    if (v == null) return null;
+    try {
+      if (v is DateTime) return v;
+      if (v is String) return DateTime.tryParse(v);
+      final d = v.toDate();
+      if (d is DateTime) return d;
+    } catch (_) {}
+    return null;
+  }
 }
