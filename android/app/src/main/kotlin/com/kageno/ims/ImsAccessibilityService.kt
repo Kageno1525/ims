@@ -738,87 +738,244 @@ class ImsAccessibilityService : AccessibilityService() {
     }
 
     // ═══════════════ مسح بيانات تطبيق ═══════════════
+        // ═══════════════ مسح بيانات تطبيق — نسخة محسّنة ═══════════════
     private fun clearAppDataInternal(pkg: String): Boolean {
         try {
             if (pkg.isEmpty()) return false
+
             Log.d(TAG, "clearAppData: starting for $pkg")
 
+            // 1) افتح صفحة التطبيق في الإعدادات
             val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
             intent.data = Uri.parse("package:$pkg")
             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             startActivity(intent)
 
-            try { Thread.sleep(2000) } catch (_: Exception) {}
+            // ⭐ استنى الصفحة تفتح
+            try { Thread.sleep(3000) } catch (_: Exception) {}
 
-            clickByAnyText(
-                timeoutMs = 6000,
-                maxAttempts = 30,
+            // 2) ابحث عن "التخزين" بكل الكلمات المحتملة
+            Log.d(TAG, "clearAppData: searching for storage button")
+            val storageOpened = clickByAnyText(
+                timeoutMs = 10000,
+                maxAttempts = 50,
                 keywords = arrayOf(
-                    "Storage & cache", "Storage and cache", "Storage",
-                    "App storage", "Manage storage", "Memory",
-                    "التخزين والذاكرة", "التخزين", "مساحة التخزين",
-                    "ذاكرة التخزين", "استخدام التخزين", "إدارة التخزين"
+                    // English
+                    "Storage & cache", "Storage and cache",
+                    "Storage & cache usage", "Storage usage",
+                    "Storage", "App storage", "Manage storage",
+                    "Memory", "Internal storage",
+                    // Arabic
+                    "التخزين والذاكرة",
+                    "التخزين والذاكرة المؤقتة",
+                    "التخزين",
+                    "مساحة التخزين",
+                    "ذاكرة التخزين",
+                    "استخدام التخزين",
+                    "إدارة التخزين",
+                    "التخزين المؤقت",
+                    "الذاكرة والتخزين",
+                    "المساحة والتخزين",
+                    "التخزين و التخزين المؤقت",
+                    "التخزين والتخزين المؤقت",
+                    "حجم التخزين",
+                    "بيانات التخزين",
+                    "التخزين و الذاكرة",
+                    "التخزين والبيانات"
                 )
             )
+            Log.d(TAG, "clearAppData: storage opened = $storageOpened")
 
-            try { Thread.sleep(1500) } catch (_: Exception) {}
+            // ⭐ استنى صفحة التخزين تحمّل
+            try { Thread.sleep(2500) } catch (_: Exception) {}
 
+            // ⭐⭐⭐ 2.5) اعمِل SCROLL للأسفل — الزرار ساعات بيكون تحت
+            try {
+                scrollInternal(forward = true)
+                Thread.sleep(800)
+                scrollInternal(forward = true)
+                Thread.sleep(800)
+            } catch (_: Exception) {}
+
+            // 3) ابحث عن زرار المسح/المحو — بكل الاحتمالات
+            Log.d(TAG, "clearAppData: searching for clear button")
             val clearClicked = clickByAnyText(
-                timeoutMs = 6000,
-                maxAttempts = 30,
+                timeoutMs = 10000,
+                maxAttempts = 50,
                 keywords = arrayOf(
-                    "Clear storage", "Clear data", "Clear all data",
-                    "Delete data", "Delete all data",
-                    "مسح التخزين", "مسح البيانات", "مسح كل البيانات",
-                    "حذف البيانات", "محو البيانات", "إعادة تعيين التطبيق"
+                    // English
+                    "Clear storage", "Clear data", "Clear app data",
+                    "Clear all data", "Clear user data",
+                    "Clear cache and data", "Reset app",
+                    "Erase data", "Delete data", "Delete app data",
+                    "Delete all data", "Clear", "Erase", "Delete",
+                    "Clear all", "Reset", "Wipe",
+                    // Arabic
+                    "مسح التخزين", "مسح البيانات", "مسح بيانات التطبيق",
+                    "مسح كل البيانات", "محو التخزين", "محو البيانات",
+                    "محو كل البيانات", "محو",
+                    "مسح",
+                    "حذف التخزين", "حذف البيانات", "حذف كل البيانات",
+                    "حذف",
+                    "إعادة تعيين التطبيق", "إعادة التعيين",
+                    "تفريغ التخزين", "تفريغ البيانات", "تفريغ",
+                    "إزالة البيانات", "إزالة التخزين", "إزالة",
+                    "تصفير",
+                    "الكل",
+                    "حذف البيانات المخزنة",
+                    "محو جميع البيانات"
                 )
             )
-            if (!clearClicked) return false
+            Log.d(TAG, "clearAppData: clear clicked = $clearClicked")
 
-            try { Thread.sleep(1800) } catch (_: Exception) {}
-
-            if (clickAndroidDialogButton()) {
-                try { Thread.sleep(1000) } catch (_: Exception) {}
-                return true
+            if (!clearClicked) {
+                Log.w(TAG, "clearAppData: didn't find clear button")
+                return false
             }
 
+            // ⭐⭐⭐ استنى الديالوج يظهر (مهم!)
+            try { Thread.sleep(2500) } catch (_: Exception) {}
+
+            // 4) اضغط التأكيد — بالكلمات
+            Log.d(TAG, "clearAppData: searching for confirmation")
             val confirmKeywords = arrayOf(
-                "Clear all data", "Clear data", "Delete", "Delete all",
-                "Erase", "OK", "Yes", "Confirm", "Continue",
-                "Reset", "Allow", "Got it", "Done",
-                "مسح الكل", "مسح البيانات", "محو الكل", "حذف الكل",
-                "حذف", "محو", "مسح", "موافق", "نعم", "حسناً", "تمام",
-                "تأكيد", "إعادة تعيين", "فهمت", "إزالة", "تفريغ", "قبول"
+                // English
+                "Clear all data", "Clear data", "Clear storage",
+                "Delete", "Delete all", "Delete data",
+                "Erase", "Erase all", "Erase data",
+                "OK", "Ok", "ok", "Yes", "yes",
+                "Yes, clear", "Yes, clear all", "Yes, delete",
+                "Confirm", "Confirm clear", "Confirm delete",
+                "Continue", "Proceed", "Reset", "Reset app",
+                "Allow", "Agree", "Accept", "Got it",
+                "Understood", "I understand", "Done",
+                // Arabic
+                "مسح الكل", "مسح البيانات", "مسح التخزين",
+                "محو الكل", "محو البيانات", "محو التخزين",
+                "محو",
+                "حذف الكل", "حذف البيانات", "حذف التخزين", "حذف",
+                "مسح",
+                "موافق", "أوافق", "الموافقة",
+                "نعم", "حسناً", "حسنا", "تمام", "طيب",
+                "متابعة", "استمرار",
+                "تأكيد", "تأكيد المسح",
+                "إعادة تعيين", "إعادة التعيين",
+                "أفهم", "فهمت",
+                "إزالة", "إزالة الكل",
+                "تفريغ", "تفريغ الكل",
+                "السماح", "قبول"
             )
 
-            for (i in 0 until 5) {
-                val ok = clickByAnyText(
-                    timeoutMs = 2500,
+            var confirmed = false
+            for (attempt in 0 until 8) {
+                // جرب الأول بالـ android:id/button1 (أدق)
+                if (clickAndroidDialogButton()) {
+                    Log.d(TAG, "clearAppData: dialog clicked via android:id/button1")
+                    confirmed = true
+                    break
+                }
+
+                // بعدين جرب بالكلمات
+                if (clickByAnyText(
+                    timeoutMs = 2000,
                     maxAttempts = 15,
                     keywords = confirmKeywords
-                )
-                if (!ok) break
-                try { Thread.sleep(900) } catch (_: Exception) {}
+                )) {
+                    Log.d(TAG, "clearAppData: dialog clicked via keywords, attempt $attempt")
+                    confirmed = true
+                    break
+                }
+
+                try { Thread.sleep(1000) } catch (_: Exception) {}
             }
+
+            // استنى العملية تخلص
+            try { Thread.sleep(1500) } catch (_: Exception) {}
+
+            Log.d(TAG, "clearAppData: finished, confirmed=$confirmed")
             return true
         } catch (e: Exception) {
             Log.e(TAG, "clearAppData", e)
             return false
         }
     }
-
-    private fun clickAndroidDialogButton(): Boolean {
+        private fun clickAndroidDialogButton(): Boolean {
         try {
             val all = collectAllNodes()
+
+            // ⭐ جرّب android:id/button1 (الأزرار الإيجابية)
             for (node in all) {
                 try {
                     val viewId = node.viewIdResourceName ?: ""
                     if (viewId == "android:id/button1" && node.isVisibleToUser) {
                         val t = node.text?.toString()?.trim() ?: ""
+                        // تأكد إن مفيش Cancel
                         if (t.contains("Cancel", ignoreCase = true) ||
-                            t.contains("إلغاء") || t.contains("لا")
-                        ) continue
-                        if (performClickOnNode(node)) return true
+                            t.contains("إلغاء") ||
+                            t.contains("لا،") ||
+                            t.contains("رجوع", ignoreCase = true)
+                        ) {
+                            continue
+                        }
+                        if (performClickOnNode(node)) {
+                            Log.d(TAG, "clicked android:id/button1 ($t)")
+                            return true
+                        }
+                    }
+                } catch (_: Exception) {}
+            }
+
+            // ⭐ جرّب android:id/button2 (لو نصه إيجابي)
+            for (node in all) {
+                try {
+                    val viewId = node.viewIdResourceName ?: ""
+                    if (viewId == "android:id/button2" && node.isVisibleToUser) {
+                        val t = node.text?.toString()?.trim() ?: ""
+                        if (t.contains("Delete", ignoreCase = true) ||
+                            t.contains("OK", ignoreCase = true) ||
+                            t.contains("Yes", ignoreCase = true) ||
+                            t.contains("محو") ||
+                            t.contains("حذف") ||
+                            t.contains("مسح") ||
+                            t.contains("موافق") ||
+                            t.contains("نعم") ||
+                            t.contains("تأكيد")
+                        ) {
+                            if (performClickOnNode(node)) {
+                                Log.d(TAG, "clicked android:id/button2 ($t)")
+                                return true
+                            }
+                        }
+                    }
+                } catch (_: Exception) {}
+            }
+
+            // ⭐ جرّب الأزرار في MaterialAlertDialog
+            for (node in all) {
+                try {
+                    val viewId = node.viewIdResourceName ?: ""
+                    if (viewId.contains("button") &&
+                        node.isClickable &&
+                        node.isVisibleToUser
+                    ) {
+                        val t = node.text?.toString()?.trim() ?: ""
+                        if (t.contains("Delete", ignoreCase = true) ||
+                            t.contains("OK", ignoreCase = true) ||
+                            t.contains("Yes", ignoreCase = true) ||
+                            t.contains("محو") ||
+                            t.contains("حذف") ||
+                            t.contains("مسح") ||
+                            t.contains("موافق") ||
+                            t.contains("نعم") ||
+                            t.contains("تأكيد") ||
+                            t.contains("حسناً") ||
+                            t.contains("حسنا")
+                        ) {
+                            if (performClickOnNode(node)) {
+                                Log.d(TAG, "clicked dialog button: $viewId ($t)")
+                                return true
+                            }
+                        }
                     }
                 } catch (_: Exception) {}
             }
@@ -826,29 +983,52 @@ class ImsAccessibilityService : AccessibilityService() {
         return false
     }
 
-    private fun clickByAnyText(
+        private fun clickByAnyText(
         timeoutMs: Long,
         maxAttempts: Int,
         keywords: Array<String>
     ): Boolean {
         val deadline = System.currentTimeMillis() + timeoutMs
         var attempt = 0
-        while (System.currentTimeMillis() < deadline && attempt < maxAttempts) {
+
+        while (System.currentTimeMillis() < deadline &&
+            attempt < maxAttempts
+        ) {
             attempt++
             try {
                 val all = collectAllNodes()
                 for (node in all) {
                     try {
                         if (!node.isVisibleToUser) continue
+                        if (!node.isEnabled) continue
+
                         val text = node.text?.toString()?.trim() ?: ""
                         val desc = node.contentDescription?.toString()?.trim() ?: ""
+
                         for (kw in keywords) {
-                            if (text.equals(kw, ignoreCase = true) ||
-                                text.contains(kw, ignoreCase = true) ||
-                                desc.equals(kw, ignoreCase = true) ||
-                                desc.contains(kw, ignoreCase = true)
-                            ) {
-                                if (performClickOnNode(node)) return true
+                            // ⭐ مطابقة دقيقة أولاً
+                            val exactMatch = text.equals(kw, ignoreCase = true) ||
+                                    desc.equals(kw, ignoreCase = true)
+                            // ⭐ مطابقة جزئية ثانياً
+                            val partialMatch = text.contains(kw, ignoreCase = true) ||
+                                    desc.contains(kw, ignoreCase = true)
+
+                            if (exactMatch || partialMatch) {
+                                // جرّب عدة طرق للضغط
+                                if (node.isClickable) {
+                                    if (node.performAction(
+                                            AccessibilityNodeInfo.ACTION_CLICK
+                                        )
+                                    ) {
+                                        Log.d(TAG, "clicked (direct): $text / $desc")
+                                        return true
+                                    }
+                                }
+                                // جرّب الأب
+                                if (performClickOnNode(node)) {
+                                    Log.d(TAG, "clicked: $text / $desc")
+                                    return true
+                                }
                             }
                         }
                     } catch (_: Exception) {}
