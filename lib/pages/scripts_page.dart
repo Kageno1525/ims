@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import '../csv_reader.dart';
 import '../firebase/firestore_service.dart';
+import '../firebase/user_prefs_service.dart';
 import '../models.dart';
 import '../widgets.dart';
 import '../autofill_bridge.dart';
@@ -37,6 +39,9 @@ class _ScriptsPageState extends State<ScriptsPage>
   String? _runningScriptId;
   ScriptDoc? _runningScript;
   bool _accessibilityOn = false;
+
+  // ⭐ خزن الـ prefs لكل سكربت
+  final Map<String, ScriptUserPrefs> _prefs = {};
 
   @override
   void initState() {
@@ -76,6 +81,336 @@ class _ScriptsPageState extends State<ScriptsPage>
     _logs.value = upd;
   }
 
+  Future<ScriptUserPrefs> _loadPrefs(String scriptId) async {
+    if (_prefs.containsKey(scriptId)) return _prefs[scriptId]!;
+    final p = await UserPrefsService.load(scriptId);
+    _prefs[scriptId] = p;
+    return p;
+  }
+
+  // ⭐ حوار القواعد — يظهر للحاجات المسموح بيها بس
+  Future<void> _showRulesDialog(ScriptDoc doc) async {
+    final prefs = await _loadPrefs(doc.id);
+    final rules = doc.rules;
+
+    // لو مفيش حاجة مسموح بيها
+    if (!rules.allowRunCount && !rules.allowRange) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('مفيش قواعد قابلة للتعديل في السكربت ده'),
+          backgroundColor: Color(0xFFFFB84D),
+        ),
+      );
+      return;
+    }
+
+    final runCountCtrl = TextEditingController(
+      text: (prefs.runCount > 0
+              ? prefs.runCount
+              : rules.defaultRunCount)
+          .toString(),
+    );
+
+    int currentRunCount = prefs.runCount > 0
+        ? prefs.runCount
+        : rules.defaultRunCount;
+
+    String currentRange = prefs.rangeName.isNotEmpty
+        ? prefs.rangeName
+        : rules.defaultRange;
+
+    // ⭐ جيب الرنجات
+    List<CsvFile> ranges = [];
+    if (rules.allowRange) {
+      try {
+        ranges = await CsvReader.listFiles();
+      } catch (_) {}
+    }
+
+    if (!mounted) return;
+
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (ctx) {
+        return StatefulBuilder(builder: (ctx, setModal) {
+          return AlertDialog(
+            backgroundColor: Theme.of(ctx).colorScheme.surface,
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20)),
+            title: Row(
+              children: [
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFF6C5CE7), Color(0xFF00D2FF)],
+                    ),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(Icons.rule_rounded,
+                      color: Colors.white, size: 22),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'قواعد السكربت',
+                    style: _noDeco.copyWith(
+                        fontWeight: FontWeight.bold, fontSize: 16),
+                  ),
+                ),
+              ],
+            ),
+            content: SizedBox(
+              width: 400,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      doc.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: _noDeco.copyWith(
+                        fontSize: 12,
+                        color: Theme.of(ctx)
+                            .colorScheme
+                            .onSurface
+                            .withOpacity(0.6),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+
+                    // عدد المرات
+                    if (rules.allowRunCount) ...[
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF6C5CE7)
+                              .withOpacity(0.08),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                              color: const Color(0xFF6C5CE7)
+                                  .withOpacity(0.3)),
+                        ),
+                        child: Column(
+                          crossAxisAlignment:
+                              CrossAxisAlignment.stretch,
+                          children: [
+                            Row(
+                              children: [
+                                const Icon(Icons.repeat_rounded,
+                                    size: 16,
+                                    color: Color(0xFF6C5CE7)),
+                                const SizedBox(width: 6),
+                                Text(
+                                  'عدد المرات',
+                                  style: _noDeco.copyWith(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.bold,
+                                    color: const Color(0xFF6C5CE7),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'الحد الأقصى: ${rules.maxRunCount}',
+                              style: _noDeco.copyWith(
+                                fontSize: 10,
+                                color: Theme.of(ctx)
+                                    .colorScheme
+                                    .onSurface
+                                    .withOpacity(0.5),
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+                            TextField(
+                              controller: runCountCtrl,
+                              keyboardType: TextInputType.number,
+                              textAlign: TextAlign.center,
+                              style: _noDeco.copyWith(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold),
+                              decoration: const InputDecoration(
+                                isDense: true,
+                                contentPadding: EdgeInsets.symmetric(
+                                    vertical: 12),
+                              ),
+                              onChanged: (v) {
+                                final n = int.tryParse(v) ?? 1;
+                                if (n >= 1 && n <= rules.maxRunCount) {
+                                  setModal(
+                                      () => currentRunCount = n);
+                                }
+                              },
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                    ],
+
+                    // الرنج
+                    if (rules.allowRange) ...[
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF00D68F)
+                              .withOpacity(0.08),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                              color: const Color(0xFF00D68F)
+                                  .withOpacity(0.3)),
+                        ),
+                        child: Column(
+                          crossAxisAlignment:
+                              CrossAxisAlignment.stretch,
+                          children: [
+                            Row(
+                              children: [
+                                const Icon(Icons.folder_rounded,
+                                    size: 16,
+                                    color: Color(0xFF00D68F)),
+                                const SizedBox(width: 6),
+                                Text(
+                                  'الرنج',
+                                  style: _noDeco.copyWith(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.bold,
+                                    color: const Color(0xFF00D68F),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 10),
+                            if (ranges.isEmpty)
+                              Text(
+                                'مفيش ملفات في Download/ranges',
+                                style: _noDeco.copyWith(
+                                  fontSize: 11.5,
+                                  color: const Color(0xFFFFB84D),
+                                ),
+                              )
+                            else
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 12),
+                                decoration: BoxDecoration(
+                                  color: Theme.of(ctx)
+                                      .colorScheme
+                                      .surface
+                                      .withOpacity(0.5),
+                                  borderRadius:
+                                      BorderRadius.circular(10),
+                                ),
+                                child:
+                                    DropdownButtonHideUnderline(
+                                  child: DropdownButton<String>(
+                                    value: currentRange.isEmpty
+                                        ? null
+                                        : currentRange,
+                                    isExpanded: true,
+                                    dropdownColor: Theme.of(ctx)
+                                        .colorScheme
+                                        .surface,
+                                    borderRadius:
+                                        BorderRadius.circular(12),
+                                    style: _noDeco.copyWith(
+                                      color: Theme.of(ctx)
+                                          .colorScheme
+                                          .onSurface,
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                    hint: Text('اختر رنج',
+                                        style: _noDeco.copyWith(
+                                            fontSize: 12)),
+                                    items: ranges
+                                        .map((f) =>
+                                            DropdownMenuItem<String>(
+                                              value: f.name,
+                                              child: Text(f.name,
+                                                  overflow:
+                                                      TextOverflow
+                                                          .ellipsis,
+                                                  style: _noDeco
+                                                      .copyWith(
+                                                          fontSize:
+                                                              13)),
+                                            ))
+                                        .toList(),
+                                    onChanged: (v) {
+                                      if (v != null) {
+                                        setModal(
+                                            () => currentRange = v);
+                                      }
+                                    },
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: Text('إلغاء', style: _noDeco),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: Text(
+                  'حفظ',
+                  style: _noDeco.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: const Color(0xFF00D68F),
+                  ),
+                ),
+              ),
+            ],
+          );
+        });
+      },
+    );
+
+    runCountCtrl.dispose();
+
+    if (result == true && mounted) {
+      final newPrefs = ScriptUserPrefs(
+        runCount: rules.allowRunCount
+            ? (prefs.runCount > 0
+                    ? prefs.runCount
+                    : rules.defaultRunCount) ==
+                    currentRunCount
+                ? 0
+                : currentRunCount
+            : 0,
+        rangeName:
+            rules.allowRange ? currentRange : '',
+      );
+
+      await UserPrefsService.save(doc.id, newPrefs);
+      _prefs[doc.id] = newPrefs;
+
+      if (mounted) {
+        setState(() {});
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('✅ تم حفظ القواعد'),
+            backgroundColor: Color(0xFF00D68F),
+          ),
+        );
+      }
+    }
+  }
+
   Task _scriptToTask(ScriptDoc doc) {
     return Task(
       id: doc.id,
@@ -99,6 +434,27 @@ class _ScriptsPageState extends State<ScriptsPage>
       return;
     }
 
+    final prefs = await _loadPrefs(doc.id);
+    final rules = doc.rules;
+
+    // ⭐ عدد المرات
+    int effectiveRunCount = 1;
+    if (rules.allowRunCount) {
+      effectiveRunCount = prefs.runCount > 0
+          ? prefs.runCount
+          : rules.defaultRunCount;
+    }
+
+    // ⭐ الرنج
+    String effectiveRange = '';
+    if (rules.allowRange) {
+      effectiveRange = prefs.rangeName.isNotEmpty
+          ? prefs.rangeName
+          : rules.defaultRange;
+    } else {
+      effectiveRange = rules.defaultRange;
+    }
+
     setState(() {
       _runningScriptId = doc.id;
       _runningScript = doc;
@@ -106,11 +462,34 @@ class _ScriptsPageState extends State<ScriptsPage>
     _logs.value = <LogEntry>[];
 
     try {
-      final task = _scriptToTask(doc);
+      // ⭐ لو فيه رنج مختار → نقرأ الأرقام منه
+      List<String> numbers = [];
+      if (effectiveRange.isNotEmpty) {
+        try {
+          final ranges = await CsvReader.listFiles();
+          final file = ranges.firstWhere(
+            (f) => f.name == effectiveRange,
+            orElse: () => CsvFile(name: '', path: '', count: 0),
+          );
+          if (file.path.isNotEmpty) {
+            numbers = await CsvReader.readColumnC(file.path);
+            _addLog(LogEntry(
+              '📄 حمّلت $effectiveRange (${numbers.length} رقم)',
+              DateTime.now(),
+              LogLevel.info,
+            ));
+          }
+        } catch (_) {}
+      }
+
+      final task = _scriptToTask(doc).copyWith(
+        repeatCount: effectiveRunCount,
+      );
+
       await _runner.run(
         task,
         onLog: _addLog,
-        numbers: const [],
+        numbers: numbers,
         currentIndex: 0,
       );
     } finally {
@@ -181,7 +560,6 @@ class _ScriptsPageState extends State<ScriptsPage>
               ),
               const SizedBox(height: 10),
 
-              // ⭐ زر إعدادات الوصول
               _accessibilityCard(theme),
               const SizedBox(height: 10),
 
@@ -193,7 +571,8 @@ class _ScriptsPageState extends State<ScriptsPage>
                   stream: FirestoreService.userScriptsStream(
                       widget.profile.uid),
                   builder: (context, snap) {
-                    if (snap.connectionState == ConnectionState.waiting) {
+                    if (snap.connectionState ==
+                        ConnectionState.waiting) {
                       return const Center(
                           child: CircularProgressIndicator());
                     }
@@ -249,7 +628,6 @@ class _ScriptsPageState extends State<ScriptsPage>
     );
   }
 
-  // ⭐ كارت إعدادات الوصول (زي اللي في المهام)
   Widget _accessibilityCard(ThemeData theme) {
     final on = _accessibilityOn;
     final color = on ? const Color(0xFF00D68F) : const Color(0xFFFF6B6B);
@@ -394,6 +772,8 @@ class _ScriptsPageState extends State<ScriptsPage>
   Widget _scriptCard(ThemeData theme, ScriptDoc doc) {
     final isRunning = _runningScriptId == doc.id;
     final isAnyRunning = _runner.running;
+    final rules = doc.rules;
+    final hasRules = rules.allowRunCount || rules.allowRange;
 
     return Container(
       padding: const EdgeInsets.all(14),
@@ -408,82 +788,166 @@ class _ScriptsPageState extends State<ScriptsPage>
           width: isRunning ? 2 : 1.2,
         ),
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Container(
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [Color(0xFF6C5CE7), Color(0xFF00D2FF)],
-              ),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: const Icon(Icons.auto_awesome_rounded,
-                color: Colors.white, size: 22),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  doc.name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: _noDeco.copyWith(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 14,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  '${doc.steps.length} خطوة',
-                  style: _noDeco.copyWith(
-                    fontSize: 11,
-                    color: theme.colorScheme.onSurface.withOpacity(0.5),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Material(
-            color: Colors.transparent,
-            child: InkWell(
-              borderRadius: BorderRadius.circular(50),
-              onTap: isAnyRunning ? null : () => _runScript(doc),
-              child: Container(
+          Row(
+            children: [
+              Container(
                 width: 44,
                 height: 44,
                 decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  gradient: isAnyRunning
-                      ? null
-                      : const LinearGradient(
-                          colors: [
-                            Color(0xFF00D68F),
-                            Color(0xFF00B894),
-                          ],
-                        ),
-                  color: isAnyRunning
-                      ? theme.colorScheme.onSurface.withOpacity(0.15)
-                      : null,
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFF6C5CE7), Color(0xFF00D2FF)],
+                  ),
+                  borderRadius: BorderRadius.circular(12),
                 ),
-                child: Icon(
-                  isRunning
-                      ? Icons.hourglass_top_rounded
-                      : Icons.play_arrow_rounded,
-                  color: isAnyRunning
-                      ? theme.colorScheme.onSurface.withOpacity(0.4)
-                      : Colors.white,
-                  size: 22,
+                child: const Icon(Icons.auto_awesome_rounded,
+                    color: Colors.white, size: 22),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      doc.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: _noDeco.copyWith(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '${doc.steps.length} خطوة',
+                      style: _noDeco.copyWith(
+                        fontSize: 11,
+                        color:
+                            theme.colorScheme.onSurface.withOpacity(0.5),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(50),
+                  onTap:
+                      isAnyRunning ? null : () => _runScript(doc),
+                  child: Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: isAnyRunning
+                          ? null
+                          : const LinearGradient(
+                              colors: [
+                                Color(0xFF00D68F),
+                                Color(0xFF00B894),
+                              ],
+                            ),
+                      color: isAnyRunning
+                          ? theme.colorScheme.onSurface
+                              .withOpacity(0.15)
+                          : null,
+                    ),
+                    child: Icon(
+                      isRunning
+                          ? Icons.hourglass_top_rounded
+                          : Icons.play_arrow_rounded,
+                      color: isAnyRunning
+                          ? theme.colorScheme.onSurface
+                              .withOpacity(0.4)
+                          : Colors.white,
+                      size: 22,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+
+          if (hasRules) ...[
+            const SizedBox(height: 10),
+            Material(
+              color: Colors.transparent,
+              child: InkWell(
+                borderRadius: BorderRadius.circular(10),
+                onTap: () => _showRulesDialog(doc),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 12, vertical: 10),
+                  decoration: BoxDecoration(
+                    color:
+                        const Color(0xFF6C5CE7).withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                        color:
+                            const Color(0xFF6C5CE7).withOpacity(0.3)),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.rule_rounded,
+                          size: 16, color: Color(0xFF6C5CE7)),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          'القواعد',
+                          style: _noDeco.copyWith(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                            color: const Color(0xFF6C5CE7),
+                          ),
+                        ),
+                      ),
+                      Text(
+                        _prefsSummary(doc),
+                        style: _noDeco.copyWith(
+                          fontSize: 10.5,
+                          color: theme.colorScheme.onSurface
+                              .withOpacity(0.6),
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      const Icon(Icons.settings_rounded,
+                          size: 14, color: Color(0xFF6C5CE7)),
+                    ],
+                  ),
                 ),
               ),
             ),
-          ),
+          ],
         ],
       ),
     );
+  }
+
+  String _prefsSummary(ScriptDoc doc) {
+    final prefs = _prefs[doc.id];
+    final rules = doc.rules;
+    final parts = <String>[];
+
+    if (rules.allowRunCount) {
+      final c = prefs?.runCount ?? 0;
+      final effective =
+          c > 0 ? c : rules.defaultRunCount;
+      parts.add('$effective×');
+    }
+
+    if (rules.allowRange) {
+      final r = prefs?.rangeName ?? '';
+      final effective =
+          r.isNotEmpty ? r : rules.defaultRange;
+      if (effective.isNotEmpty) {
+        parts.add(effective);
+      }
+    }
+
+    return parts.join(' • ');
   }
 
   Widget _emptyView(ThemeData theme) {
