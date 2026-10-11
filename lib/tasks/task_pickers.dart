@@ -814,39 +814,76 @@ class _CountdownDialog extends StatefulWidget {
   State<_CountdownDialog> createState() => _CountdownDialogState();
 }
 
-class _CountdownDialogState extends State<_CountdownDialog> {
-  int _seconds = 5;
+class _CountdownDialogState extends State<_CountdownDialog>
+    with WidgetsBindingObserver {
+  static const int _totalSeconds = 5;
+
+  late DateTime _startedAt;
   Timer? _timer;
   bool _capturing = false;
+
+  int get _remainingSeconds {
+    final elapsed = DateTime.now().difference(_startedAt).inSeconds;
+    final rem = _totalSeconds - elapsed;
+    return rem < 0 ? 0 : rem;
+  }
 
   @override
   void initState() {
     super.initState();
-    _timer = Timer.periodic(const Duration(seconds: 1), (t) async {
+    WidgetsBinding.instance.addObserver(this);
+    _startedAt = DateTime.now();
+    _startTimer();
+  }
+
+  void _startTimer() {
+    _timer = Timer.periodic(const Duration(milliseconds: 500), (t) {
       if (!mounted) return;
-      if (_seconds > 1) {
-        setState(() => _seconds--);
-      } else {
+      setState(() {});
+
+      if (_remainingSeconds <= 0 && !_capturing) {
         t.cancel();
-        setState(() {
-          _seconds = 0;
-          _capturing = true;
-        });
-        final elements = await AutoFillBridge.dumpScreen();
-        if (mounted) Navigator.pop(context, elements);
+        _doCapture();
       }
     });
   }
 
+  Future<void> _doCapture() async {
+    if (_capturing) return;
+    setState(() => _capturing = true);
+
+    try {
+      await Future.delayed(const Duration(milliseconds: 100));
+      final elements = await AutoFillBridge.dumpScreen();
+      if (mounted) Navigator.pop(context, elements);
+    } catch (_) {
+      if (mounted) Navigator.pop(context, <ScreenElement>[]);
+    }
+  }
+
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _timer?.cancel();
     super.dispose();
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      setState(() {});
+      if (_remainingSeconds <= 0 && !_capturing) {
+        _timer?.cancel();
+        _doCapture();
+      }
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final sec = _remainingSeconds;
+
     return AlertDialog(
       backgroundColor: theme.colorScheme.surface,
       shape: RoundedRectangleBorder(
@@ -863,7 +900,7 @@ class _CountdownDialogState extends State<_CountdownDialog> {
           Text(
             _capturing
                 ? 'جاري الالتقاط…'
-                : 'هيتم الالتقاط بعد $_seconds',
+                : 'هيتم الالتقاط بعد $sec',
             style: const TextStyle(
               fontSize: 22,
               fontWeight: FontWeight.bold,
@@ -872,7 +909,9 @@ class _CountdownDialogState extends State<_CountdownDialog> {
           ),
           const SizedBox(height: 10),
           Text(
-            _capturing ? 'من فضلك استنى' : 'اسرع! روح للتطبيق',
+            _capturing
+                ? 'من فضلك استنى'
+                : 'اسرع! روح للتطبيق',
             textAlign: TextAlign.center,
             style: TextStyle(
               fontSize: 12,
@@ -891,14 +930,14 @@ class _CountdownDialogState extends State<_CountdownDialog> {
                     width: 50,
                     height: 50,
                     child: CircularProgressIndicator(
-                      value: _seconds / 5,
+                      value: sec / _totalSeconds,
                       strokeWidth: 4,
                       backgroundColor:
                           theme.colorScheme.onSurface.withOpacity(0.1),
                     ),
                   ),
                   Text(
-                    '$_seconds',
+                    '$sec',
                     style: const TextStyle(
                       fontSize: 22,
                       fontWeight: FontWeight.bold,
@@ -906,6 +945,18 @@ class _CountdownDialogState extends State<_CountdownDialog> {
                     ),
                   ),
                 ],
+              ),
+            ),
+            const SizedBox(height: 10),
+            TextButton(
+              onPressed: () => Navigator.pop(context, <ScreenElement>[]),
+              child: Text(
+                'إلغاء',
+                style: TextStyle(
+                  color:
+                      theme.colorScheme.onSurface.withOpacity(0.6),
+                  decoration: TextDecoration.none,
+                ),
               ),
             ),
           ] else
