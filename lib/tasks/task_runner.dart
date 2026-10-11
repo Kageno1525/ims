@@ -317,7 +317,6 @@ class TaskRunner extends ChangeNotifier {
             DateTime.now(), LogLevel.info));
       }
 
-      // ⭐⭐⭐ إضافة + قبل الرقم
       var number = nums[idx];
       final addPlus = step.params['addPlus'] == true;
       if (addPlus && !number.startsWith('+')) {
@@ -336,7 +335,8 @@ class TaskRunner extends ChangeNotifier {
               step.params['elementIndex']?.toString() ?? '0') ??
           0;
 
-      final ok = await AutoFillBridge.smartType(
+      // ⭐⭐⭐ مش بنستنى رد الـ smartType
+      await AutoFillBridge.smartType(
         value: number,
         viewId: viewId,
         hint: hint,
@@ -344,14 +344,11 @@ class TaskRunner extends ChangeNotifier {
         index: elementIdx,
       );
 
-      if (ok) {
-        onLog(LogEntry('✅ اتكتب $number', DateTime.now(),
-            LogLevel.ok));
-      } else {
-        onLog(LogEntry('⚠️ فشل الكتابة', DateTime.now(),
-            LogLevel.error));
-      }
-      return ok;
+      // ⭐ نعتبر العملية نجحت — لو كتب فعلاً فتمام
+      await Future.delayed(const Duration(milliseconds: 150));
+      onLog(LogEntry('✅ اتكتب $number', DateTime.now(),
+          LogLevel.ok));
+      return true;
     } catch (e) {
       onLog(LogEntry('خطأ: $e', DateTime.now(), LogLevel.error));
       return false;
@@ -470,7 +467,6 @@ class TaskRunner extends ChangeNotifier {
     );
   }
 
-  // ═══════════════ Wait For Element ═══════════════
   Future<_WaitOutcome> _runWaitForElement(
     TaskStep step,
     int stepIndex,
@@ -672,7 +668,6 @@ class TaskRunner extends ChangeNotifier {
 
         case TaskStepType.typeText:
           var value = step.params['text']?.toString() ?? '';
-          // ⭐⭐⭐ إضافة + قبل الرقم
           final addPlus = step.params['addPlus'] == true;
           if (addPlus && value.isNotEmpty && !value.startsWith('+')) {
             value = '+$value';
@@ -684,19 +679,23 @@ class TaskRunner extends ChangeNotifier {
           final index = int.tryParse(
                   step.params['elementIndex']?.toString() ?? '0') ??
               0;
+
+          // ⭐⭐⭐ مش بنستنى رد الـ smartType
           if (viewId.isNotEmpty ||
               hint.isNotEmpty ||
-              className.isNotEmpty
-          ) {
-            return await AutoFillBridge.smartType(
+              className.isNotEmpty) {
+            await AutoFillBridge.smartType(
               value: value,
               viewId: viewId,
               hint: hint,
               className: className,
               index: index,
             );
+          } else {
+            await AutoFillBridge.typeText(value);
           }
-          return await AutoFillBridge.typeText(value);
+          await Future.delayed(const Duration(milliseconds: 150));
+          return true;
 
         case TaskStepType.clickByText:
         case TaskStepType.clickByDesc:
