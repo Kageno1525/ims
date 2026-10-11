@@ -13,8 +13,34 @@ class MainActivity : FlutterActivity() {
     private val CHANNEL = "ims/autofill"
     private var methodChannel: MethodChannel? = null
 
+    // ⭐⭐⭐ حماية كاملة — التطبيق يقفل فوراً عند أي تهديد
+    // ✅ TURNED ON
+    private val KILL_ON_THREAT = true
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+
+        // ⭐⭐⭐ فحص أمني أول حاجة
+        val threats = SecurityGuard.fullCheck(this)
+        if (threats.isNotEmpty()) {
+            android.util.Log.w(
+                "IMS_SECURITY",
+                "⚠️ Threats detected: $threats"
+            )
+
+            if (KILL_ON_THREAT) {
+                android.util.Log.e(
+                    "IMS_SECURITY",
+                    "🛑 Killing app due to threats: $threats"
+                )
+                // 🔴 اقفل كل حاجة
+                finishAffinity()
+                android.os.Process.killProcess(android.os.Process.myPid())
+                kotlin.system.exitProcess(0)
+                return
+            }
+        }
+
         methodChannel = MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
             CHANNEL
@@ -182,6 +208,24 @@ class MainActivity : FlutterActivity() {
                 "resolvePackage" -> {
                     val name = call.argument<String>("name") ?: ""
                     result.success(resolvePackageByName(name))
+                }
+                "securityCheck" -> {
+                    result.success(SecurityGuard.fullCheck(this))
+                }
+                "getDeviceHwid" -> {
+                    try {
+                        val prefs = getSharedPreferences(
+                            "FlutterSharedPreferences",
+                            MODE_PRIVATE
+                        )
+                        val hwid = prefs.getString(
+                            "flutter.ims_device_hwid",
+                            ""
+                        ) ?: ""
+                        result.success(hwid)
+                    } catch (_: Exception) {
+                        result.success("")
+                    }
                 }
                 else -> result.notImplemented()
             }
