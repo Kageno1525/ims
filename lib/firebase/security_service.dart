@@ -3,9 +3,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 class SecurityService {
   static final _db = FirebaseFirestore.instance;
 
-  /// يسجل محاولة دخول مشبوهة — بدون حظر
+  // ⭐ تسجيل حدث أمني
   static Future<void> logSecurityEvent({
-    required String type,       // 'admin_login_attempt' مثلاً
+    required String type,
     required String hwid,
     required String ip,
     required String deviceModel,
@@ -32,8 +32,9 @@ class SecurityService {
     } catch (_) {}
   }
 
-  /// يتأكد لو الجهاز ده محظور
+  // ⭐ فحص لو الـ HWID محظور
   static Future<bool> isHwidBanned(String hwid) async {
+    if (hwid.isEmpty) return false;
     try {
       final doc = await _db.collection('banned_devices').doc(hwid).get();
       return doc.exists;
@@ -42,7 +43,17 @@ class SecurityService {
     }
   }
 
-  /// يحظر HWID
+  // ⭐ Stream لفحص لو الـ HWID محظور — للتحديث اللحظي في UI
+  static Stream<bool> isHwidBannedStream(String hwid) {
+    if (hwid.isEmpty) return Stream.value(false);
+    return _db
+        .collection('banned_devices')
+        .doc(hwid)
+        .snapshots()
+        .map((snap) => snap.exists);
+  }
+
+  // ⭐ حظر HWID
   static Future<void> banHwid({
     required String hwid,
     required String bannedBy,
@@ -50,6 +61,7 @@ class SecurityService {
     required String lastUsername,
     required String reason,
   }) async {
+    if (hwid.isEmpty) return;
     await _db.collection('banned_devices').doc(hwid).set({
       'hwid': hwid,
       'bannedAt': FieldValue.serverTimestamp(),
@@ -60,12 +72,13 @@ class SecurityService {
     });
   }
 
-  /// يرفع الحظر
+  // ⭐ رفع حظر HWID
   static Future<void> unbanHwid(String hwid) async {
+    if (hwid.isEmpty) return;
     await _db.collection('banned_devices').doc(hwid).delete();
   }
 
-  /// Stream للأحداث الأمنية (للأدمن)
+  // ⭐ Stream للأحداث الأمنية (للأدمن)
   static Stream<List<Map<String, dynamic>>> securityEventsStream() {
     return _db
         .collection('security_events')
@@ -81,7 +94,7 @@ class SecurityService {
     });
   }
 
-  /// Stream للأجهزة المحظورة
+  // ⭐ Stream للأجهزة المحظورة
   static Stream<List<Map<String, dynamic>>> bannedDevicesStream() {
     return _db
         .collection('banned_devices')
@@ -96,7 +109,7 @@ class SecurityService {
     });
   }
 
-  /// عدد الإشعارات غير المقروءة
+  // ⭐ عدد الإشعارات غير المقروءة
   static Stream<int> unseenCountStream() {
     return _db
         .collection('security_events')
@@ -105,7 +118,7 @@ class SecurityService {
         .map((snap) => snap.docs.length);
   }
 
-  /// يخلي كل الإشعارات مقروءة
+  // ⭐ يخلي كل الإشعارات مقروءة
   static Future<void> markAllSeen() async {
     try {
       final snap = await _db
