@@ -3,12 +3,12 @@ import 'package:crypto/crypto.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models.dart';
 
-/// ⭐ Cache محلي للبروفايل — **مشفّر**
+/// ⭐ Cache محلي للبروفايل — مشفّر
 class ProfileCache {
   static const _kProfileKey = 'ims_secure_profile_v2';
   static const _kCacheTimeKey = 'ims_secure_profile_time_v2';
 
-  // ⭐ Salt سري — بدون أي $ عشان Dart
+  // ⭐ Salt سري — بدون $
   static const String _secretSalt =
       r'Kageno@IMS#2026_Secure_Key!xK9pZ_mNoP3qR7';
 
@@ -61,6 +61,12 @@ class ProfileCache {
       final prefs = await SharedPreferences.getInstance();
       final data = profile.toMap();
       data['uid'] = profile.uid;
+      data['hwidBoundAt'] =
+          profile.hwidBoundAt?.toIso8601String();
+      data['createdAt'] =
+          profile.createdAt?.toIso8601String();
+      data['lastLoginAt'] =
+          profile.lastLoginAt?.toIso8601String();
 
       final json = jsonEncode(data);
       final enc = _encrypt(json);
