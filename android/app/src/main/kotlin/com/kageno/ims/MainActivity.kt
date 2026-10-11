@@ -411,7 +411,7 @@ class MainActivity : FlutterActivity() {
         val service = "$packageName/${ImsAccessibilityService::class.java.name}"
         val enabled = Settings.Secure.getString(
             contentResolver,
-            Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+            Settings.ENABLED_ACCESSIBILITY_SERVICES
         ) ?: return false
         return enabled.split(':').any { it.equals(service, ignoreCase = true) }
     }
