@@ -2,7 +2,7 @@ plugins {
     id "com.android.application"
     id "kotlin-android"
     id "dev.flutter.flutter-gradle-plugin"
-    id "com.google.gms.google-services"
+    id "com.google.gms.google-services"   // ⭐ Firebase
 }
 
 def localProperties = new Properties()
@@ -26,7 +26,7 @@ if (flutterVersionName == null) {
 android {
     namespace = "com.kageno.ims"
     compileSdk = 36
-    ndkVersion = "28.2.13676358"
+    ndkVersion = "27.0.12077973"
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -43,21 +43,14 @@ android {
         targetSdk = 33
         versionCode = flutterVersionCode.toInteger()
         versionName = flutterVersionName
-        multiDexEnabled = true
+        multiDexEnabled = true   // ⭐ مهم لـ Firebase
     }
 
     buildTypes {
         release {
             signingConfig = signingConfigs.debug
-
-            // ⭐ ProGuard + R8
-            minifyEnabled = true
-            shrinkResources = true
-            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
-
-            // ⭐ تشفير أقوى
-            debuggable = false
-            jniDebuggable = false
+            minifyEnabled = false
+            shrinkResources = false
         }
     }
 }
@@ -66,4 +59,5 @@ flutter {
     source = "../.."
 }
 
+// ⭐ Firebase Google Services
 apply plugin: 'com.google.gms.google-services'
