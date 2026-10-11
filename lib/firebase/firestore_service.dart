@@ -1,12 +1,12 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models.dart';
-import '../tasks/task_model.dart';
 
 class FirestoreService {
   static final FirebaseFirestore _db = FirebaseFirestore.instance;
 
   // ═══════════════ USERS ═══════════════
 
+  /// قراءة بروفايل مستخدم
   static Future<UserProfile?> getUserProfile(String uid) async {
     try {
       final doc = await _db.collection('users').doc(uid).get();
@@ -17,6 +17,7 @@ class FirestoreService {
     }
   }
 
+  /// Stream لبروفايل المستخدم (يتحدث لحظياً)
   static Stream<UserProfile?> userProfileStream(String uid) {
     return _db.collection('users').doc(uid).snapshots().map((snap) {
       if (!snap.exists) return null;
@@ -24,24 +25,20 @@ class FirestoreService {
     });
   }
 
+  /// كل المستخدمين (للأدمن)
   static Stream<List<UserProfile>> allUsersStream() {
     return _db
         .collection('users')
+        .orderBy('createdAt', descending: true)
         .snapshots()
         .map((snap) {
-      final list = snap.docs
+      return snap.docs
           .map((d) => UserProfile.fromDoc(d.id, d.data()))
           .toList();
-      // ⭐ ترتيب يدوي — آمن لو مفيش createdAt
-      list.sort((a, b) {
-        final at = a.createdAt?.millisecondsSinceEpoch ?? 0;
-        final bt = b.createdAt?.millisecondsSinceEpoch ?? 0;
-        return bt.compareTo(at);
-      });
-      return list;
     });
   }
 
+  /// إنشاء/تحديث بروفايل مستخدم
   static Future<void> upsertUserProfile({
     required String uid,
     required String email,
@@ -65,57 +62,44 @@ class FirestoreService {
     await ref.set(data, SetOptions(merge: true));
   }
 
+  /// تحديث بيانات مستخدم
   static Future<void> updateUser(String uid, Map<String, dynamic> data) async {
     await _db.collection('users').doc(uid).set(data, SetOptions(merge: true));
   }
 
+  /// حظر / إلغاء حظر
   static Future<void> setUserBanned(String uid, bool banned) async {
     await _db.collection('users').doc(uid).update({'isBanned': banned});
   }
 
+  /// مسح مستخدم
   static Future<void> deleteUser(String uid) async {
     await _db.collection('users').doc(uid).delete();
   }
 
+  /// تحديث آخر دخول
   static Future<void> updateLastLogin(String uid) async {
-    try {
-      await _db.collection('users').doc(uid).update({
-        'lastLoginAt': FieldValue.serverTimestamp(),
-      });
-    } catch (_) {}
-  }
-
-  // ⭐⭐ HWID — ربط الجهاز باليوزر
-  static Future<void> setUserHwid(String uid, String hwid) async {
-    await _db.collection('users').doc(uid).update({'hwid': hwid});
-  }
-
-  static Future<void> resetUserHwid(String uid) async {
     await _db.collection('users').doc(uid).update({
-      'hwid': '',
-      'hwidResetAt': FieldValue.serverTimestamp(),
+      'lastLoginAt': FieldValue.serverTimestamp(),
     });
   }
 
   // ═══════════════ SCRIPTS ═══════════════
 
+  /// كل السكربتات (للأدمن)
   static Stream<List<ScriptDoc>> allScriptsStream() {
     return _db
         .collection('scripts')
+        .orderBy('createdAt', descending: true)
         .snapshots()
         .map((snap) {
-      final list = snap.docs
+      return snap.docs
           .map((d) => ScriptDoc.fromDoc(d.id, d.data()))
           .toList();
-      list.sort((a, b) {
-        final at = a.createdAt?.millisecondsSinceEpoch ?? 0;
-        final bt = b.createdAt?.millisecondsSinceEpoch ?? 0;
-        return bt.compareTo(at);
-      });
-      return list;
     });
   }
 
+  /// السكربتات المسموح بها لمستخدم معين
   static Stream<List<ScriptDoc>> userScriptsStream(String uid) {
     return _db
         .collection('scripts')
@@ -128,21 +112,7 @@ class FirestoreService {
     });
   }
 
-  static Future<ScriptDoc?> getScriptByName(String name) async {
-    try {
-      final snap = await _db
-          .collection('scripts')
-          .where('name', isEqualTo: name)
-          .limit(1)
-          .get();
-      if (snap.docs.isEmpty) return null;
-      final d = snap.docs.first;
-      return ScriptDoc.fromDoc(d.id, d.data());
-    } catch (_) {
-      return null;
-    }
-  }
-
+  /// رفع سكربت جديد
   static Future<String> uploadScript({
     required String name,
     required List<Map<String, dynamic>> steps,
@@ -160,16 +130,7 @@ class FirestoreService {
     return ref.id;
   }
 
-  static Future<void> updateScriptContent({
-    required String scriptId,
-    required List<Map<String, dynamic>> steps,
-  }) async {
-    await _db.collection('scripts').doc(scriptId).update({
-      'steps': steps,
-      'updatedAt': FieldValue.serverTimestamp(),
-    });
-  }
-
+  /// تحديث سكربت
   static Future<void> updateScript(
     String id,
     Map<String, dynamic> data,
@@ -178,58 +139,14 @@ class FirestoreService {
     await _db.collection('scripts').doc(id).set(data, SetOptions(merge: true));
   }
 
+  /// مسح سكربت
   static Future<void> deleteScript(String id) async {
     await _db.collection('scripts').doc(id).delete();
   }
 
-  // ═══════════════ ADMIN TASKS ═══════════════
-  // ⭐ المهام بتاعت الأدمن — محفوظة على Firestore
-
-  static Stream<List<Task>> adminTasksStream() {
-    return _db
-        .collection('admin_tasks')
-        .snapshots()
-        .map((snap) {
-      final list = snap.docs.map((d) {
-        final data = d.data();
-        return Task(
-          id: data['id']?.toString() ?? d.id,
-          name: data['name']?.toString() ?? '',
-          steps: (data['steps'] as List? ?? [])
-              .map((e) =>
-                  TaskStep.fromJson(Map<String, dynamic>.from(e)))
-              .toList(),
-          createdAt: _parseTs(data['createdAt']) ?? DateTime.now(),
-          lastRunAt: _parseTs(data['lastRunAt']),
-          repeatCount: data['repeatCount'] ?? 1,
-          autoIncrement: data['autoIncrement'] == true,
-        );
-      }).toList();
-      // ⭐ ترتيب يدوي
-      list.sort((a, b) => b.createdAt.compareTo(a.createdAt));
-      return list;
-    });
-  }
-
-  static Future<void> saveAdminTask(Task task) async {
-    await _db.collection('admin_tasks').doc(task.id).set({
-      'id': task.id,
-      'name': task.name,
-      'steps': task.steps.map((s) => s.toJson()).toList(),
-      'createdAt': task.createdAt.toIso8601String(),
-      'lastRunAt': task.lastRunAt?.toIso8601String(),
-      'repeatCount': task.repeatCount,
-      'autoIncrement': task.autoIncrement,
-      'updatedAt': FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true));
-  }
-
-  static Future<void> deleteAdminTask(String id) async {
-    await _db.collection('admin_tasks').doc(id).delete();
-  }
-
   // ═══════════════ SESSIONS ═══════════════
 
+  /// كتابة جلسة جديدة (deviceId + sessionId)
   static Future<void> setSession({
     required String uid,
     required String sessionId,
@@ -246,6 +163,7 @@ class FirestoreService {
     });
   }
 
+  /// قراءة الجلسة الحالية للمستخدم
   static Future<Map<String, dynamic>?> getSession(String uid) async {
     try {
       final doc = await _db.collection('sessions').doc(uid).get();
@@ -256,6 +174,7 @@ class FirestoreService {
     }
   }
 
+  /// Stream للجلسة (عشان نراقب لو حد تاني دخل من جهاز مختلف)
   static Stream<Map<String, dynamic>?> sessionStream(String uid) {
     return _db.collection('sessions').doc(uid).snapshots().map((snap) {
       if (!snap.exists) return null;
@@ -263,20 +182,10 @@ class FirestoreService {
     });
   }
 
+  /// مسح جلسة (logout)
   static Future<void> clearSession(String uid) async {
     try {
       await _db.collection('sessions').doc(uid).delete();
     } catch (_) {}
-  }
-
-  static DateTime? _parseTs(dynamic v) {
-    if (v == null) return null;
-    try {
-      if (v is DateTime) return v;
-      if (v is String) return DateTime.tryParse(v);
-      final d = v.toDate();
-      if (d is DateTime) return d;
-    } catch (_) {}
-    return null;
   }
 }
