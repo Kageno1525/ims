@@ -1,17 +1,13 @@
 package com.kageno.ims
 
-import android.content.Context
 import android.content.Intent
 import android.net.Uri
-import android.os.Build
-import android.os.Debug
 import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
-import java.io.File
 
 class MainActivity : FlutterActivity() {
     private val CHANNEL = "ims/autofill"
@@ -182,14 +178,30 @@ class MainActivity : FlutterActivity() {
                         Handler(Looper.getMainLooper()).post { result.success(r) }
                     }.start()
                 }
-                "globalBack" -> runAsync(result) {
-                    ImsAccessibilityService.globalBackStatic()
+                // ⭐⭐⭐ أزرار التنقل — بتتنفذ على الـ main thread
+                "globalBack" -> {
+                    runOnUiThread {
+                        val ok = try {
+                            ImsAccessibilityService.globalBackStatic()
+                        } catch (_: Exception) { false }
+                        result.success(ok)
+                    }
                 }
-                "globalHome" -> runAsync(result) {
-                    ImsAccessibilityService.globalHomeStatic()
+                "globalHome" -> {
+                    runOnUiThread {
+                        val ok = try {
+                            ImsAccessibilityService.globalHomeStatic()
+                        } catch (_: Exception) { false }
+                        result.success(ok)
+                    }
                 }
-                "globalRecents" -> runAsync(result) {
-                    ImsAccessibilityService.globalRecentsStatic()
+                "globalRecents" -> {
+                    runOnUiThread {
+                        val ok = try {
+                            ImsAccessibilityService.globalRecentsStatic()
+                        } catch (_: Exception) { false }
+                        result.success(ok)
+                    }
                 }
                 "currentPackage" ->
                     result.success(ImsAccessibilityService.currentPackageStatic())
@@ -245,7 +257,7 @@ class MainActivity : FlutterActivity() {
     // ⭐ SecurityGuard — داخل MainActivity
     // ═══════════════════════════════════════════════════
 
-    private fun fullSecurityCheck(context: Context): List<String> {
+    private fun fullSecurityCheck(context: android.content.Context): List<String> {
         val threats = mutableListOf<String>()
         if (isRooted()) threats.add("root")
         if (isDebuggerAttached()) threats.add("debugger")
@@ -273,18 +285,18 @@ class MainActivity : FlutterActivity() {
         )
         for (p in paths) {
             try {
-                if (File(p).exists()) return true
+                if (java.io.File(p).exists()) return true
             } catch (_: Exception) {}
         }
-        val tags = Build.TAGS ?: ""
+        val tags = android.os.Build.TAGS ?: ""
         if (tags.contains("test-keys")) return true
 
         try {
             val process = Runtime.getRuntime().exec(arrayOf("which", "su"))
             val reader = process.inputStream.bufferedReader()
-            val result = reader.readLine()
+            val res = reader.readLine()
             process.destroy()
-            if (result != null && result.isNotEmpty()) return true
+            if (res != null && res.isNotEmpty()) return true
         } catch (_: Exception) {}
 
         return false
@@ -292,30 +304,31 @@ class MainActivity : FlutterActivity() {
 
     private fun isDebuggerAttached(): Boolean {
         return try {
-            Debug.isDebuggerConnected() || Debug.waitingForDebugger()
+            android.os.Debug.isDebuggerConnected() ||
+                    android.os.Debug.waitingForDebugger()
         } catch (_: Exception) {
             false
         }
     }
 
     private fun isEmulator(): Boolean {
-        return (Build.FINGERPRINT.startsWith("generic") ||
-                Build.FINGERPRINT.startsWith("unknown") ||
-                Build.MODEL.contains("google_sdk") ||
-                Build.MODEL.contains("Emulator") ||
-                Build.MODEL.contains("Android SDK built for x86") ||
-                Build.MANUFACTURER.contains("Genymotion") ||
-                (Build.BRAND.startsWith("generic") &&
-                    Build.DEVICE.startsWith("generic")) ||
-                "google_sdk" == Build.PRODUCT)
+        return (android.os.Build.FINGERPRINT.startsWith("generic") ||
+                android.os.Build.FINGERPRINT.startsWith("unknown") ||
+                android.os.Build.MODEL.contains("google_sdk") ||
+                android.os.Build.MODEL.contains("Emulator") ||
+                android.os.Build.MODEL.contains("Android SDK built for x86") ||
+                android.os.Build.MANUFACTURER.contains("Genymotion") ||
+                (android.os.Build.BRAND.startsWith("generic") &&
+                    android.os.Build.DEVICE.startsWith("generic")) ||
+                "google_sdk" == android.os.Build.PRODUCT)
     }
 
     private fun isHooked(): Boolean {
         try {
-            if (File("/data/local/tmp/frida-server").exists()) return true
-            if (File("/data/local/tmp/re.frida.server").exists()) return true
-            if (File("/system/lib/libfrida-gadget.so").exists()) return true
-            if (File("/system/lib64/libfrida-gadget.so").exists()) return true
+            if (java.io.File("/data/local/tmp/frida-server").exists()) return true
+            if (java.io.File("/data/local/tmp/re.frida.server").exists()) return true
+            if (java.io.File("/system/lib/libfrida-gadget.so").exists()) return true
+            if (java.io.File("/system/lib64/libfrida-gadget.so").exists()) return true
         } catch (_: Exception) {}
 
         try {
