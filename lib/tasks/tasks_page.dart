@@ -2,12 +2,17 @@ import 'package:flutter/material.dart';
 import '../models.dart';
 import '../widgets.dart';
 import '../autofill_bridge.dart';
+import '../firebase/firestore_service.dart';
 import '../pages/upload_script_sheet.dart';
 import 'task_model.dart';
-import 'task_storage.dart';
 import 'task_editor_page.dart';
 import 'task_runner.dart';
-import '../config.dart';
+
+// ⭐ فلاج الأدمن
+const bool IS_ADMIN_APP = bool.fromEnvironment(
+  'IS_ADMIN',
+  defaultValue: true,
+);
 
 class TasksPage extends StatefulWidget {
   final bool isDark;
@@ -37,8 +42,6 @@ class _TasksPageState extends State<TasksPage> with WidgetsBindingObserver {
     decorationColor: Colors.transparent,
   );
 
-  List<Task> _tasks = [];
-  bool _loading = true;
   bool _accessibilityOn = false;
   Task? _runningTask;
   final TaskRunner _runner = TaskRunner();
@@ -49,7 +52,6 @@ class _TasksPageState extends State<TasksPage> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _load();
     _checkAccessibility();
     _runner.addListener(() {
       if (mounted) setState(() {});
@@ -77,16 +79,6 @@ class _TasksPageState extends State<TasksPage> with WidgetsBindingObserver {
     setState(() => _accessibilityOn = a);
   }
 
-  Future<void> _load() async {
-    setState(() => _loading = true);
-    final list = await TaskStorage.loadAll();
-    if (!mounted) return;
-    setState(() {
-      _tasks = list;
-      _loading = false;
-    });
-  }
-
   void _addLog(LogEntry e) {
     final cur = _logs.value;
     final upd = <LogEntry>[e, ...cur];
@@ -106,8 +98,8 @@ class _TasksPageState extends State<TasksPage> with WidgetsBindingObserver {
       ),
     );
     if (result != null) {
-      await TaskStorage.upsert(result);
-      await _load();
+      // ⭐ احفظ في Firestore
+      await FirestoreService.saveAdminTask(result);
     }
   }
 
@@ -123,8 +115,7 @@ class _TasksPageState extends State<TasksPage> with WidgetsBindingObserver {
       ),
     );
     if (result != null) {
-      await TaskStorage.upsert(result);
-      await _load();
+      await FirestoreService.saveAdminTask(result);
     }
   }
 
@@ -132,6 +123,9 @@ class _TasksPageState extends State<TasksPage> with WidgetsBindingObserver {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
+        backgroundColor: Theme.of(ctx).colorScheme.surface,
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20)),
         title: Text(
           'حذف المهمة',
           style: _noDeco.copyWith(fontWeight: FontWeight.bold),
@@ -157,12 +151,10 @@ class _TasksPageState extends State<TasksPage> with WidgetsBindingObserver {
       ),
     );
     if (ok == true) {
-      await TaskStorage.delete(task.id);
-      await _load();
+      await FirestoreService.deleteAdminTask(task.id);
     }
   }
 
-  // ⭐ رفع المهمة كسكربت للمستخدمين (مباشرة من القائمة)
   Future<void> _uploadTask(Task task) async {
     if (_runner.running) return;
 
@@ -175,7 +167,7 @@ class _TasksPageState extends State<TasksPage> with WidgetsBindingObserver {
     if (uploaded == true && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('✅ تم رفع السكربت للمستخدمين'),
+          content: Text('✅ تم رفع السكربت'),
           backgroundColor: Color(0xFF00D68F),
         ),
       );
@@ -192,8 +184,10 @@ class _TasksPageState extends State<TasksPage> with WidgetsBindingObserver {
       numbers: widget.currentNumbers,
       currentIndex: widget.currentCsvIndex,
     );
-    await TaskStorage.upsert(task.copyWith(lastRunAt: DateTime.now()));
-    await _load();
+    // ⭐ حدّث lastRunAt في Firestore
+    await FirestoreService.saveAdminTask(
+      task.copyWith(lastRunAt: DateTime.now()),
+    );
     if (mounted) setState(() => _runningTask = null);
   }
 
@@ -215,25 +209,31 @@ class _TasksPageState extends State<TasksPage> with WidgetsBindingObserver {
                   ),
                   const SizedBox(width: 12),
                   Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'المهام',
-                          style: _noDeco.copyWith(
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        Text(
-                          '${_tasks.length} مهمة محفوظة',
-                          style: _noDeco.copyWith(
-                            fontSize: 12,
-                            color: theme.colorScheme.onSurface
-                                .withOpacity(0.5),
-                          ),
-                        ),
-                      ],
+                    child: StreamBuilder<List<Task>>(
+                      stream: FirestoreService.adminTasksStream(),
+                      builder: (_, snap) {
+                        final c = snap.data?.length ?? 0;
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'المهام',
+                              style: _noDeco.copyWith(
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            Text(
+                              '$c مهمة محفوظة',
+                              style: _noDeco.copyWith(
+                                fontSize: 12,
+                                color: theme.colorScheme.onSurface
+                                    .withOpacity(0.5),
+                              ),
+                            ),
+                          ],
+                        );
+                      },
                     ),
                   ),
                   IconBtn(
@@ -246,7 +246,6 @@ class _TasksPageState extends State<TasksPage> with WidgetsBindingObserver {
               ),
               const SizedBox(height: 14),
 
-              // ⭐ كارت الإعدادات البارز
               _accessibilityCard(theme),
               const SizedBox(height: 14),
 
@@ -267,20 +266,34 @@ class _TasksPageState extends State<TasksPage> with WidgetsBindingObserver {
                   ),
                 ),
               const SizedBox(height: 14),
+
               Expanded(
-                child: _loading
-                    ? const Center(child: CircularProgressIndicator())
-                    : _tasks.isEmpty
-                        ? _emptyView(theme)
-                        : ListView.separated(
-                            padding: const EdgeInsets.only(bottom: 20),
-                            itemCount: _tasks.length,
-                            separatorBuilder: (_, __) =>
-                                const SizedBox(height: 10),
-                            itemBuilder: (_, i) =>
-                                _taskCard(theme, _tasks[i]),
-                          ),
+                child: StreamBuilder<List<Task>>(
+                  stream: FirestoreService.adminTasksStream(),
+                  builder: (context, snap) {
+                    if (snap.connectionState == ConnectionState.waiting) {
+                      return const Center(
+                          child: CircularProgressIndicator());
+                    }
+                    if (snap.hasError) {
+                      return Center(
+                          child: Text('${snap.error}',
+                              style: _noDeco.copyWith(fontSize: 12)));
+                    }
+                    final tasks = snap.data ?? [];
+                    if (tasks.isEmpty) return _emptyView(theme);
+                    return ListView.separated(
+                      padding: const EdgeInsets.only(bottom: 20),
+                      itemCount: tasks.length,
+                      separatorBuilder: (_, __) =>
+                          const SizedBox(height: 10),
+                      itemBuilder: (_, i) =>
+                          _taskCard(theme, tasks[i]),
+                    );
+                  },
+                ),
               ),
+
               if (_runner.running || _logs.value.isNotEmpty) ...[
                 const SizedBox(height: 10),
                 SizedBox(
@@ -292,6 +305,19 @@ class _TasksPageState extends State<TasksPage> with WidgetsBindingObserver {
                   ),
                 ),
               ],
+
+              const SizedBox(height: 6),
+              Center(
+                child: Text(
+                  'Kageno',
+                  style: TextStyle(
+                    color: theme.colorScheme.onSurface.withOpacity(0.4),
+                    fontSize: 11,
+                    letterSpacing: 3,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
             ],
           ),
         ),
@@ -299,7 +325,6 @@ class _TasksPageState extends State<TasksPage> with WidgetsBindingObserver {
     );
   }
 
-  // ⭐ كارت الإعدادات البارز
   Widget _accessibilityCard(ThemeData theme) {
     final on = _accessibilityOn;
     final color = on ? const Color(0xFF00D68F) : const Color(0xFFFF6B6B);
@@ -309,55 +334,9 @@ class _TasksPageState extends State<TasksPage> with WidgetsBindingObserver {
       child: InkWell(
         borderRadius: BorderRadius.circular(18),
         onTap: () async {
-          if (on) {
-            final go = await showDialog<bool>(
-              context: context,
-              builder: (ctx) => AlertDialog(
-                backgroundColor: theme.colorScheme.surface,
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(20)),
-                title: Row(
-                  children: [
-                    const Icon(Icons.check_circle_rounded,
-                        color: Color(0xFF00D68F), size: 22),
-                    const SizedBox(width: 8),
-                    Text('إعدادات الوصول شغالة',
-                        style: _noDeco.copyWith(
-                            fontWeight: FontWeight.bold, fontSize: 16)),
-                  ],
-                ),
-                content: Text(
-                  'خدمة IMS AutoFill مفعّلة. عايز تفتح الإعدادات؟',
-                  style: _noDeco.copyWith(fontSize: 14),
-                ),
-                actions: [
-                  TextButton(
-                    onPressed: () => Navigator.pop(ctx, false),
-                    child: Text('إلغاء',
-                        style: _noDeco.copyWith(
-                            color: theme.colorScheme.onSurface
-                                .withOpacity(0.6))),
-                  ),
-                  TextButton(
-                    onPressed: () => Navigator.pop(ctx, true),
-                    child: Text('افتح',
-                        style: _noDeco.copyWith(
-                            color: const Color(0xFF00D68F),
-                            fontWeight: FontWeight.bold)),
-                  ),
-                ],
-              ),
-            );
-            if (go == true) {
-              await AutoFillBridge.openAccessibilitySettings();
-              await Future.delayed(const Duration(seconds: 1));
-              _checkAccessibility();
-            }
-          } else {
-            await AutoFillBridge.openAccessibilitySettings();
-            await Future.delayed(const Duration(seconds: 1));
-            _checkAccessibility();
-          }
+          await AutoFillBridge.openAccessibilitySettings();
+          await Future.delayed(const Duration(seconds: 1));
+          _checkAccessibility();
         },
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 350),
@@ -365,24 +344,12 @@ class _TasksPageState extends State<TasksPage> with WidgetsBindingObserver {
           decoration: BoxDecoration(
             gradient: LinearGradient(
               colors: [
-                color.withOpacity(on ? 0.25 : 0.3),
-                color.withOpacity(on ? 0.12 : 0.18),
+                color.withOpacity(0.25),
+                color.withOpacity(0.12),
               ],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
             ),
             borderRadius: BorderRadius.circular(18),
-            border: Border.all(
-              color: color,
-              width: 1.8,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: color.withOpacity(on ? 0.25 : 0.4),
-                blurRadius: on ? 12 : 20,
-                offset: const Offset(0, 6),
-              ),
-            ],
+            border: Border.all(color: color, width: 1.8),
           ),
           child: Row(
             children: [
@@ -393,9 +360,7 @@ class _TasksPageState extends State<TasksPage> with WidgetsBindingObserver {
                   color: color.withOpacity(0.25),
                   borderRadius: BorderRadius.circular(14),
                   border: Border.all(
-                    color: color.withOpacity(0.5),
-                    width: 1.5,
-                  ),
+                      color: color.withOpacity(0.5), width: 1.5),
                 ),
                 child: Icon(
                   on
@@ -423,7 +388,7 @@ class _TasksPageState extends State<TasksPage> with WidgetsBindingObserver {
                     const SizedBox(height: 3),
                     Text(
                       on
-                          ? 'IMS AutoFill مفعّل — كل حاجة جاهزة'
+                          ? 'IMS AutoFill مفعّل'
                           : 'اضغط هنا لتفعيل IMS AutoFill',
                       style: _noDeco.copyWith(
                         fontSize: 11.5,
@@ -435,32 +400,21 @@ class _TasksPageState extends State<TasksPage> with WidgetsBindingObserver {
                 ),
               ),
               Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 10, vertical: 6),
                 decoration: BoxDecoration(
                   color: color.withOpacity(0.2),
                   borderRadius: BorderRadius.circular(10),
                   border: Border.all(color: color.withOpacity(0.5)),
                 ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      on ? Icons.circle : Icons.circle_outlined,
-                      size: 10,
-                      color: color,
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      on ? 'ON' : 'OFF',
-                      style: _noDeco.copyWith(
-                        fontSize: 11,
-                        fontWeight: FontWeight.bold,
-                        color: color,
-                        letterSpacing: 1,
-                      ),
-                    ),
-                  ],
+                child: Text(
+                  on ? 'ON' : 'OFF',
+                  style: _noDeco.copyWith(
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                    color: color,
+                    letterSpacing: 1,
+                  ),
                 ),
               ),
             ],
@@ -520,26 +474,18 @@ class _TasksPageState extends State<TasksPage> with WidgetsBindingObserver {
               onTap: () => _runner.stop(),
               child: Padding(
                 padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 8,
-                ),
+                    horizontal: 12, vertical: 8),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(
-                      Icons.stop_rounded,
-                      color: Colors.white,
-                      size: 16,
-                    ),
+                    const Icon(Icons.stop_rounded,
+                        color: Colors.white, size: 16),
                     const SizedBox(width: 4),
-                    Text(
-                      'إيقاف',
-                      style: _noDeco.copyWith(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 12,
-                      ),
-                    ),
+                    Text('إيقاف',
+                        style: _noDeco.copyWith(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 12)),
                   ],
                 ),
               ),
@@ -555,11 +501,9 @@ class _TasksPageState extends State<TasksPage> with WidgetsBindingObserver {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(
-            Icons.auto_awesome_rounded,
-            size: 80,
-            color: theme.colorScheme.primary.withOpacity(0.3),
-          ),
+          Icon(Icons.auto_awesome_rounded,
+              size: 80,
+              color: theme.colorScheme.primary.withOpacity(0.3)),
           const SizedBox(height: 16),
           Text(
             'مفيش مهام بعد',
@@ -571,7 +515,7 @@ class _TasksPageState extends State<TasksPage> with WidgetsBindingObserver {
           ),
           const SizedBox(height: 8),
           Text(
-            'اضغط "مهمة جديدة" وابدأ تبني أول أتمتة',
+            'اضغط "مهمة جديدة" وابدأ',
             style: _noDeco.copyWith(
               color: theme.colorScheme.onSurface.withOpacity(0.4),
               fontSize: 13,
@@ -609,11 +553,8 @@ class _TasksPageState extends State<TasksPage> with WidgetsBindingObserver {
                   ),
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: const Icon(
-                  Icons.play_arrow_rounded,
-                  color: Colors.white,
-                  size: 24,
-                ),
+                child: const Icon(Icons.play_arrow_rounded,
+                    color: Colors.white, size: 24),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -643,22 +584,13 @@ class _TasksPageState extends State<TasksPage> with WidgetsBindingObserver {
                                   .withOpacity(0.2),
                               borderRadius: BorderRadius.circular(6),
                             ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                const Icon(Icons.repeat_rounded,
-                                    size: 10,
-                                    color: Color(0xFF6C5CE7)),
-                                const SizedBox(width: 3),
-                                Text(
-                                  '×${task.repeatCount}',
-                                  style: _noDeco.copyWith(
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.bold,
-                                    color: const Color(0xFF6C5CE7),
-                                  ),
-                                ),
-                              ],
+                            child: Text(
+                              '×${task.repeatCount}',
+                              style: _noDeco.copyWith(
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                                color: const Color(0xFF6C5CE7),
+                              ),
                             ),
                           ),
                         ],
@@ -666,23 +598,22 @@ class _TasksPageState extends State<TasksPage> with WidgetsBindingObserver {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      '${task.steps.length} خطوة'
-                      '${task.autoIncrement ? " • الأرقام تتقدم" : ""}',
+                      '${task.steps.length} خطوة',
                       style: _noDeco.copyWith(
                         fontSize: 11,
-                        color: theme.colorScheme.onSurface.withOpacity(0.5),
+                        color:
+                            theme.colorScheme.onSurface.withOpacity(0.5),
                       ),
                     ),
                   ],
                 ),
               ),
               IconButton(
-                icon: const Icon(
-                  Icons.play_circle_fill_rounded,
-                  size: 30,
-                ),
+                icon: const Icon(Icons.play_circle_fill_rounded,
+                    size: 30),
                 color: const Color(0xFF00D68F),
-                onPressed: _runner.running ? null : () => _runTask(task),
+                onPressed:
+                    _runner.running ? null : () => _runTask(task),
               ),
             ],
           ),
@@ -692,16 +623,12 @@ class _TasksPageState extends State<TasksPage> with WidgetsBindingObserver {
               spacing: 6,
               runSpacing: 6,
               children: List.generate(task.steps.length, (i) {
-                Color c;
+                Color c = theme.colorScheme.onSurface.withOpacity(0.2);
                 IconData? ic;
-                if (i >= status.length) {
-                  c = theme.colorScheme.onSurface.withOpacity(0.2);
-                  ic = null;
-                } else {
+                if (i < status.length) {
                   switch (status[i].status) {
                     case StepStatus.ok:
                       c = const Color(0xFF00D68F);
-                      ic = null;
                       break;
                     case StepStatus.failed:
                       c = const Color(0xFFFF6B6B);
@@ -713,20 +640,16 @@ class _TasksPageState extends State<TasksPage> with WidgetsBindingObserver {
                       break;
                     case StepStatus.running:
                       c = const Color(0xFF6C5CE7);
-                      ic = null;
                       break;
                     default:
-                      c = theme.colorScheme.onSurface.withOpacity(0.2);
-                      ic = null;
+                      break;
                   }
                 }
                 return Container(
                   width: 22,
                   height: 22,
-                  decoration: BoxDecoration(
-                    color: c,
-                    shape: BoxShape.circle,
-                  ),
+                  decoration:
+                      BoxDecoration(color: c, shape: BoxShape.circle),
                   child: Center(
                     child: ic != null
                         ? Icon(ic, size: 12, color: Colors.white)
@@ -747,14 +670,15 @@ class _TasksPageState extends State<TasksPage> with WidgetsBindingObserver {
           Row(
             mainAxisAlignment: MainAxisAlignment.end,
             children: [
-              // ⭐ زر رفع السكربت (للأدمن فقط)
               if (IS_ADMIN_APP) ...[
                 _miniBtn(
                   theme,
                   icon: Icons.cloud_upload_rounded,
                   label: 'رفع',
                   color: const Color(0xFF6C5CE7),
-                  onTap: _runner.running ? null : () => _uploadTask(task),
+                  onTap: _runner.running
+                      ? null
+                      : () => _uploadTask(task),
                 ),
                 const SizedBox(width: 8),
               ],
@@ -771,7 +695,9 @@ class _TasksPageState extends State<TasksPage> with WidgetsBindingObserver {
                 icon: Icons.delete_outline_rounded,
                 label: 'حذف',
                 color: const Color(0xFFFF6B6B),
-                onTap: _runner.running ? null : () => _deleteTask(task),
+                onTap: _runner.running
+                    ? null
+                    : () => _deleteTask(task),
               ),
             ],
           ),
@@ -793,7 +719,8 @@ class _TasksPageState extends State<TasksPage> with WidgetsBindingObserver {
         borderRadius: BorderRadius.circular(10),
         onTap: onTap,
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          padding:
+              const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
           decoration: BoxDecoration(
             color: color.withOpacity(0.12),
             borderRadius: BorderRadius.circular(10),
