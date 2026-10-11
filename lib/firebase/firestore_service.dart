@@ -25,14 +25,10 @@ class FirestoreService {
   }
 
   static Stream<List<UserProfile>> allUsersStream() {
-    return _db
-        .collection('users')
-        .snapshots()
-        .map((snap) {
+    return _db.collection('users').snapshots().map((snap) {
       final list = snap.docs
           .map((d) => UserProfile.fromDoc(d.id, d.data()))
           .toList();
-      // ⭐ ترتيب يدوي — آمن لو مفيش createdAt
       list.sort((a, b) {
         final at = a.createdAt?.millisecondsSinceEpoch ?? 0;
         final bt = b.createdAt?.millisecondsSinceEpoch ?? 0;
@@ -85,9 +81,11 @@ class FirestoreService {
     } catch (_) {}
   }
 
-  // ⭐⭐ HWID — ربط الجهاز باليوزر
   static Future<void> setUserHwid(String uid, String hwid) async {
-    await _db.collection('users').doc(uid).update({'hwid': hwid});
+    await _db.collection('users').doc(uid).set({
+      'hwid': hwid,
+      'hwidBoundAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
   }
 
   static Future<void> resetUserHwid(String uid) async {
@@ -100,10 +98,7 @@ class FirestoreService {
   // ═══════════════ SCRIPTS ═══════════════
 
   static Stream<List<ScriptDoc>> allScriptsStream() {
-    return _db
-        .collection('scripts')
-        .snapshots()
-        .map((snap) {
+    return _db.collection('scripts').snapshots().map((snap) {
       final list = snap.docs
           .map((d) => ScriptDoc.fromDoc(d.id, d.data()))
           .toList();
@@ -183,21 +178,16 @@ class FirestoreService {
   }
 
   // ═══════════════ ADMIN TASKS ═══════════════
-  // ⭐ المهام بتاعت الأدمن — محفوظة على Firestore
 
   static Stream<List<Task>> adminTasksStream() {
-    return _db
-        .collection('admin_tasks')
-        .snapshots()
-        .map((snap) {
+    return _db.collection('admin_tasks').snapshots().map((snap) {
       final list = snap.docs.map((d) {
         final data = d.data();
         return Task(
           id: data['id']?.toString() ?? d.id,
           name: data['name']?.toString() ?? '',
           steps: (data['steps'] as List? ?? [])
-              .map((e) =>
-                  TaskStep.fromJson(Map<String, dynamic>.from(e)))
+              .map((e) => TaskStep.fromJson(Map<String, dynamic>.from(e)))
               .toList(),
           createdAt: _parseTs(data['createdAt']) ?? DateTime.now(),
           lastRunAt: _parseTs(data['lastRunAt']),
@@ -205,7 +195,6 @@ class FirestoreService {
           autoIncrement: data['autoIncrement'] == true,
         );
       }).toList();
-      // ⭐ ترتيب يدوي
       list.sort((a, b) => b.createdAt.compareTo(a.createdAt));
       return list;
     });
@@ -230,15 +219,17 @@ class FirestoreService {
 
   // ═══════════════ SESSIONS ═══════════════
 
-  static Future<void> setSession({
+  static Future<void> setSessionWithHwid({
     required String uid,
     required String sessionId,
+    required String hwid,
     required String deviceModel,
     required String deviceName,
     required String ip,
   }) async {
     await _db.collection('sessions').doc(uid).set({
       'sessionId': sessionId,
+      'hwid': hwid,
       'deviceModel': deviceModel,
       'deviceName': deviceName,
       'ip': ip,
