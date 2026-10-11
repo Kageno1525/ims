@@ -44,6 +44,7 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
   late OnAppearAction _onAppear;
   late NotFoundAction _onNotFound;
   late bool _speedMode;
+  late bool _addPlus;
   late String _swipeDirection;
   late TextEditingController _timeoutCtrl;
   late TextEditingController _skipCountCtrl;
@@ -73,6 +74,7 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
     _onAppear = widget.step.onAppear;
     _onNotFound = widget.step.onNotFound;
     _speedMode = widget.step.speedMode;
+    _addPlus = widget.step.params['addPlus'] == true;
     _swipeDirection =
         widget.step.params['direction']?.toString() ?? 'down';
     _timeoutCtrl = TextEditingController(text: _timeoutMs.toString());
@@ -117,7 +119,6 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
     });
   }
 
-  // ⭐⭐ التعديل الأول: ضيفنا 'text' لحقول typeText
   List<String> _fieldKeysFor(TaskStepType t) {
     switch (t) {
       case TaskStepType.openApp:
@@ -388,7 +389,6 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
     }
   }
 
-  // ⭐⭐ التعديل التاني: ضيفنا typeText في search steps
   bool get _isSearchStep {
     switch (_currentType) {
       case TaskStepType.clickByText:
@@ -409,6 +409,8 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
   bool get _isNumberFromFile =>
       _currentType == TaskStepType.numberFromFile;
 
+  bool get _isTypeText => _currentType == TaskStepType.typeText;
+
   bool get _isSwipeToFind =>
       _currentType == TaskStepType.swipeToFind;
 
@@ -420,6 +422,10 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
     if (_isNumberFromFile) {
       params['csvName'] = _selectedCsvName ?? '';
       params['cycles'] = _cyclesCtrl.text;
+      params['addPlus'] = _addPlus;
+    }
+    if (_isTypeText) {
+      params['addPlus'] = _addPlus;
     }
     if (_isSwipeToFind) {
       params['maxSwipes'] = _maxSwipesCtrl.text;
@@ -786,6 +792,52 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
     }
   }
 
+  Widget _buildAddPlusSwitch(ThemeData theme) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: const Color(0xFF00D68F).withOpacity(0.08),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+            color: const Color(0xFF00D68F).withOpacity(0.3)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.add_rounded,
+              size: 20, color: Color(0xFF00D68F)),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'إضافة + قبل الرقم',
+                  style: _noDeco.copyWith(
+                    fontSize: 13,
+                    fontWeight: FontWeight.bold,
+                    color: const Color(0xFF00D68F),
+                  ),
+                ),
+                Text(
+                  'مثال: 1234567 → +1234567',
+                  style: _noDeco.copyWith(
+                    fontSize: 10,
+                    color: theme.colorScheme.onSurface.withOpacity(0.55),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Switch(
+            value: _addPlus,
+            onChanged: (v) => setState(() => _addPlus = v),
+            activeColor: const Color(0xFF00D68F),
+          ),
+        ],
+      ),
+    );
+  }
+
   List<Widget> _buildNumberFromFileFields(ThemeData theme) {
     return [
       _buildCsvPicker(theme),
@@ -844,6 +896,11 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
         ),
       ),
       const SizedBox(height: 12),
+
+      // ⭐⭐ Switch بتاع + قبل الرقم
+      _buildAddPlusSwitch(theme),
+      const SizedBox(height: 12),
+
       Container(
         padding: const EdgeInsets.all(10),
         decoration: BoxDecoration(
@@ -1408,6 +1465,11 @@ class _StepConfigSheetState extends State<_StepConfigSheet> {
         ),
       ),
       const SizedBox(height: 12),
+
+      // ⭐⭐ Switch بتاع + قبل الرقم
+      _buildAddPlusSwitch(theme),
+      const SizedBox(height: 12),
+
       Container(
         padding: const EdgeInsets.all(10),
         decoration: BoxDecoration(
