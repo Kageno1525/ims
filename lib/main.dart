@@ -6,10 +6,12 @@ import 'auth_gate.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // ⭐ تهيئة Firebase بالتوازي مع بدء التطبيق
-  await Firebase.initializeApp(
-    options: Firebase.app().options,
-  ).catchError((_) => Firebase.app());
+  // ⭐ تهيئة Firebase — بدون options غريبة
+  try {
+    await Firebase.initializeApp();
+  } catch (e) {
+    debugPrint('Firebase init error: $e');
+  }
 
   runApp(const ImsApp());
 }
