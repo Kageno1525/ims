@@ -1,48 +1,20 @@
 package com.kageno.ims
 
-import android.content.Context
 import android.content.Intent
 import android.net.Uri
-import android.os.Build
-import android.os.Debug
 import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
-import java.io.File
 
 class MainActivity : FlutterActivity() {
     private val CHANNEL = "ims/autofill"
     private var methodChannel: MethodChannel? = null
 
-    // ⭐⭐⭐ حماية كاملة — التطبيق يقفل فوراً عند أي تهديد
-    private val KILL_ON_THREAT = true
-
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
-
-        // ⭐⭐⭐ فحص أمني
-        val threats = fullSecurityCheck(this)
-        if (threats.isNotEmpty()) {
-            android.util.Log.w(
-                "IMS_SECURITY",
-                "⚠️ Threats detected: $threats"
-            )
-
-            if (KILL_ON_THREAT) {
-                android.util.Log.e(
-                    "IMS_SECURITY",
-                    "🛑 Killing app due to threats: $threats"
-                )
-                finishAffinity()
-                android.os.Process.killProcess(android.os.Process.myPid())
-                kotlin.system.exitProcess(0)
-                return
-            }
-        }
-
         methodChannel = MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
             CHANNEL
@@ -170,12 +142,14 @@ class MainActivity : FlutterActivity() {
                         ImsAccessibilityService.swipeStatic(x1, y1, x2, y2, d)
                     }
                 }
+                // ⭐ جديد: scroll بديل
                 "scrollForward" -> runAsync(result) {
                     ImsAccessibilityService.scrollForwardStatic()
                 }
                 "scrollBackward" -> runAsync(result) {
                     ImsAccessibilityService.scrollBackwardStatic()
                 }
+                // ⭐ تشخيص
                 "testGesture" -> {
                     Thread {
                         val r = ImsAccessibilityService.testGestureStatic()
@@ -211,24 +185,6 @@ class MainActivity : FlutterActivity() {
                     val name = call.argument<String>("name") ?: ""
                     result.success(resolvePackageByName(name))
                 }
-                "securityCheck" -> {
-                    result.success(fullSecurityCheck(this))
-                }
-                "getDeviceHwid" -> {
-                    try {
-                        val prefs = getSharedPreferences(
-                            "FlutterSharedPreferences",
-                            MODE_PRIVATE
-                        )
-                        val hwid = prefs.getString(
-                            "flutter.ims_device_hwid",
-                            ""
-                        ) ?: ""
-                        result.success(hwid)
-                    } catch (_: Exception) {
-                        result.success("")
-                    }
-                }
                 else -> result.notImplemented()
             }
         }
@@ -240,110 +196,6 @@ class MainActivity : FlutterActivity() {
             runOnUiThread { methodChannel?.invokeMethod("onFloatingClick", null) }
         }
     }
-
-    // ═══════════════════════════════════════════════════
-    // ⭐ SecurityGuard — داخل MainActivity
-    // ═══════════════════════════════════════════════════
-
-    private fun fullSecurityCheck(context: Context): List<String> {
-        val threats = mutableListOf<String>()
-        if (isRooted()) threats.add("root")
-        if (isDebuggerAttached()) threats.add("debugger")
-        if (isEmulator()) threats.add("emulator")
-        if (isHooked()) threats.add("hooks")
-        return threats
-    }
-
-    private fun isRooted(): Boolean {
-        val paths = arrayOf(
-            "/system/app/Superuser.apk",
-            "/sbin/su",
-            "/system/bin/su",
-            "/system/xbin/su",
-            "/data/local/xbin/su",
-            "/data/local/bin/su",
-            "/system/sd/xbin/su",
-            "/system/bin/failsafe/su",
-            "/data/local/su",
-            "/su/bin/su",
-            "/system/xbin/daemonsu",
-            "/system/etc/init.d/99SuperSUDaemon",
-            "/dev/com.koushikdutta.superuser.daemon/",
-            "/system/xbin/busybox",
-        )
-        for (p in paths) {
-            try {
-                if (File(p).exists()) return true
-            } catch (_: Exception) {}
-        }
-        val tags = Build.TAGS ?: ""
-        if (tags.contains("test-keys")) return true
-
-        try {
-            val process = Runtime.getRuntime().exec(arrayOf("which", "su"))
-            val reader = process.inputStream.bufferedReader()
-            val result = reader.readLine()
-            process.destroy()
-            if (result != null && result.isNotEmpty()) return true
-        } catch (_: Exception) {}
-
-        return false
-    }
-
-    private fun isDebuggerAttached(): Boolean {
-        return try {
-            Debug.isDebuggerConnected() || Debug.waitingForDebugger()
-        } catch (_: Exception) {
-            false
-        }
-    }
-
-    private fun isEmulator(): Boolean {
-        return (Build.FINGERPRINT.startsWith("generic") ||
-                Build.FINGERPRINT.startsWith("unknown") ||
-                Build.MODEL.contains("google_sdk") ||
-                Build.MODEL.contains("Emulator") ||
-                Build.MODEL.contains("Android SDK built for x86") ||
-                Build.MANUFACTURER.contains("Genymotion") ||
-                (Build.BRAND.startsWith("generic") &&
-                    Build.DEVICE.startsWith("generic")) ||
-                "google_sdk" == Build.PRODUCT)
-    }
-
-    private fun isHooked(): Boolean {
-        try {
-            if (File("/data/local/tmp/frida-server").exists()) return true
-            if (File("/data/local/tmp/re.frida.server").exists()) return true
-            if (File("/system/lib/libfrida-gadget.so").exists()) return true
-            if (File("/system/lib64/libfrida-gadget.so").exists()) return true
-        } catch (_: Exception) {}
-
-        try {
-            throw Exception()
-        } catch (e: Exception) {
-            val stack = e.stackTrace
-            for (element in stack) {
-                val cn = element.className
-                if (cn.contains("de.robv.android.xposed") ||
-                    cn.contains("com.saurik.substrate")) {
-                    return true
-                }
-            }
-        }
-
-        try {
-            Class.forName("de.robv.android.xposed.XposedBridge")
-            return true
-        } catch (_: Exception) {}
-        try {
-            Class.forName("de.robv.android.xposed.XC_MethodHook")
-            return true
-        } catch (_: Exception) {}
-
-        return false
-    }
-
-    // ═══════════════════════════════════════════════════
 
     private fun listInstalledApps(): List<Map<String, String>> {
         val pm = packageManager
@@ -411,7 +263,7 @@ class MainActivity : FlutterActivity() {
         val service = "$packageName/${ImsAccessibilityService::class.java.name}"
         val enabled = Settings.Secure.getString(
             contentResolver,
-            Settings.ENABLED_ACCESSIBILITY_SERVICES
+            Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
         ) ?: return false
         return enabled.split(':').any { it.equals(service, ignoreCase = true) }
     }
