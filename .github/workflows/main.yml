@@ -41,17 +41,17 @@ jobs:
       - name: Get dependencies
         run: flutter pub get
 
-      # ═══════ بناء Admin APK ═══════
+      # ═══════ بناء Admin APK مع Obfuscation ═══════
       - name: Build Admin APK
-        run: flutter build apk --release --dart-define=IS_ADMIN=true
+        run: flutter build apk --release --dart-define=IS_ADMIN=true --obfuscate --split-debug-info=build/debug-info-admin
 
       - name: Rename Admin APK
         run: |
           mv build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/ims-admin.apk
 
-      # ═══════ بناء User APK ═══════
+      # ═══════ بناء User APK مع Obfuscation ═══════
       - name: Build User APK
-        run: flutter build apk --release --dart-define=IS_ADMIN=false
+        run: flutter build apk --release --dart-define=IS_ADMIN=false --obfuscate --split-debug-info=build/debug-info-user
 
       - name: Rename User APK
         run: |
