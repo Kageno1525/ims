@@ -4,15 +4,10 @@ import '../widgets.dart';
 import '../autofill_bridge.dart';
 import '../firebase/firestore_service.dart';
 import '../pages/upload_script_sheet.dart';
+import '../config.dart';
 import 'task_model.dart';
 import 'task_editor_page.dart';
 import 'task_runner.dart';
-
-// ⭐ فلاج الأدمن
-const bool IS_ADMIN_APP = bool.fromEnvironment(
-  'IS_ADMIN',
-  defaultValue: true,
-);
 
 class TasksPage extends StatefulWidget {
   final bool isDark;
@@ -87,8 +82,9 @@ class _TasksPageState extends State<TasksPage> with WidgetsBindingObserver {
     widget.onLog(e);
   }
 
+  // ⭐ مهم: TaskEditorPage بتحفظ لوحدها — مفيش save هنا
   Future<void> _createTask() async {
-    final result = await Navigator.push<Task>(
+    await Navigator.push<Task>(
       context,
       MaterialPageRoute(
         builder: (_) => TaskEditorPage(
@@ -97,14 +93,10 @@ class _TasksPageState extends State<TasksPage> with WidgetsBindingObserver {
         ),
       ),
     );
-    if (result != null) {
-      // ⭐ احفظ في Firestore
-      await FirestoreService.saveAdminTask(result);
-    }
   }
 
   Future<void> _editTask(Task task) async {
-    final result = await Navigator.push<Task>(
+    await Navigator.push<Task>(
       context,
       MaterialPageRoute(
         builder: (_) => TaskEditorPage(
@@ -114,9 +106,6 @@ class _TasksPageState extends State<TasksPage> with WidgetsBindingObserver {
         ),
       ),
     );
-    if (result != null) {
-      await FirestoreService.saveAdminTask(result);
-    }
   }
 
   Future<void> _deleteTask(Task task) async {
@@ -184,7 +173,6 @@ class _TasksPageState extends State<TasksPage> with WidgetsBindingObserver {
       numbers: widget.currentNumbers,
       currentIndex: widget.currentCsvIndex,
     );
-    // ⭐ حدّث lastRunAt في Firestore
     await FirestoreService.saveAdminTask(
       task.copyWith(lastRunAt: DateTime.now()),
     );
