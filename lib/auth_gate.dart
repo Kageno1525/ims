@@ -38,6 +38,7 @@ class _AuthGateState extends State<AuthGate> {
   bool _wrongDevice = false;
   String? _boundDeviceHwid;
   StreamSubscription<User?>? _authSub;
+  StreamSubscription<UserProfile?>? _profileSub;
   Timer? _safetyTimer;
 
   @override
@@ -57,6 +58,7 @@ class _AuthGateState extends State<AuthGate> {
   @override
   void dispose() {
     _authSub?.cancel();
+    _profileSub?.cancel();
     _safetyTimer?.cancel();
     super.dispose();
   }
@@ -102,6 +104,8 @@ class _AuthGateState extends State<AuthGate> {
     if (!mounted) return;
 
     if (user == null) {
+      _profileSub?.cancel();
+      _profileSub = null;
       _safetyTimer?.cancel();
       setState(() {
         _firebaseUser = null;
@@ -116,7 +120,7 @@ class _AuthGateState extends State<AuthGate> {
       return;
     }
 
-    // الكاش أولاً
+    // جرب الكاش الأول
     try {
       final cached = await ProfileCache.load();
       if (cached != null && cached.uid == user.uid && !cached.isBanned) {
@@ -131,6 +135,7 @@ class _AuthGateState extends State<AuthGate> {
       }
     } catch (_) {}
 
+    // جيب من Firestore
     try {
       final profile = await FirestoreService.getUserProfile(user.uid)
           .timeout(const Duration(seconds: 5), onTimeout: () => null);
@@ -157,22 +162,20 @@ class _AuthGateState extends State<AuthGate> {
         return;
       }
 
-      // ⭐ منع أدمن في تطبيق يوزر
       if (!IS_ADMIN_APP && profile.isAdmin) {
         await _logAndLogout(user, profile);
         return;
       }
 
-      // ⭐⭐⭐ فحص HWID — بعد ما نعرف إنه مش أدمن
       final currentHwid = await DeviceService.getHwid()
           .timeout(const Duration(seconds: 3), onTimeout: () => '');
 
       if (!mounted) return;
 
-      // ⭐ اليوزر العادي: لو مربوط بجهاز تاني → رفض
       if (!profile.isAdmin &&
           profile.hwid.isNotEmpty &&
-          profile.hwid != currentHwid) {
+          profile.hwid != currentHwid &&
+          currentHwid.isNotEmpty) {
         await AuthService.signOut();
         _safetyTimer?.cancel();
         setState(() {
@@ -211,13 +214,15 @@ class _AuthGateState extends State<AuthGate> {
 
       if (!mounted) return;
 
-      if (profile == null || profile.isBanned) {
+      if (profile == null) {
         await ProfileCache.clear();
-        _forceLogout(
-          message: profile == null
-              ? 'الحساب ده مش مصرّح له'
-              : 'الحساب ده اتحظر',
-        );
+        _forceLogout(message: 'تم حذف حسابك');
+        return;
+      }
+
+      if (profile.isBanned) {
+        await ProfileCache.clear();
+        _forceLogout(message: 'الحساب ده اتحظر');
         return;
       }
 
@@ -226,7 +231,6 @@ class _AuthGateState extends State<AuthGate> {
         return;
       }
 
-      // ⭐ فحص HWID في الخلفية
       final currentHwid = await DeviceService.getHwid()
           .timeout(const Duration(seconds: 3), onTimeout: () => '');
 
@@ -234,7 +238,8 @@ class _AuthGateState extends State<AuthGate> {
 
       if (!profile.isAdmin &&
           profile.hwid.isNotEmpty &&
-          profile.hwid != currentHwid) {
+          profile.hwid != currentHwid &&
+          currentHwid.isNotEmpty) {
         await AuthService.signOut();
         setState(() {
           _wrongDevice = true;
@@ -285,15 +290,16 @@ class _AuthGateState extends State<AuthGate> {
     UserProfile profile,
     String currentHwid,
   ) async {
+    _watchProfile(user.uid);
+
     try {
       final check = await SessionManager.bindSession(
         user.uid,
         currentHwid: currentHwid,
         isAdmin: profile.isAdmin,
-      ).timeout(const Duration(seconds: 5),
+      ).timeout(const Duration(seconds: 6),
           onTimeout: () => SessionCheck.ok);
 
-      // ⭐ جهاز مختلف
       if (check.status == SessionCheckStatus.wrongDevice) {
         await AuthService.signOut();
         await ProfileCache.clear();
@@ -307,7 +313,6 @@ class _AuthGateState extends State<AuthGate> {
         return;
       }
 
-      // ⭐ جلسة متضاربة
       if (check.status == SessionCheckStatus.sessionConflict) {
         if (!mounted) return;
         setState(() {
@@ -318,17 +323,23 @@ class _AuthGateState extends State<AuthGate> {
       }
 
       FirestoreService.updateLastLogin(user.uid);
-      _watchProfile(user.uid);
     } catch (_) {}
   }
 
   void _watchProfile(String uid) {
-    FirestoreService.userProfileStream(uid).listen((profile) {
-      if (!mounted || profile == null) return;
+    _profileSub?.cancel();
+    _profileSub = FirestoreService.userProfileStream(uid).listen((profile) {
+      if (!mounted) return;
+
+      if (profile == null) {
+        ProfileCache.clear();
+        _forceLogout(message: 'تم حذف حسابك من قِبل المسؤول');
+        return;
+      }
 
       if (profile.isBanned) {
         ProfileCache.clear();
-        _forceLogout(message: 'الحساب ده اتحظر');
+        _forceLogout(message: 'تم حظر حسابك');
         return;
       }
 
@@ -339,18 +350,24 @@ class _AuthGateState extends State<AuthGate> {
       }
 
       ProfileCache.save(profile);
-      setState(() => _profile = profile);
+      if (mounted) setState(() => _profile = profile);
     });
 
-    SessionManager.watchSessionConflict(uid).listen((conflict) {
+    DeviceService.getHwid().then((hwid) {
       if (!mounted) return;
-      if (conflict && !_sessionConflict) {
-        setState(() => _sessionConflict = true);
-      }
+      SessionManager.watchSessionConflict(uid, hwid).listen((conflict) {
+        if (!mounted) return;
+        if (conflict && !_sessionConflict) {
+          setState(() => _sessionConflict = true);
+        }
+      });
     });
   }
 
   Future<void> _forceLogout({String? message}) async {
+    _profileSub?.cancel();
+    _profileSub = null;
+
     final uid = AuthService.uid;
     if (uid != null) {
       await FirestoreService.clearSession(uid);
@@ -366,11 +383,13 @@ class _AuthGateState extends State<AuthGate> {
       _firebaseUser = null;
       _deviceMismatch = false;
       _wrongDevice = false;
-      _boundDeviceHwid = null;
     });
   }
 
   Future<void> _forceLogoutManual() async {
+    _profileSub?.cancel();
+    _profileSub = null;
+
     final uid = AuthService.uid;
     if (uid != null) {
       await FirestoreService.clearSession(uid);
@@ -384,7 +403,6 @@ class _AuthGateState extends State<AuthGate> {
         _error = null;
         _deviceMismatch = false;
         _wrongDevice = false;
-        _boundDeviceHwid = null;
       });
     }
   }
@@ -504,7 +522,6 @@ class _AuthGateState extends State<AuthGate> {
     );
   }
 
-  // ⭐ شاشة الجهاز التاني
   Widget _wrongDeviceScreen(ThemeData theme) {
     return AnimatedBackground(
       child: Center(
@@ -547,26 +564,6 @@ class _AuthGateState extends State<AuthGate> {
                   height: 1.6,
                 ),
               ),
-              if (_boundDeviceHwid != null) ...[
-                const SizedBox(height: 16),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 12, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.surface.withOpacity(0.5),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Text(
-                    'HWID: ${_boundDeviceHwid!.substring(0, _boundDeviceHwid!.length > 20 ? 20 : _boundDeviceHwid!.length)}...',
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontFamily: 'monospace',
-                      color:
-                          theme.colorScheme.onSurface.withOpacity(0.6),
-                    ),
-                  ),
-                ),
-              ],
               const SizedBox(height: 32),
               ActionBtn(
                 label: 'رجوع',
