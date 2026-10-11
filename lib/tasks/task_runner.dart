@@ -22,9 +22,7 @@ class TaskRunner extends ChangeNotifier {
   int _currentTaskRound = 0;
   int _totalTaskRounds = 1;
 
-  // ⭐ cache أرقام CSV لكل رنج
   final Map<String, List<String>> _csvCache = {};
-  // ⭐ index الحالي لكل رنج
   final Map<String, int> _csvIndex = {};
 
   List<StepResult> get results => List.unmodifiable(_results);
@@ -147,7 +145,6 @@ class TaskRunner extends ChangeNotifier {
           ));
         }
 
-        // ⭐ step types خاصة
         if (resolved.type == TaskStepType.waitForElement) {
           final outcome = await _runWaitForElement(
             resolved, i, task.steps.length, onLog, numbers, currentIndex,
@@ -320,7 +317,13 @@ class TaskRunner extends ChangeNotifier {
             DateTime.now(), LogLevel.info));
       }
 
-      final number = nums[idx];
+      // ⭐⭐⭐ إضافة + قبل الرقم
+      var number = nums[idx];
+      final addPlus = step.params['addPlus'] == true;
+      if (addPlus && !number.startsWith('+')) {
+        number = '+$number';
+      }
+
       _csvIndex[csvName] = idx + 1;
 
       onLog(LogEntry('📱 [$csvName] رقم ${idx + 1}/${nums.length}: $number',
@@ -355,8 +358,7 @@ class TaskRunner extends ChangeNotifier {
     }
   }
 
-  // ═══════════════ سحب للبحث (نسخة جديدة) ═══════════════
-  // ⭐ نقطة واحدة ثابتة + اتجاه (فوق/تحت) + مسافة
+  // ═══════════════ سحب للبحث ═══════════════
   Future<bool> _executeSwipeToFind(
     TaskStep step,
     Function(LogEntry) onLog,
@@ -369,7 +371,6 @@ class TaskRunner extends ChangeNotifier {
         return false;
       }
 
-      // ⭐ نقطة البداية الثابتة (نفس النقطة كل مرة)
       final x1 = int.tryParse(step.params['x1']?.toString() ?? '0') ?? 0;
       final y1 = int.tryParse(step.params['y1']?.toString() ?? '0') ?? 0;
 
@@ -379,7 +380,6 @@ class TaskRunner extends ChangeNotifier {
         return false;
       }
 
-      // ⭐ الاتجاه والمسافة
       final direction = step.params['direction']?.toString() ?? 'down';
       final distance = int.tryParse(
               step.params['distance']?.toString() ?? '400') ??
@@ -391,7 +391,6 @@ class TaskRunner extends ChangeNotifier {
               step.params['duration']?.toString() ?? '300') ??
           300;
 
-      // ⭐ احسب نقطة النهاية من الاتجاه
       final x2 = x1;
       final y2 = direction == 'up' ? (y1 - distance) : (y1 + distance);
 
@@ -403,7 +402,6 @@ class TaskRunner extends ChangeNotifier {
           '📍 النقطة الثابتة: ($x1, $y1) • الاتجاه: $dirLabel • المسافة: $distance بكسل',
           DateTime.now(), LogLevel.info));
 
-      // 1) شوف لو النص موجود من الأول
       final found0 = await AutoFillBridge.findElement(text: target);
       if (found0) {
         onLog(LogEntry('✅ "$target" موجود من الأول — مش محتاج سحب',
@@ -411,7 +409,6 @@ class TaskRunner extends ChangeNotifier {
         return true;
       }
 
-      // 2) ابدأ السحب من نفس النقطة كل مرة
       for (int i = 1; i <= maxSwipes; i++) {
         if (!_running) return false;
 
@@ -674,7 +671,12 @@ class TaskRunner extends ChangeNotifier {
           return true;
 
         case TaskStepType.typeText:
-          final value = step.params['text']?.toString() ?? '';
+          var value = step.params['text']?.toString() ?? '';
+          // ⭐⭐⭐ إضافة + قبل الرقم
+          final addPlus = step.params['addPlus'] == true;
+          if (addPlus && value.isNotEmpty && !value.startsWith('+')) {
+            value = '+$value';
+          }
           final viewId = step.params['viewId']?.toString() ?? '';
           final hint = step.params['hint']?.toString() ?? '';
           final className =
