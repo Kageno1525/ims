@@ -3,7 +3,6 @@ import 'package:flutter/services.dart';
 import '../firebase/auth_service.dart';
 import '../firebase/firestore_service.dart';
 import '../firebase/security_service.dart';
-import '../firebase/device_service.dart';
 import '../models.dart';
 import '../widgets.dart';
 
@@ -90,7 +89,6 @@ class _ControlPageState extends State<ControlPage> {
                 ],
               ),
               const SizedBox(height: 14),
-
               Expanded(
                 child: StreamBuilder<List<UserProfile>>(
                   stream: FirestoreService.allUsersStream(),
@@ -116,7 +114,6 @@ class _ControlPageState extends State<ControlPage> {
                   },
                 ),
               ),
-
               const SizedBox(height: 6),
               Center(
                 child: Text(
@@ -141,14 +138,11 @@ class _ControlPageState extends State<ControlPage> {
     final isBanned = user.isBanned;
     final hasHwid = user.hwid.isNotEmpty;
 
-    Color borderColor;
-    if (isBanned) {
-      borderColor = const Color(0xFFFF6B6B);
-    } else if (isAdmin) {
-      borderColor = const Color(0xFF6C5CE7);
-    } else {
-      borderColor = theme.colorScheme.primary;
-    }
+    Color borderColor = isBanned
+        ? const Color(0xFFFF6B6B)
+        : isAdmin
+            ? const Color(0xFF6C5CE7)
+            : theme.colorScheme.primary;
 
     return Container(
       padding: const EdgeInsets.all(14),
@@ -161,7 +155,6 @@ class _ControlPageState extends State<ControlPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Header
           Row(
             children: [
               Container(
@@ -210,8 +203,8 @@ class _ControlPageState extends State<ControlPage> {
                         if (isBanned)
                           Padding(
                             padding: const EdgeInsets.only(right: 4),
-                            child: _badge(theme, 'محظور',
-                                const Color(0xFFFF6B6B)),
+                            child: _badge(
+                                theme, 'محظور', const Color(0xFFFF6B6B)),
                           ),
                       ],
                     ),
@@ -220,8 +213,8 @@ class _ControlPageState extends State<ControlPage> {
                       '@${user.username}',
                       style: _noDeco.copyWith(
                         fontSize: 11.5,
-                        color: theme.colorScheme.onSurface
-                            .withOpacity(0.6),
+                        color:
+                            theme.colorScheme.onSurface.withOpacity(0.6),
                       ),
                     ),
                   ],
@@ -230,8 +223,6 @@ class _ControlPageState extends State<ControlPage> {
             ],
           ),
           const SizedBox(height: 10),
-
-          // Chips
           Wrap(
             spacing: 6,
             runSpacing: 6,
@@ -250,7 +241,6 @@ class _ControlPageState extends State<ControlPage> {
                 '${user.allowedScripts.length} سكربت',
                 const Color(0xFF00D2FF),
               ),
-              // ⭐ HWID chip
               _infoChip(
                 theme,
                 hasHwid
@@ -265,8 +255,6 @@ class _ControlPageState extends State<ControlPage> {
             ],
           ),
           const SizedBox(height: 12),
-
-          // Actions
           Row(
             children: [
               Expanded(
@@ -304,6 +292,29 @@ class _ControlPageState extends State<ControlPage> {
               ),
             ],
           ),
+          if (hasHwid) ...[
+            const SizedBox(height: 6),
+            StreamBuilder<bool>(
+              stream: SecurityService.isHwidBannedStream(user.hwid),
+              builder: (context, snap) {
+                final isDeviceBanned = snap.data == true;
+                return _smallBtn(
+                  theme,
+                  icon: isDeviceBanned
+                      ? Icons.phonelink_ring_rounded
+                      : Icons.phonelink_erase_rounded,
+                  label: isDeviceBanned ? 'رفع حظر الجهاز' : 'حظر الجهاز',
+                  color: isDeviceBanned
+                      ? const Color(0xFF00D68F)
+                      : const Color(0xFF9B59B6),
+                  onTap: () => _toggleDeviceBan(
+                    user,
+                    currentlyBanned: isDeviceBanned,
+                  ),
+                );
+              },
+            ),
+          ],
         ],
       ),
     );
@@ -357,7 +368,6 @@ class _ControlPageState extends State<ControlPage> {
         ],
       ),
     );
-
     if (onTap == null) return chip;
     return Material(
       color: Colors.transparent,
@@ -461,190 +471,128 @@ class _ControlPageState extends State<ControlPage> {
     );
   }
 
-  // ═══════ DIALOGS ═══════
-
-  // ⭐ نافذة HWID — عرض + نسخ + إعادة تعيين + حظر
   Future<void> _showHwidDialog(UserProfile user) async {
     final hasHwid = user.hwid.isNotEmpty;
 
     await showDialog(
       context: context,
       builder: (ctx) {
-        return StatefulBuilder(builder: (ctx, setModal) {
-          return AlertDialog(
-            backgroundColor: Theme.of(ctx).colorScheme.surface,
-            shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(20)),
-            title: Row(
-              children: [
+        return AlertDialog(
+          backgroundColor: Theme.of(ctx).colorScheme.surface,
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20)),
+          title: Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF9B59B6).withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(Icons.phonelink_lock_rounded,
+                    color: Color(0xFF9B59B6), size: 22),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text('HWID الجهاز',
+                    style: _noDeco.copyWith(
+                        fontWeight: FontWeight.bold, fontSize: 15)),
+              ),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (hasHwid) ...[
                 Container(
-                  width: 40,
-                  height: 40,
+                  padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF9B59B6).withOpacity(0.2),
+                    color: const Color(0xFF9B59B6).withOpacity(0.1),
                     borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                        color: const Color(0xFF9B59B6).withOpacity(0.3)),
                   ),
-                  child: const Icon(Icons.phonelink_lock_rounded,
-                      color: Color(0xFF9B59B6), size: 22),
+                  child: SelectableText(
+                    user.hwid,
+                    style: _noDeco.copyWith(
+                      fontSize: 11,
+                      fontFamily: 'monospace',
+                    ),
+                  ),
                 ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('HWID الجهاز',
-                          style: _noDeco.copyWith(
-                              fontWeight: FontWeight.bold, fontSize: 15)),
-                      Text(
-                        user.name.isEmpty ? user.username : user.name,
-                        style: _noDeco.copyWith(
-                          fontSize: 11,
-                          color: Theme.of(ctx)
-                              .colorScheme
-                              .onSurface
-                              .withOpacity(0.5),
-                        ),
+                const SizedBox(height: 12),
+                Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(10),
+                    onTap: () async {
+                      await Clipboard.setData(
+                          ClipboardData(text: user.hwid));
+                      if (ctx.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                              content: Text('📋 تم نسخ HWID')),
+                        );
+                      }
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF00D2FF).withOpacity(0.12),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                            color: const Color(0xFF00D2FF).withOpacity(0.3)),
                       ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                if (hasHwid) ...[
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color:
-                          const Color(0xFF9B59B6).withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                          color: const Color(0xFF9B59B6)
-                              .withOpacity(0.3)),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'البصمة الحالية:',
-                          style: _noDeco.copyWith(
-                            fontSize: 11,
-                            color: const Color(0xFF9B59B6),
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        SelectableText(
-                          user.hwid,
-                          style: _noDeco.copyWith(
-                            fontSize: 11,
-                            fontFamily: 'monospace',
-                            color: Theme.of(ctx).colorScheme.onSurface,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  // زر النسخ
-                  Material(
-                    color: Colors.transparent,
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(10),
-                      onTap: () async {
-                        await Clipboard.setData(
-                            ClipboardData(text: user.hwid));
-                        if (ctx.mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                                content: Text('📋 تم نسخ HWID')),
-                          );
-                        }
-                      },
-                      child: Container(
-                        padding:
-                            const EdgeInsets.symmetric(vertical: 10),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF00D2FF)
-                              .withOpacity(0.12),
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(
-                              color: const Color(0xFF00D2FF)
-                                  .withOpacity(0.3)),
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            const Icon(Icons.content_copy_rounded,
-                                size: 14, color: Color(0xFF00D2FF)),
-                            const SizedBox(width: 6),
-                            Text(
-                              'نسخ HWID',
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(Icons.content_copy_rounded,
+                              size: 14, color: Color(0xFF00D2FF)),
+                          const SizedBox(width: 6),
+                          Text('نسخ HWID',
                               style: _noDeco.copyWith(
                                 fontSize: 12,
                                 fontWeight: FontWeight.bold,
                                 color: const Color(0xFF00D2FF),
-                              ),
-                            ),
-                          ],
-                        ),
+                              )),
+                        ],
                       ),
                     ),
                   ),
-                ] else ...[
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF95A5A6).withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                          color: const Color(0xFF95A5A6)
-                              .withOpacity(0.3)),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.info_outline_rounded,
-                            size: 16, color: Color(0xFF95A5A6)),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            'المستخدم لسه مفتحش التطبيق من أي جهاز',
-                            style: _noDeco.copyWith(
-                              fontSize: 11.5,
-                              color: const Color(0xFF95A5A6),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx),
-                child: Text('إغلاق', style: _noDeco),
-              ),
-              if (hasHwid)
-                TextButton(
-                  onPressed: () async {
-                    final confirm = await _confirmResetHwid(user);
-                    if (confirm == true && ctx.mounted) {
-                      Navigator.pop(ctx);
-                    }
-                  },
-                  child: Text('إعادة تعيين',
-                      style: _noDeco.copyWith(
-                          fontWeight: FontWeight.bold,
-                          color: const Color(0xFFFFB84D))),
                 ),
+              ] else
+                Text('المستخدم لسه مفتحش التطبيق',
+                    style: _noDeco.copyWith(
+                      fontSize: 13,
+                      color: Theme.of(ctx)
+                          .colorScheme
+                          .onSurface
+                          .withOpacity(0.6),
+                    )),
             ],
-          );
-        });
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: Text('إغلاق', style: _noDeco),
+            ),
+            if (hasHwid)
+              TextButton(
+                onPressed: () async {
+                  final confirm = await _confirmResetHwid(user);
+                  if (confirm == true && ctx.mounted) {
+                    Navigator.pop(ctx);
+                  }
+                },
+                child: Text('إعادة تعيين',
+                    style: _noDeco.copyWith(
+                        fontWeight: FontWeight.bold,
+                        color: const Color(0xFFFFB84D))),
+              ),
+          ],
+        );
       },
     );
   }
@@ -656,18 +604,10 @@ class _ControlPageState extends State<ControlPage> {
         backgroundColor: Theme.of(ctx).colorScheme.surface,
         shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(20)),
-        title: Row(
-          children: [
-            const Icon(Icons.restart_alt_rounded,
-                color: Color(0xFFFFB84D), size: 22),
-            const SizedBox(width: 8),
-            Text('إعادة تعيين HWID',
-                style: _noDeco.copyWith(
-                    fontWeight: FontWeight.bold, fontSize: 15)),
-          ],
-        ),
+        title: Text('إعادة تعيين HWID',
+            style: _noDeco.copyWith(fontWeight: FontWeight.bold)),
         content: Text(
-          'هيتم فك ربط الجهاز الحالي من "${user.name.isEmpty ? user.username : user.name}".\n\n'
+          'هيتم فك ربط الجهاز الحالي.\n'
           'أول جهاز يفتح الحساب ده بعد كده هيتحدد كالجهاز الرسمي.',
           style: _noDeco.copyWith(fontSize: 13, height: 1.5),
         ),
@@ -701,6 +641,68 @@ class _ControlPageState extends State<ControlPage> {
     return ok;
   }
 
+  Future<void> _toggleDeviceBan(
+    UserProfile user, {
+    required bool currentlyBanned,
+  }) async {
+    if (currentlyBanned) {
+      await SecurityService.unbanHwid(user.hwid);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('✅ تم رفع حظر الجهاز'),
+            backgroundColor: Color(0xFF00D68F),
+          ),
+        );
+      }
+    } else {
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: Theme.of(ctx).colorScheme.surface,
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20)),
+          title: Text('حظر الجهاز',
+              style: _noDeco.copyWith(fontWeight: FontWeight.bold)),
+          content: Text(
+            'الجهاز ده هيتم حظره خالص — مش هيقدر يفتح التطبيق تاني.',
+            style: _noDeco.copyWith(fontSize: 13, height: 1.5),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text('إلغاء', style: _noDeco),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              style: TextButton.styleFrom(foregroundColor: Colors.red),
+              child: Text('حظر',
+                  style: _noDeco.copyWith(fontWeight: FontWeight.bold)),
+            ),
+          ],
+        ),
+      );
+
+      if (ok == true) {
+        await SecurityService.banHwid(
+          hwid: user.hwid,
+          bannedBy: AuthService.uid ?? '',
+          deviceModel: '',
+          lastUsername: user.username,
+          reason: 'حظر يدوي من المسؤول',
+        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('🚫 تم حظر الجهاز'),
+              backgroundColor: Color(0xFFFF6B6B),
+            ),
+          );
+        }
+      }
+    }
+  }
+
   Future<void> _toggleBan(UserProfile user) async {
     await FirestoreService.setUserBanned(user.uid, !user.isBanned);
     if (!mounted) return;
@@ -721,14 +723,10 @@ class _ControlPageState extends State<ControlPage> {
         backgroundColor: Theme.of(ctx).colorScheme.surface,
         shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(20)),
-        title: Text(
-          'حذف المستخدم',
-          style: _noDeco.copyWith(fontWeight: FontWeight.bold),
-        ),
-        content: Text(
-          'متأكد إنك عايز تحذف "${user.name}"؟',
-          style: _noDeco.copyWith(fontSize: 13),
-        ),
+        title: Text('حذف المستخدم',
+            style: _noDeco.copyWith(fontWeight: FontWeight.bold)),
+        content: Text('متأكد إنك عايز تحذف "${user.name}"؟',
+            style: _noDeco.copyWith(fontSize: 13)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -781,9 +779,7 @@ class _ControlPageState extends State<ControlPage> {
                       controller: nameCtrl,
                       style: _noDeco.copyWith(fontSize: 14),
                       decoration: const InputDecoration(
-                        labelText: 'الاسم',
-                        isDense: true,
-                      ),
+                          labelText: 'الاسم', isDense: true),
                     ),
                     const SizedBox(height: 14),
                     SwitchListTile(
@@ -794,22 +790,18 @@ class _ControlPageState extends State<ControlPage> {
                       onChanged: (v) => setModal(() => showNumbers = v),
                     ),
                     const Divider(),
-                    Text(
-                      'السكربتات المسموح بها',
-                      style: _noDeco.copyWith(
-                          fontWeight: FontWeight.bold, fontSize: 13),
-                    ),
+                    Text('السكربتات المسموح بها',
+                        style: _noDeco.copyWith(
+                            fontWeight: FontWeight.bold, fontSize: 13)),
                     const SizedBox(height: 8),
                     if (allScriptsSnap.isEmpty)
-                      Text(
-                        'مفيش سكربتات مرفوعة',
-                        style: _noDeco.copyWith(
-                            fontSize: 12,
-                            color: Theme.of(ctx)
-                                .colorScheme
-                                .onSurface
-                                .withOpacity(0.5)),
-                      )
+                      Text('مفيش سكربتات مرفوعة',
+                          style: _noDeco.copyWith(
+                              fontSize: 12,
+                              color: Theme.of(ctx)
+                                  .colorScheme
+                                  .onSurface
+                                  .withOpacity(0.5)))
                     else
                       ...allScriptsSnap.map((s) {
                         final isOn = allowed.contains(s.id);
@@ -886,8 +878,7 @@ class _ControlPageState extends State<ControlPage> {
                   height: 40,
                   decoration: BoxDecoration(
                     gradient: const LinearGradient(
-                      colors: [Color(0xFF6C5CE7), Color(0xFF00D2FF)],
-                    ),
+                        colors: [Color(0xFF6C5CE7), Color(0xFF00D2FF)]),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: const Icon(Icons.person_add_rounded,
@@ -955,34 +946,19 @@ class _ControlPageState extends State<ControlPage> {
                     Container(
                       padding: const EdgeInsets.all(10),
                       decoration: BoxDecoration(
-                        color: Theme.of(ctx)
-                            .colorScheme
-                            .error
-                            .withOpacity(0.12),
+                        color:
+                            Theme.of(ctx).colorScheme.error.withOpacity(0.12),
                         borderRadius: BorderRadius.circular(10),
                         border: Border.all(
-                          color: Theme.of(ctx)
-                              .colorScheme
-                              .error
-                              .withOpacity(0.35),
-                        ),
+                            color: Theme.of(ctx)
+                                .colorScheme
+                                .error
+                                .withOpacity(0.35)),
                       ),
-                      child: Row(
-                        children: [
-                          Icon(Icons.error_outline_rounded,
-                              color: Theme.of(ctx).colorScheme.error,
-                              size: 18),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(error!,
-                                style: _noDeco.copyWith(
-                                  fontSize: 12,
-                                  color:
-                                      Theme.of(ctx).colorScheme.error,
-                                )),
-                          ),
-                        ],
-                      ),
+                      child: Text(error!,
+                          style: _noDeco.copyWith(
+                              fontSize: 12,
+                              color: Theme.of(ctx).colorScheme.error)),
                     ),
                   ],
                 ],
@@ -1002,8 +978,8 @@ class _ControlPageState extends State<ControlPage> {
                         final pass = passCtrl.text;
 
                         if (username.isEmpty || username.length < 3) {
-                          setModal(() => error =
-                              'اسم المستخدم 3 حروف على الأقل');
+                          setModal(
+                              () => error = 'اسم المستخدم 3 حروف على الأقل');
                           return;
                         }
                         if (!RegExp(r'^[a-z0-9_]+$')
@@ -1017,8 +993,8 @@ class _ControlPageState extends State<ControlPage> {
                           return;
                         }
                         if (pass.length < 6) {
-                          setModal(() => error =
-                              'كلمة المرور 6 حروف على الأقل');
+                          setModal(
+                              () => error = 'كلمة المرور 6 حروف على الأقل');
                           return;
                         }
 
@@ -1043,8 +1019,7 @@ class _ControlPageState extends State<ControlPage> {
 
                           await FirestoreService.upsertUserProfile(
                             uid: newUid,
-                            email:
-                                AuthService.usernameToEmail(username),
+                            email: AuthService.usernameToEmail(username),
                             name: name,
                             showNumbers: showNumbers,
                           );
@@ -1072,8 +1047,7 @@ class _ControlPageState extends State<ControlPage> {
                     ? const SizedBox(
                         width: 20,
                         height: 20,
-                        child: CircularProgressIndicator(
-                            strokeWidth: 2),
+                        child: CircularProgressIndicator(strokeWidth: 2),
                       )
                     : Text('إنشاء',
                         style: _noDeco.copyWith(
