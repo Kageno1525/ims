@@ -14,6 +14,7 @@ Future<bool?> showUploadScriptSheet(
   BuildContext context, {
   required bool isDark,
   required Task task,
+  ScriptRules? initialRules,
 }) {
   return showModalBottomSheet<bool>(
     context: context,
@@ -22,6 +23,7 @@ Future<bool?> showUploadScriptSheet(
     builder: (ctx) => _UploadScriptSheet(
       isDark: isDark,
       task: task,
+      initialRules: initialRules,
     ),
   );
 }
@@ -29,9 +31,11 @@ Future<bool?> showUploadScriptSheet(
 class _UploadScriptSheet extends StatefulWidget {
   final bool isDark;
   final Task task;
+  final ScriptRules? initialRules;
   const _UploadScriptSheet({
     required this.isDark,
     required this.task,
+    this.initialRules,
   });
 
   @override
@@ -43,23 +47,35 @@ class _UploadScriptSheetState extends State<_UploadScriptSheet> {
   String? _error;
 
   // ⭐ Rules state
-  bool _allowRunCount = false;
-  int _defaultRunCount = 1;
-  int _maxRunCount = 100;
-
-  bool _allowRange = false;
-  String _defaultRange = '';
+  late bool _allowRunCount;
+  late int _defaultRunCount;
+  late int _maxRunCount;
+  late bool _allowRange;
+  late String _defaultRange;
 
   // ⭐ Ranges
   List<CsvFile> _ranges = [];
   bool _loadingRanges = true;
 
-  final _runCountCtrl = TextEditingController(text: '1');
-  final _maxRunCountCtrl = TextEditingController(text: '100');
+  late TextEditingController _runCountCtrl;
+  late TextEditingController _maxRunCountCtrl;
 
   @override
   void initState() {
     super.initState();
+
+    final r = widget.initialRules;
+    _allowRunCount = r?.allowRunCount ?? false;
+    _defaultRunCount = r?.defaultRunCount ?? 1;
+    _maxRunCount = r?.maxRunCount ?? 100;
+    _allowRange = r?.allowRange ?? false;
+    _defaultRange = r?.defaultRange ?? '';
+
+    _runCountCtrl =
+        TextEditingController(text: _defaultRunCount.toString());
+    _maxRunCountCtrl =
+        TextEditingController(text: _maxRunCount.toString());
+
     _loadRanges();
   }
 
@@ -205,12 +221,10 @@ class _UploadScriptSheetState extends State<_UploadScriptSheet> {
               ),
               const SizedBox(height: 16),
 
-              // ⭐⭐⭐ قواعد السكربت
               _sectionTitle(theme, Icons.rule_rounded, 'قواعد السكربت',
                   const Color(0xFF6C5CE7)),
               const SizedBox(height: 10),
 
-              // قاعدة 1: عدد المرات
               _ruleCard(
                 theme,
                 icon: Icons.repeat_rounded,
@@ -234,7 +248,9 @@ class _UploadScriptSheetState extends State<_UploadScriptSheet> {
                         label: 'الافتراضي',
                         onChanged: (v) {
                           final n = int.tryParse(v) ?? 1;
-                          if (n >= 1) setState(() => _defaultRunCount = n);
+                          if (n >= 1) {
+                            setState(() => _defaultRunCount = n);
+                          }
                         },
                       ),
                     ),
@@ -246,7 +262,9 @@ class _UploadScriptSheetState extends State<_UploadScriptSheet> {
                         label: 'الحد الأقصى',
                         onChanged: (v) {
                           final n = int.tryParse(v) ?? 100;
-                          if (n >= 1) setState(() => _maxRunCount = n);
+                          if (n >= 1) {
+                            setState(() => _maxRunCount = n);
+                          }
                         },
                       ),
                     ),
@@ -256,7 +274,6 @@ class _UploadScriptSheetState extends State<_UploadScriptSheet> {
 
               const SizedBox(height: 10),
 
-              // قاعدة 2: الرنج
               _ruleCard(
                 theme,
                 icon: Icons.folder_rounded,
@@ -271,7 +288,6 @@ class _UploadScriptSheetState extends State<_UploadScriptSheet> {
 
               const SizedBox(height: 10),
 
-              // اختيار الرنج الافتراضي (دايماً يظهر)
               _rangePicker(theme),
 
               if (_error != null) ...[
@@ -294,7 +310,6 @@ class _UploadScriptSheetState extends State<_UploadScriptSheet> {
 
               const SizedBox(height: 16),
 
-              // زراير
               Row(
                 children: [
                   Expanded(
@@ -303,7 +318,8 @@ class _UploadScriptSheetState extends State<_UploadScriptSheet> {
                           ? null
                           : () => Navigator.pop(context, false),
                       style: TextButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        padding:
+                            const EdgeInsets.symmetric(vertical: 14),
                       ),
                       child: Text(
                         'إلغاء',
@@ -329,7 +345,8 @@ class _UploadScriptSheetState extends State<_UploadScriptSheet> {
                                 ],
                               ),
                         color: _uploading
-                            ? theme.colorScheme.onSurface.withOpacity(0.1)
+                            ? theme.colorScheme.onSurface
+                                .withOpacity(0.1)
                             : null,
                         borderRadius: BorderRadius.circular(14),
                       ),
