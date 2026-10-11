@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'config.dart';
@@ -34,93 +35,79 @@ class _AuthGateState extends State<AuthGate> {
   bool _sessionConflict = false;
   bool _hwidBanned = false;
   bool _deviceMismatch = false;
-  bool _verifiedOnce = false;
-  bool _listeningAuth = false;
+  StreamSubscription<User?>? _authSub;
+  Timer? _safetyTimer;
 
   @override
   void initState() {
     super.initState();
-    _start();
+
+    // ⭐ Safety timeout — لو في مشكلة، نعرض شاشة خطأ بدل التعليق
+    _safetyTimer = Timer(const Duration(seconds: 10), () {
+      if (mounted && _loading) {
+        setState(() {
+          _loading = false;
+          _error = 'التطبيق أخد وقت طويل. تأكد من الإنترنت وحاول تاني.';
+        });
+      }
+    });
+
+    // ⭐ نبدأ التحقق من HWID في الخلفية
+    _checkHwidThenAuth();
   }
 
-  Future<void> _start() async {
+  @override
+  void dispose() {
+    _authSub?.cancel();
+    _safetyTimer?.cancel();
+    super.dispose();
+  }
+
+  // ⭐ فحص HWID أولاً — مع timeout
+  Future<void> _checkHwidThenAuth() async {
+    bool hwidBanned = false;
     try {
-      // ⭐ 1) فحص HWID — مع timeout عشان ما يعلّقش
       final hwid = await DeviceService.getHwid()
           .timeout(const Duration(seconds: 3), onTimeout: () => 'unknown');
-
-      bool banned = false;
-      try {
-        banned = await SecurityService.isHwidBanned(hwid)
+      if (hwid != 'unknown') {
+        hwidBanned = await SecurityService.isHwidBanned(hwid)
             .timeout(const Duration(seconds: 3), onTimeout: () => false);
-      } catch (_) {
-        banned = false;
       }
+    } catch (_) {
+      hwidBanned = false;
+    }
 
-      if (banned) {
-        if (!mounted) return;
-        setState(() {
-          _hwidBanned = true;
-          _loading = false;
-        });
-        return;
-      }
+    if (!mounted) return;
 
-      // ⭐ 2) اقرأ الكاش
-      final cached = await ProfileCache.load()
-          .timeout(const Duration(seconds: 2), onTimeout: () => null);
+    if (hwidBanned) {
+      _safetyTimer?.cancel();
+      setState(() {
+        _hwidBanned = true;
+        _loading = false;
+      });
+      return;
+    }
 
-      final currentUser = AuthService.currentUser;
-
-      // ⭐ 3) لو فيه كاش + مستخدم مسجّل → اعرض التطبيق فوراً
-      if (cached != null &&
-          currentUser != null &&
-          cached.uid == currentUser.uid &&
-          !cached.isBanned) {
-        if (!mounted) return;
-        setState(() {
-          _firebaseUser = currentUser;
-          _profile = cached;
-          _loading = false;
-        });
-        // نتحقق في الخلفية
-        _verifyBackground(currentUser);
-        return;
-      }
-
-      // ⭐ 4) مفيش كاش → اسمع Firebase auth
-      _listenAuth();
-
-      // ⭐ 5) Safety: لو بعد 5 ثواني لسه loading → وضّح السبب
-      Future.delayed(const Duration(seconds: 5), () {
-        if (mounted && _loading && _firebaseUser == null) {
+    // ⭐ ابدأ الاستماع للـ auth state
+    _authSub = AuthService.authStateChanges().listen(
+      _onAuthChanged,
+      onError: (e) {
+        if (mounted) {
           setState(() {
             _loading = false;
-            _error = null; // هيظهر شاشة اللوجين
+            _error = 'خطأ في الاتصال: $e';
           });
         }
-      });
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _loading = false;
-        _error = 'خطأ في التحميل: $e';
-      });
-    }
-  }
-
-  void _listenAuth() {
-    if (_listeningAuth) return;
-    _listeningAuth = true;
-    AuthService.authStateChanges().listen(_onAuthChanged);
+      },
+    );
   }
 
   Future<void> _onAuthChanged(User? user) async {
     if (!mounted) return;
 
+    // ⭐ مستخدم مش مسجّل → اروح للـ login
     if (user == null) {
-      await ProfileCache.clear();
-      if (!mounted) return;
+      _safetyTimer?.cancel();
       setState(() {
         _firebaseUser = null;
         _profile = null;
@@ -132,133 +119,161 @@ class _AuthGateState extends State<AuthGate> {
       return;
     }
 
-    setState(() {
-      _firebaseUser = user;
-      _loading = true;
-      _error = null;
-      _deviceMismatch = false;
-    });
-
-    _verifyBackground(user);
-  }
-
-  Future<void> _verifyBackground(User user) async {
-    if (_verifiedOnce) return;
-    _verifiedOnce = true;
-
+    // ⭐ محاولة استخدام الكاش أولاً للسرعة
     try {
-      // ⭐ timeout للـ Firestore
+      final cached = await ProfileCache.load();
+      if (cached != null && cached.uid == user.uid && !cached.isBanned) {
+        if (!mounted) return;
+        setState(() {
+          _firebaseUser = user;
+          _profile = cached;
+          _loading = false;
+        });
+        // تحقق من الخادم في الخلفية
+        _verifyInBackground(user);
+        return;
+      }
+    } catch (_) {}
+
+    // ⭐ مفيش كاش — جيب من Firestore مباشرة
+    try {
       final profile = await FirestoreService.getUserProfile(user.uid)
-          .timeout(const Duration(seconds: 6), onTimeout: () => null);
+          .timeout(const Duration(seconds: 5),
+              onTimeout: () => null);
 
       if (!mounted) return;
 
-      // ❌ البروفايل مش موجود → اطرد
       if (profile == null) {
-        await ProfileCache.clear();
-        if (!mounted) return;
+        await AuthService.signOut();
+        _safetyTimer?.cancel();
         setState(() {
           _loading = false;
           _error = 'الحساب ده مش مصرّح له';
-          _firebaseUser = null;
-          _profile = null;
         });
-        await AuthService.signOut();
-        await SessionManager.clearLocalSession();
         return;
       }
 
-      // ❌ محظور → اطرد
       if (profile.isBanned) {
-        await ProfileCache.clear();
-        if (!mounted) return;
+        await AuthService.signOut();
+        _safetyTimer?.cancel();
         setState(() {
           _loading = false;
           _error = 'الحساب ده اتحظر';
-          _firebaseUser = null;
-          _profile = null;
         });
-        await AuthService.signOut();
-        await SessionManager.clearLocalSession();
         return;
       }
 
-      // ❌ أدمن في تطبيق يوزر → سجّل + اطرد
+      // ⭐ منع أدمن في تطبيق يوزر
       if (!IS_ADMIN_APP && profile.isAdmin) {
-        try {
-          final info = await DeviceService.getDeviceInfo()
-              .timeout(const Duration(seconds: 3));
-          final ip = await DeviceService.fetchIP()
-              .timeout(const Duration(seconds: 3));
-          await SecurityService.logSecurityEvent(
-            type: 'admin_login_attempt',
-            hwid: info['hwid'] ?? 'unknown',
-            ip: ip,
-            deviceModel: info['model'] ?? 'Unknown',
-            deviceName: info['device'] ?? 'unknown',
-            attemptedUsername: user.email ?? '',
-            targetAccountUid: user.uid,
-            targetAccountName: profile.name,
-          );
-        } catch (_) {}
-
-        await ProfileCache.clear();
-        if (!mounted) return;
-        setState(() {
-          _loading = false;
-          _deviceMismatch = true;
-          _firebaseUser = null;
-          _profile = null;
-        });
-        await AuthService.signOut();
-        await SessionManager.clearLocalSession();
+        await _logAndLogout(user, profile);
         return;
       }
 
-      // ✅ تمام — حدّث الكاش والواجهة
+      // ⭐ احفظ الكاش وابدأ
       await ProfileCache.save(profile);
+
       if (!mounted) return;
+      _safetyTimer?.cancel();
       setState(() {
+        _firebaseUser = user;
         _profile = profile;
         _loading = false;
       });
 
-      // ⭐ الجلسة والمتابعة — في الخلفية
-      _sessionAndWatchers(user);
+      _sessionAndWatchers(user, profile);
     } catch (e) {
-      // لو فشل النت — نعتمد على الكاش
-      final cached = await ProfileCache.load();
       if (!mounted) return;
-      if (cached != null && cached.uid == user.uid) {
-        setState(() {
-          _profile = cached;
-          _loading = false;
-        });
-      } else {
-        setState(() {
-          _loading = false;
-          _error = 'خطأ في التحميل: $e';
-        });
-      }
+      _safetyTimer?.cancel();
+      setState(() {
+        _loading = false;
+        _error = 'خطأ: $e';
+      });
     }
   }
 
-  Future<void> _sessionAndWatchers(User user) async {
+  // ⭐ التحقق من الخادم في الخلفية (لما نستخدم الكاش)
+  Future<void> _verifyInBackground(User user) async {
+    try {
+      final profile = await FirestoreService.getUserProfile(user.uid)
+          .timeout(const Duration(seconds: 5),
+              onTimeout: () => null);
+
+      if (!mounted) return;
+
+      if (profile == null || profile.isBanned) {
+        await ProfileCache.clear();
+        _forceLogout(
+          message: profile == null
+              ? 'الحساب ده مش مصرّح له'
+              : 'الحساب ده اتحظر',
+        );
+        return;
+      }
+
+      if (!IS_ADMIN_APP && profile.isAdmin) {
+        await _logAndLogout(user, profile);
+        return;
+      }
+
+      await ProfileCache.save(profile);
+      if (!mounted) return;
+      setState(() => _profile = profile);
+      _sessionAndWatchers(user, profile);
+    } catch (_) {
+      // مشكلة نت — نسيب الكاش شغال
+    }
+  }
+
+  Future<void> _logAndLogout(User user, UserProfile profile) async {
+    try {
+      final info = await DeviceService.getDeviceInfo();
+      final ip = await DeviceService.fetchIP();
+      await SecurityService.logSecurityEvent(
+        type: 'admin_login_attempt',
+        hwid: info['hwid'] ?? 'unknown',
+        ip: ip,
+        deviceModel: info['model'] ?? 'Unknown',
+        deviceName: info['device'] ?? 'unknown',
+        attemptedUsername: user.email ?? '',
+        targetAccountUid: user.uid,
+        targetAccountName: profile.name,
+      );
+    } catch (_) {}
+    await ProfileCache.clear();
+    await AuthService.signOut();
+    await SessionManager.clearLocalSession();
+    if (!mounted) return;
+    _safetyTimer?.cancel();
+    setState(() {
+      _loading = false;
+      _deviceMismatch = true;
+      _profile = null;
+      _firebaseUser = null;
+    });
+  }
+
+  // ⭐ الجلسة والمتابعة
+  Future<void> _sessionAndWatchers(User user, UserProfile profile) async {
     try {
       final ok = await SessionManager.bindSession(user.uid)
-          .timeout(const Duration(seconds: 5), onTimeout: () => true);
+          .timeout(const Duration(seconds: 5),
+              onTimeout: () => true);
+
       if (!ok) {
         if (!mounted) return;
-        setState(() => _sessionConflict = true);
+        setState(() {
+          _sessionConflict = true;
+          _profile = profile;
+        });
         return;
       }
 
       FirestoreService.updateLastLogin(user.uid);
-
       _watchProfile(user.uid);
     } catch (_) {}
   }
 
+  // ⭐ متابعة البروفايل
   void _watchProfile(String uid) {
     FirestoreService.userProfileStream(uid).listen((profile) {
       if (!mounted || profile == null) return;
@@ -289,19 +304,14 @@ class _AuthGateState extends State<AuthGate> {
 
   Future<void> _forceLogout({String? message}) async {
     final uid = AuthService.uid;
-    try {
-      if (uid != null) await FirestoreService.clearSession(uid);
-    } catch (_) {}
+    if (uid != null) {
+      await FirestoreService.clearSession(uid);
+    }
     await ProfileCache.clear();
-    try {
-      await AuthService.signOut();
-    } catch (_) {}
-    try {
-      await SessionManager.clearLocalSession();
-    } catch (_) {}
+    await AuthService.signOut();
+    await SessionManager.clearLocalSession();
     if (!mounted) return;
     setState(() {
-      _loading = false; // ⭐⭐ الإصلاح المهم
       _sessionConflict = false;
       _error = message;
       _profile = null;
@@ -311,12 +321,19 @@ class _AuthGateState extends State<AuthGate> {
   }
 
   Future<void> _forceLogoutManual() async {
-    _verifiedOnce = false;
-    await _forceLogout();
+    final uid = AuthService.uid;
+    if (uid != null) {
+      await FirestoreService.clearSession(uid);
+    }
+    await ProfileCache.clear();
+    await AuthService.signOut();
+    await SessionManager.clearLocalSession();
     if (mounted) {
-      setState(() => _error = null);
-      // أعد تشغيل الـ listener
-      _listenAuth();
+      setState(() {
+        _sessionConflict = false;
+        _error = null;
+        _deviceMismatch = false;
+      });
     }
   }
 
@@ -378,7 +395,6 @@ class _AuthGateState extends State<AuthGate> {
       );
     }
 
-    // لو المستخدم لسه موجود لكن مفيش بروفايل — يروح للوجين
     return FirebaseLoginPage(
       isDark: widget.isDark,
       onToggleTheme: widget.onToggleTheme,
@@ -476,16 +492,6 @@ class _AuthGateState extends State<AuthGate> {
                   height: 1.6,
                 ),
               ),
-              const SizedBox(height: 8),
-              Text(
-                'تم إرسال إشعار للمسؤول',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 12,
-                  color: const Color(0xFFFFB84D),
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
               const SizedBox(height: 32),
               ActionBtn(
                 label: 'رجوع',
@@ -537,7 +543,7 @@ class _AuthGateState extends State<AuthGate> {
               ),
               const SizedBox(height: 32),
               ActionBtn(
-                label: 'رجوع لتسجيل الدخول',
+                label: 'تسجيل خروج',
                 icon: Icons.logout_rounded,
                 gradient: const [Color(0xFFFF6B6B), Color(0xFFFF8E53)],
                 busy: false,
