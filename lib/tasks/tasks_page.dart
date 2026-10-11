@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../csv_reader.dart';
 import '../models.dart';
 import '../widgets.dart';
 import '../autofill_bridge.dart';
@@ -43,7 +44,6 @@ class _TasksPageState extends State<TasksPage> with WidgetsBindingObserver {
   final ValueNotifier<List<LogEntry>> _logs =
       ValueNotifier<List<LogEntry>>(<LogEntry>[]);
 
-  // ⭐ قواعد مؤقتة لكل مهمة
   final Map<String, ScriptRules> _taskLocalRules = {};
 
   @override
@@ -143,6 +143,7 @@ class _TasksPageState extends State<TasksPage> with WidgetsBindingObserver {
     );
     if (ok == true) {
       await FirestoreService.deleteAdminTask(task.id);
+      _taskLocalRules.remove(task.id);
     }
   }
 
@@ -706,21 +707,41 @@ class _TasksPageState extends State<TasksPage> with WidgetsBindingObserver {
     );
   }
 
-  // ⭐ حوار قواعد المهمة
+  // ⭐⭐⭐ حوار قواعد المهمة — مع كل الخيارات الجديدة
   Future<void> _showTaskRulesDialog(Task task) async {
     final existing = _taskLocalRules[task.id] ?? ScriptRules();
 
     bool allowRunCount = existing.allowRunCount;
-    bool allowRange = existing.allowRange;
     int defaultRunCount = existing.defaultRunCount;
     int maxRunCount = existing.maxRunCount;
+
+    bool allowRange = existing.allowRange;
     String defaultRange = existing.defaultRange;
+
+    bool askUseFile = existing.askUseFile;
+    bool defaultUseFile = existing.defaultUseFile;
+
+    bool allowAdvanceRow = existing.allowAdvanceRow;
+    bool defaultAdvanceRow = existing.defaultAdvanceRow;
+
+    bool allowFileRepeats = existing.allowFileRepeats;
+    int defaultFileRepeats = existing.defaultFileRepeats;
 
     final defaultRunCtrl =
         TextEditingController(text: defaultRunCount.toString());
     final maxRunCtrl =
         TextEditingController(text: maxRunCount.toString());
-    final defaultRangeCtrl = TextEditingController(text: defaultRange);
+    final fileRepeatsCtrl =
+        TextEditingController(text: defaultFileRepeats.toString());
+
+    // ⭐ جيب الرنجات
+    List<CsvFile> ranges = [];
+    try {
+      ranges = await CsvReader.listFiles();
+      if (defaultRange.isEmpty && ranges.isNotEmpty) {
+        defaultRange = ranges.first.name;
+      }
+    } catch (_) {}
 
     if (!mounted) return;
 
@@ -755,7 +776,7 @@ class _TasksPageState extends State<TasksPage> with WidgetsBindingObserver {
               ],
             ),
             content: SizedBox(
-              width: 400,
+              width: 420,
               child: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
@@ -772,6 +793,7 @@ class _TasksPageState extends State<TasksPage> with WidgetsBindingObserver {
                                 .withOpacity(0.6))),
                     const SizedBox(height: 14),
 
+                    // ═══ عدد المرات ═══
                     _ruleSwitch(
                       theme: Theme.of(ctx),
                       icon: Icons.repeat_rounded,
@@ -824,28 +846,205 @@ class _TasksPageState extends State<TasksPage> with WidgetsBindingObserver {
 
                     const SizedBox(height: 14),
 
+                    // ═══ الملف ═══
                     _ruleSwitch(
                       theme: Theme.of(ctx),
-                      icon: Icons.folder_rounded,
-                      title: 'السماح بتغيير الرنج',
+                      icon: Icons.help_outline_rounded,
+                      title: 'اسأل اليوزر: هيستخدم ملف؟',
                       subtitle:
-                          'اليوزر يقدر يختار ملف أرقام مختلف',
-                      color: const Color(0xFF00D68F),
-                      value: allowRange,
+                          'لو مفعّل، هيسأله قبل التشغيل',
+                      color: const Color(0xFF9B59B6),
+                      value: askUseFile,
                       onChanged: (v) =>
-                          setModal(() => allowRange = v),
+                          setModal(() => askUseFile = v),
+                    ),
+
+                    const SizedBox(height: 8),
+
+                    // الافتراضي: يستخدم ملف؟
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: defaultUseFile
+                            ? const Color(0xFF00D68F)
+                                .withOpacity(0.08)
+                            : Theme.of(ctx)
+                                .colorScheme
+                                .surface
+                                .withOpacity(0.3),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: defaultUseFile
+                              ? const Color(0xFF00D68F)
+                                  .withOpacity(0.3)
+                              : Theme.of(ctx)
+                                  .colorScheme
+                                  .primary
+                                  .withOpacity(0.15),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.file_present_rounded,
+                              size: 16, color: Color(0xFF00D68F)),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'الافتراضي: يستخدم ملف؟',
+                              style: _noDeco.copyWith(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                          Switch(
+                            value: defaultUseFile,
+                            onChanged: (v) =>
+                                setModal(() => defaultUseFile = v),
+                            activeColor: const Color(0xFF00D68F),
+                          ),
+                        ],
+                      ),
                     ),
 
                     const SizedBox(height: 10),
 
-                    TextField(
-                      controller: defaultRangeCtrl,
-                      style: _noDeco.copyWith(fontSize: 13),
-                      onChanged: (v) => defaultRange = v,
-                      decoration: const InputDecoration(
-                        labelText: 'اسم الرنج الافتراضي',
-                        hintText: 'مثال: r1',
-                        isDense: true,
+                    // ⭐ الرنج (Dropdown)
+                    _buildRangeDropdown(
+                      ctx,
+                      theme: Theme.of(ctx),
+                      ranges: ranges,
+                      defaultRange: defaultRange,
+                      onChanged: (v) =>
+                          setModal(() => defaultRange = v),
+                    ),
+
+                    const SizedBox(height: 14),
+
+                    // ═══ صف جديد كل دورة ═══
+                    _ruleSwitch(
+                      theme: Theme.of(ctx),
+                      icon: Icons.trending_down_rounded,
+                      title: 'صف جديد كل دورة',
+                      subtitle:
+                          'كل مرة يشتغل، ياخد صف جديد من الملف',
+                      color: const Color(0xFF00D2FF),
+                      value: allowAdvanceRow,
+                      onChanged: (v) =>
+                          setModal(() => allowAdvanceRow = v),
+                    ),
+
+                    const SizedBox(height: 8),
+
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: defaultAdvanceRow
+                            ? const Color(0xFF00D2FF)
+                                .withOpacity(0.08)
+                            : Theme.of(ctx)
+                                .colorScheme
+                                .surface
+                                .withOpacity(0.3),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: defaultAdvanceRow
+                              ? const Color(0xFF00D2FF)
+                                  .withOpacity(0.3)
+                              : Theme.of(ctx)
+                                  .colorScheme
+                                  .primary
+                                  .withOpacity(0.15),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.trending_down_rounded,
+                              size: 16, color: Color(0xFF00D2FF)),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'الافتراضي: صف جديد كل دورة؟',
+                              style: _noDeco.copyWith(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                          Switch(
+                            value: defaultAdvanceRow,
+                            onChanged: (v) =>
+                                setModal(() => defaultAdvanceRow = v),
+                            activeColor: const Color(0xFF00D2FF),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    const SizedBox(height: 14),
+
+                    // ═══ إعادة الملف ═══
+                    _ruleSwitch(
+                      theme: Theme.of(ctx),
+                      icon: Icons.replay_rounded,
+                      title: 'عدد مرات إعادة الملف',
+                      subtitle:
+                          'لو خلص الملف، نرجع للأول كام مرة',
+                      color: const Color(0xFFFFB84D),
+                      value: allowFileRepeats,
+                      onChanged: (v) =>
+                          setModal(() => allowFileRepeats = v),
+                    ),
+
+                    const SizedBox(height: 8),
+
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFFB84D)
+                            .withOpacity(0.08),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                            color: const Color(0xFFFFB84D)
+                                .withOpacity(0.3)),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.replay_rounded,
+                              size: 16, color: Color(0xFFFFB84D)),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'الافتراضي: كام مرة؟',
+                              style: _noDeco.copyWith(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                          SizedBox(
+                            width: 70,
+                            child: TextField(
+                              controller: fileRepeatsCtrl,
+                              textAlign: TextAlign.center,
+                              keyboardType: TextInputType.number,
+                              style: _noDeco.copyWith(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: const Color(0xFFFFB84D),
+                              ),
+                              decoration: const InputDecoration(
+                                isDense: true,
+                                contentPadding:
+                                    EdgeInsets.symmetric(vertical: 8),
+                              ),
+                              onChanged: (v) {
+                                final n = int.tryParse(v) ?? 1;
+                                if (n >= 1) defaultFileRepeats = n;
+                              },
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ],
@@ -872,7 +1071,7 @@ class _TasksPageState extends State<TasksPage> with WidgetsBindingObserver {
 
     defaultRunCtrl.dispose();
     maxRunCtrl.dispose();
-    defaultRangeCtrl.dispose();
+    fileRepeatsCtrl.dispose();
 
     if (result == true && mounted) {
       _taskLocalRules[task.id] = ScriptRules(
@@ -881,15 +1080,113 @@ class _TasksPageState extends State<TasksPage> with WidgetsBindingObserver {
         maxRunCount: maxRunCount,
         allowRange: allowRange,
         defaultRange: defaultRange.trim(),
+        askUseFile: askUseFile,
+        defaultUseFile: defaultUseFile,
+        allowAdvanceRow: allowAdvanceRow,
+        defaultAdvanceRow: defaultAdvanceRow,
+        allowFileRepeats: allowFileRepeats,
+        defaultFileRepeats: defaultFileRepeats,
       );
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('✅ تم حفظ القواعد — هتتحفظ مع السكربت عند الرفع'),
+          content: Text('✅ تم حفظ القواعد'),
           backgroundColor: Color(0xFF00D68F),
-          duration: Duration(seconds: 3),
+          duration: Duration(seconds: 2),
         ),
       );
     }
+  }
+
+  Widget _buildRangeDropdown(
+    BuildContext ctx, {
+    required ThemeData theme,
+    required List<CsvFile> ranges,
+    required String defaultRange,
+    required ValueChanged<String> onChanged,
+  }) {
+    if (ranges.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: const Color(0xFFFFB84D).withOpacity(0.1),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+              color: const Color(0xFFFFB84D).withOpacity(0.3)),
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.warning_amber_rounded,
+                size: 14, color: Color(0xFFFFB84D)),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Text(
+                'مفيش رنجات في Download/ranges',
+                style: _noDeco.copyWith(
+                    fontSize: 10.5,
+                    color: const Color(0xFFFFB84D)),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface.withOpacity(0.4),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+            color: const Color(0xFF00D68F).withOpacity(0.3)),
+      ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<String>(
+          value: defaultRange.isEmpty ? null : defaultRange,
+          isExpanded: true,
+          dropdownColor: theme.colorScheme.surface,
+          borderRadius: BorderRadius.circular(12),
+          style: _noDeco.copyWith(
+              color: theme.colorScheme.onSurface,
+              fontSize: 13,
+              fontWeight: FontWeight.w600),
+          hint: Text('اختر الرنج الافتراضي',
+              style: _noDeco.copyWith(
+                  fontSize: 12,
+                  color: theme.colorScheme.onSurface
+                      .withOpacity(0.5))),
+          items: ranges
+              .map((f) => DropdownMenuItem<String>(
+                    value: f.name,
+                    child: Row(
+                      children: [
+                        const Icon(Icons.folder_rounded,
+                            size: 14, color: Color(0xFF00D68F)),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            f.name,
+                            overflow: TextOverflow.ellipsis,
+                            style: _noDeco.copyWith(fontSize: 13),
+                          ),
+                        ),
+                        Text(
+                          '${f.count}',
+                          style: _noDeco.copyWith(
+                            fontSize: 11,
+                            color: theme.colorScheme.onSurface
+                                .withOpacity(0.5),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ))
+              .toList(),
+          onChanged: (v) {
+            if (v != null) onChanged(v);
+          },
+        ),
+      ),
+    );
   }
 
   Widget _ruleSwitch({
