@@ -46,35 +46,53 @@ class _UploadScriptSheetState extends State<_UploadScriptSheet> {
   bool _uploading = false;
   String? _error;
 
-  // ⭐ Rules state
+  // Rules state
   late bool _allowRunCount;
   late int _defaultRunCount;
   late int _maxRunCount;
+
   late bool _allowRange;
   late String _defaultRange;
 
-  // ⭐ Ranges
+  late bool _askUseFile;
+  late bool _defaultUseFile;
+
+  late bool _allowAdvanceRow;
+  late bool _defaultAdvanceRow;
+
+  late bool _allowFileRepeats;
+  late int _defaultFileRepeats;
+
   List<CsvFile> _ranges = [];
   bool _loadingRanges = true;
 
   late TextEditingController _runCountCtrl;
   late TextEditingController _maxRunCountCtrl;
+  late TextEditingController _fileRepeatsCtrl;
 
   @override
   void initState() {
     super.initState();
 
-    final r = widget.initialRules;
-    _allowRunCount = r?.allowRunCount ?? false;
-    _defaultRunCount = r?.defaultRunCount ?? 1;
-    _maxRunCount = r?.maxRunCount ?? 100;
-    _allowRange = r?.allowRange ?? false;
-    _defaultRange = r?.defaultRange ?? '';
+    final r = widget.initialRules ?? ScriptRules();
+    _allowRunCount = r.allowRunCount;
+    _defaultRunCount = r.defaultRunCount;
+    _maxRunCount = r.maxRunCount;
+    _allowRange = r.allowRange;
+    _defaultRange = r.defaultRange;
+    _askUseFile = r.askUseFile;
+    _defaultUseFile = r.defaultUseFile;
+    _allowAdvanceRow = r.allowAdvanceRow;
+    _defaultAdvanceRow = r.defaultAdvanceRow;
+    _allowFileRepeats = r.allowFileRepeats;
+    _defaultFileRepeats = r.defaultFileRepeats;
 
     _runCountCtrl =
         TextEditingController(text: _defaultRunCount.toString());
     _maxRunCountCtrl =
         TextEditingController(text: _maxRunCount.toString());
+    _fileRepeatsCtrl =
+        TextEditingController(text: _defaultFileRepeats.toString());
 
     _loadRanges();
   }
@@ -83,6 +101,7 @@ class _UploadScriptSheetState extends State<_UploadScriptSheet> {
   void dispose() {
     _runCountCtrl.dispose();
     _maxRunCountCtrl.dispose();
+    _fileRepeatsCtrl.dispose();
     super.dispose();
   }
 
@@ -121,6 +140,12 @@ class _UploadScriptSheetState extends State<_UploadScriptSheet> {
         maxRunCount: _maxRunCount,
         allowRange: _allowRange,
         defaultRange: _defaultRange,
+        askUseFile: _askUseFile,
+        defaultUseFile: _defaultUseFile,
+        allowAdvanceRow: _allowAdvanceRow,
+        defaultAdvanceRow: _defaultAdvanceRow,
+        allowFileRepeats: _allowFileRepeats,
+        defaultFileRepeats: _defaultFileRepeats,
       );
 
       await FirestoreService.uploadScript(
@@ -221,17 +246,19 @@ class _UploadScriptSheetState extends State<_UploadScriptSheet> {
               ),
               const SizedBox(height: 16),
 
-              _sectionTitle(theme, Icons.rule_rounded, 'قواعد السكربت',
-                  const Color(0xFF6C5CE7)),
+              // ═══════════════ القواعد الأساسية ═══════════════
+              _sectionTitle(theme, Icons.rule_rounded,
+                  'القواعد الأساسية', const Color(0xFF6C5CE7)),
               const SizedBox(height: 10),
 
+              // عدد المرات
               _ruleCard(
                 theme,
                 icon: Icons.repeat_rounded,
                 title: 'السماح بتغيير عدد المرات',
                 subtitle: _allowRunCount
                     ? 'اليوزر يقدر يختار العدد (1 - $_maxRunCount)'
-                    : 'اليوزر يستخدم القيمة الافتراضية ($_defaultRunCount)',
+                    : 'اليوزر يستخدم: $_defaultRunCount',
                 color: const Color(0xFF6C5CE7),
                 value: _allowRunCount,
                 onChanged: (v) => setState(() => _allowRunCount = v),
@@ -274,21 +301,207 @@ class _UploadScriptSheetState extends State<_UploadScriptSheet> {
 
               const SizedBox(height: 10),
 
+              // ═══════════════ الملف ═══════════════
+              _sectionTitle(theme, Icons.folder_rounded,
+                  'ملف الأرقام', const Color(0xFF00D68F)),
+              const SizedBox(height: 10),
+
+              // استخدام ملف
               _ruleCard(
                 theme,
-                icon: Icons.folder_rounded,
-                title: 'السماح بتغيير الرنج',
-                subtitle: _allowRange
-                    ? 'اليوزر يقدر يختار رنج مختلف'
-                    : 'اليوزر يستخدم الرنج الثابت',
-                color: const Color(0xFF00D68F),
-                value: _allowRange,
-                onChanged: (v) => setState(() => _allowRange = v),
+                icon: Icons.help_outline_rounded,
+                title: 'اسأل اليوزر: هيستخدم ملف؟',
+                subtitle: _askUseFile
+                    ? 'هيظهرله خيار (الافتراضي: ${_defaultUseFile ? "نعم" : "لا"})'
+                    : 'مش هنسأله — يستخدم: ${_defaultUseFile ? "الملف" : "بدون ملف"}',
+                color: const Color(0xFF9B59B6),
+                value: _askUseFile,
+                onChanged: (v) => setState(() => _askUseFile = v),
+              ),
+
+              const SizedBox(height: 8),
+
+              // الافتراضي: يستخدم ملف؟
+              Container(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: _defaultUseFile
+                      ? const Color(0xFF00D68F).withOpacity(0.08)
+                      : theme.colorScheme.surface.withOpacity(0.3),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: _defaultUseFile
+                        ? const Color(0xFF00D68F).withOpacity(0.3)
+                        : theme.colorScheme.primary.withOpacity(0.15),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.file_present_rounded,
+                        size: 18, color: Color(0xFF00D68F)),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'الافتراضي: يستخدم ملف؟',
+                        style: _noDeco.copyWith(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                    Switch(
+                      value: _defaultUseFile,
+                      onChanged: (v) =>
+                          setState(() => _defaultUseFile = v),
+                      activeColor: const Color(0xFF00D68F),
+                    ),
+                  ],
+                ),
               ),
 
               const SizedBox(height: 10),
 
+              // الرنج الافتراضي
               _rangePicker(theme),
+
+              const SizedBox(height: 10),
+
+              // صف جديد كل دورة
+              _ruleCard(
+                theme,
+                icon: Icons.trending_down_rounded,
+                title: 'صف جديد كل دورة',
+                subtitle: _allowAdvanceRow
+                    ? 'اليوزر يقدر يغيّر (الافتراضي: ${_defaultAdvanceRow ? "نعم" : "لا"})'
+                    : 'ثابت: ${_defaultAdvanceRow ? "نعم — صف جديد كل دورة" : "لا — نفس الصف"}',
+                color: const Color(0xFF00D2FF),
+                value: _allowAdvanceRow,
+                onChanged: (v) =>
+                    setState(() => _allowAdvanceRow = v),
+              ),
+
+              const SizedBox(height: 8),
+
+              // الافتراضي: صف جديد كل دورة؟
+              Container(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: _defaultAdvanceRow
+                      ? const Color(0xFF00D2FF).withOpacity(0.08)
+                      : theme.colorScheme.surface.withOpacity(0.3),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: _defaultAdvanceRow
+                        ? const Color(0xFF00D2FF).withOpacity(0.3)
+                        : theme.colorScheme.primary.withOpacity(0.15),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.trending_down_rounded,
+                        size: 18, color: Color(0xFF00D2FF)),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'الافتراضي: صف جديد كل دورة؟',
+                        style: _noDeco.copyWith(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                    Switch(
+                      value: _defaultAdvanceRow,
+                      onChanged: (v) =>
+                          setState(() => _defaultAdvanceRow = v),
+                      activeColor: const Color(0xFF00D2FF),
+                    ),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 10),
+
+              // تكرار الملف
+              _ruleCard(
+                theme,
+                icon: Icons.replay_rounded,
+                title: 'عدد مرات إعادة الملف',
+                subtitle: _allowFileRepeats
+                    ? 'اليوزر يقدر يغيّر (الافتراضي: $_defaultFileRepeats)'
+                    : 'ثابت: $_defaultFileRepeats مرة',
+                color: const Color(0xFFFFB84D),
+                value: _allowFileRepeats,
+                onChanged: (v) =>
+                    setState(() => _allowFileRepeats = v),
+              ),
+
+              const SizedBox(height: 8),
+
+              // الافتراضي: عدد مرات إعادة الملف
+              Container(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFB84D).withOpacity(0.08),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                      color: const Color(0xFFFFB84D)
+                          .withOpacity(0.3)),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.replay_rounded,
+                        size: 18, color: Color(0xFFFFB84D)),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'الافتراضي: كام مرة نعيد الملف؟',
+                            style: _noDeco.copyWith(
+                                fontSize: 12.5,
+                                fontWeight: FontWeight.bold),
+                          ),
+                          Text(
+                            'لو خلص، نرجع للأول N مرة',
+                            style: _noDeco.copyWith(
+                              fontSize: 10,
+                              color: theme.colorScheme.onSurface
+                                  .withOpacity(0.55),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    SizedBox(
+                      width: 70,
+                      child: TextField(
+                        controller: _fileRepeatsCtrl,
+                        textAlign: TextAlign.center,
+                        keyboardType: TextInputType.number,
+                        style: _noDeco.copyWith(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: const Color(0xFFFFB84D),
+                        ),
+                        decoration: const InputDecoration(
+                          isDense: true,
+                          contentPadding:
+                              EdgeInsets.symmetric(vertical: 8),
+                        ),
+                        onChanged: (v) {
+                          final n = int.tryParse(v) ?? 1;
+                          if (n >= 1) {
+                            setState(() => _defaultFileRepeats = n);
+                          }
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
 
               if (_error != null) ...[
                 const SizedBox(height: 12),
@@ -298,12 +511,14 @@ class _UploadScriptSheetState extends State<_UploadScriptSheet> {
                     color: theme.colorScheme.error.withOpacity(0.12),
                     borderRadius: BorderRadius.circular(10),
                     border: Border.all(
-                        color: theme.colorScheme.error.withOpacity(0.35)),
+                        color:
+                            theme.colorScheme.error.withOpacity(0.35)),
                   ),
                   child: Text(
                     _error!,
                     style: _noDeco.copyWith(
-                        fontSize: 12, color: theme.colorScheme.error),
+                        fontSize: 12,
+                        color: theme.colorScheme.error),
                   ),
                 ),
               ],
