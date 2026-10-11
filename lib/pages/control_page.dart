@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../firebase/auth_service.dart';
 import '../firebase/firestore_service.dart';
+import '../firebase/security_service.dart';
+import '../firebase/device_service.dart';
 import '../models.dart';
 import '../widgets.dart';
 
@@ -113,6 +116,19 @@ class _ControlPageState extends State<ControlPage> {
                   },
                 ),
               ),
+
+              const SizedBox(height: 6),
+              Center(
+                child: Text(
+                  'Kageno',
+                  style: TextStyle(
+                    color: theme.colorScheme.onSurface.withOpacity(0.4),
+                    fontSize: 11,
+                    letterSpacing: 3,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
             ],
           ),
         ),
@@ -123,6 +139,7 @@ class _ControlPageState extends State<ControlPage> {
   Widget _userCard(ThemeData theme, UserProfile user) {
     final isAdmin = user.isAdmin;
     final isBanned = user.isBanned;
+    final hasHwid = user.hwid.isNotEmpty;
 
     Color borderColor;
     if (isBanned) {
@@ -144,6 +161,7 @@ class _ControlPageState extends State<ControlPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          // Header
           Row(
             children: [
               Container(
@@ -154,14 +172,8 @@ class _ControlPageState extends State<ControlPage> {
                     colors: isAdmin
                         ? const [Color(0xFF6C5CE7), Color(0xFF8E7CFF)]
                         : isBanned
-                            ? const [
-                                Color(0xFFFF6B6B),
-                                Color(0xFFFF8E53)
-                              ]
-                            : const [
-                                Color(0xFF00D2FF),
-                                Color(0xFF3A7BD5)
-                              ],
+                            ? const [Color(0xFFFF6B6B), Color(0xFFFF8E53)]
+                            : const [Color(0xFF00D2FF), Color(0xFF3A7BD5)],
                   ),
                   borderRadius: BorderRadius.circular(12),
                 ),
@@ -198,20 +210,18 @@ class _ControlPageState extends State<ControlPage> {
                         if (isBanned)
                           Padding(
                             padding: const EdgeInsets.only(right: 4),
-                            child: _badge(
-                                theme, 'محظور', const Color(0xFFFF6B6B)),
+                            child: _badge(theme, 'محظور',
+                                const Color(0xFFFF6B6B)),
                           ),
                       ],
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      user.email,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                      '@${user.username}',
                       style: _noDeco.copyWith(
                         fontSize: 11.5,
-                        color:
-                            theme.colorScheme.onSurface.withOpacity(0.6),
+                        color: theme.colorScheme.onSurface
+                            .withOpacity(0.6),
                       ),
                     ),
                   ],
@@ -220,6 +230,8 @@ class _ControlPageState extends State<ControlPage> {
             ],
           ),
           const SizedBox(height: 10),
+
+          // Chips
           Wrap(
             spacing: 6,
             runSpacing: 6,
@@ -238,9 +250,23 @@ class _ControlPageState extends State<ControlPage> {
                 '${user.allowedScripts.length} سكربت',
                 const Color(0xFF00D2FF),
               ),
+              // ⭐ HWID chip
+              _infoChip(
+                theme,
+                hasHwid
+                    ? Icons.phonelink_lock_rounded
+                    : Icons.phonelink_erase_rounded,
+                hasHwid ? 'جهاز مربوط' : 'مفيش جهاز',
+                hasHwid
+                    ? const Color(0xFF9B59B6)
+                    : const Color(0xFF95A5A6),
+                onTap: () => _showHwidDialog(user),
+              ),
             ],
           ),
           const SizedBox(height: 12),
+
+          // Actions
           Row(
             children: [
               Expanded(
@@ -302,8 +328,13 @@ class _ControlPageState extends State<ControlPage> {
   }
 
   Widget _infoChip(
-      ThemeData theme, IconData icon, String text, Color color) {
-    return Container(
+    ThemeData theme,
+    IconData icon,
+    String text,
+    Color color, {
+    VoidCallback? onTap,
+  }) {
+    final chip = Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
         color: color.withOpacity(0.12),
@@ -324,6 +355,16 @@ class _ControlPageState extends State<ControlPage> {
             ),
           ),
         ],
+      ),
+    );
+
+    if (onTap == null) return chip;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(8),
+        onTap: onTap,
+        child: chip,
       ),
     );
   }
@@ -422,6 +463,244 @@ class _ControlPageState extends State<ControlPage> {
 
   // ═══════ DIALOGS ═══════
 
+  // ⭐ نافذة HWID — عرض + نسخ + إعادة تعيين + حظر
+  Future<void> _showHwidDialog(UserProfile user) async {
+    final hasHwid = user.hwid.isNotEmpty;
+
+    await showDialog(
+      context: context,
+      builder: (ctx) {
+        return StatefulBuilder(builder: (ctx, setModal) {
+          return AlertDialog(
+            backgroundColor: Theme.of(ctx).colorScheme.surface,
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20)),
+            title: Row(
+              children: [
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF9B59B6).withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(Icons.phonelink_lock_rounded,
+                      color: Color(0xFF9B59B6), size: 22),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('HWID الجهاز',
+                          style: _noDeco.copyWith(
+                              fontWeight: FontWeight.bold, fontSize: 15)),
+                      Text(
+                        user.name.isEmpty ? user.username : user.name,
+                        style: _noDeco.copyWith(
+                          fontSize: 11,
+                          color: Theme.of(ctx)
+                              .colorScheme
+                              .onSurface
+                              .withOpacity(0.5),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (hasHwid) ...[
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color:
+                          const Color(0xFF9B59B6).withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                          color: const Color(0xFF9B59B6)
+                              .withOpacity(0.3)),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'البصمة الحالية:',
+                          style: _noDeco.copyWith(
+                            fontSize: 11,
+                            color: const Color(0xFF9B59B6),
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        SelectableText(
+                          user.hwid,
+                          style: _noDeco.copyWith(
+                            fontSize: 11,
+                            fontFamily: 'monospace',
+                            color: Theme.of(ctx).colorScheme.onSurface,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  // زر النسخ
+                  Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(10),
+                      onTap: () async {
+                        await Clipboard.setData(
+                            ClipboardData(text: user.hwid));
+                        if (ctx.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                                content: Text('📋 تم نسخ HWID')),
+                          );
+                        }
+                      },
+                      child: Container(
+                        padding:
+                            const EdgeInsets.symmetric(vertical: 10),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF00D2FF)
+                              .withOpacity(0.12),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(
+                              color: const Color(0xFF00D2FF)
+                                  .withOpacity(0.3)),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(Icons.content_copy_rounded,
+                                size: 14, color: Color(0xFF00D2FF)),
+                            const SizedBox(width: 6),
+                            Text(
+                              'نسخ HWID',
+                              style: _noDeco.copyWith(
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                                color: const Color(0xFF00D2FF),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ] else ...[
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF95A5A6).withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                          color: const Color(0xFF95A5A6)
+                              .withOpacity(0.3)),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.info_outline_rounded,
+                            size: 16, color: Color(0xFF95A5A6)),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'المستخدم لسه مفتحش التطبيق من أي جهاز',
+                            style: _noDeco.copyWith(
+                              fontSize: 11.5,
+                              color: const Color(0xFF95A5A6),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: Text('إغلاق', style: _noDeco),
+              ),
+              if (hasHwid)
+                TextButton(
+                  onPressed: () async {
+                    final confirm = await _confirmResetHwid(user);
+                    if (confirm == true && ctx.mounted) {
+                      Navigator.pop(ctx);
+                    }
+                  },
+                  child: Text('إعادة تعيين',
+                      style: _noDeco.copyWith(
+                          fontWeight: FontWeight.bold,
+                          color: const Color(0xFFFFB84D))),
+                ),
+            ],
+          );
+        });
+      },
+    );
+  }
+
+  Future<bool?> _confirmResetHwid(UserProfile user) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Theme.of(ctx).colorScheme.surface,
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: [
+            const Icon(Icons.restart_alt_rounded,
+                color: Color(0xFFFFB84D), size: 22),
+            const SizedBox(width: 8),
+            Text('إعادة تعيين HWID',
+                style: _noDeco.copyWith(
+                    fontWeight: FontWeight.bold, fontSize: 15)),
+          ],
+        ),
+        content: Text(
+          'هيتم فك ربط الجهاز الحالي من "${user.name.isEmpty ? user.username : user.name}".\n\n'
+          'أول جهاز يفتح الحساب ده بعد كده هيتحدد كالجهاز الرسمي.',
+          style: _noDeco.copyWith(fontSize: 13, height: 1.5),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text('إلغاء', style: _noDeco),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text('إعادة التعيين',
+                style: _noDeco.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: const Color(0xFFFFB84D))),
+          ),
+        ],
+      ),
+    );
+
+    if (ok == true) {
+      await FirestoreService.resetUserHwid(user.uid);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('✅ تم إعادة تعيين HWID'),
+            backgroundColor: Color(0xFF00D68F),
+          ),
+        );
+      }
+    }
+    return ok;
+  }
+
   Future<void> _toggleBan(UserProfile user) async {
     await FirestoreService.setUserBanned(user.uid, !user.isBanned);
     if (!mounted) return;
@@ -488,7 +767,7 @@ class _ControlPageState extends State<ControlPage> {
             backgroundColor: Theme.of(ctx).colorScheme.surface,
             shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(20)),
-            title: Text('تعديل ${user.email}',
+            title: Text('تعديل @${user.username}',
                 style: _noDeco.copyWith(
                     fontWeight: FontWeight.bold, fontSize: 16)),
             content: SizedBox(
@@ -722,7 +1001,6 @@ class _ControlPageState extends State<ControlPage> {
                         final name = nameCtrl.text.trim();
                         final pass = passCtrl.text;
 
-                        // Validation
                         if (username.isEmpty || username.length < 3) {
                           setModal(() => error =
                               'اسم المستخدم 3 حروف على الأقل');
@@ -765,7 +1043,8 @@ class _ControlPageState extends State<ControlPage> {
 
                           await FirestoreService.upsertUserProfile(
                             uid: newUid,
-                            email: AuthService.usernameToEmail(username),
+                            email:
+                                AuthService.usernameToEmail(username),
                             name: name,
                             showNumbers: showNumbers,
                           );
