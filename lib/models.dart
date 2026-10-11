@@ -24,8 +24,17 @@ class ScriptRules {
   final bool allowRunCount;
   final int defaultRunCount;
   final int maxRunCount;
+
   final bool allowRange;
   final String defaultRange;
+
+  // ⭐ جديد: استخدام ملف CSV
+  final bool askUseFile;             // هل نسأل اليوزر: يستخدم ملف؟
+  final bool defaultUseFile;         // افتراضي: يستخدم ملف؟
+  final bool allowAdvanceRow;        // هل نسمح بتغيير "صف جديد كل دورة"؟
+  final bool defaultAdvanceRow;      // افتراضي: صف جديد كل دورة؟
+  final bool allowFileRepeats;       // هل نسمح بتغيير عدد تكرار الملف؟
+  final int defaultFileRepeats;      // افتراضي: كام مرة نعيد الملف
 
   ScriptRules({
     this.allowRunCount = false,
@@ -33,6 +42,12 @@ class ScriptRules {
     this.maxRunCount = 100,
     this.allowRange = false,
     this.defaultRange = '',
+    this.askUseFile = false,
+    this.defaultUseFile = true,
+    this.allowAdvanceRow = false,
+    this.defaultAdvanceRow = true,
+    this.allowFileRepeats = false,
+    this.defaultFileRepeats = 1,
   });
 
   Map<String, dynamic> toMap() => {
@@ -41,6 +56,12 @@ class ScriptRules {
         'maxRunCount': maxRunCount,
         'allowRange': allowRange,
         'defaultRange': defaultRange,
+        'askUseFile': askUseFile,
+        'defaultUseFile': defaultUseFile,
+        'allowAdvanceRow': allowAdvanceRow,
+        'defaultAdvanceRow': defaultAdvanceRow,
+        'allowFileRepeats': allowFileRepeats,
+        'defaultFileRepeats': defaultFileRepeats,
       };
 
   factory ScriptRules.fromMap(Map<String, dynamic>? data) {
@@ -51,6 +72,13 @@ class ScriptRules {
       maxRunCount: (data['maxRunCount'] as num?)?.toInt() ?? 100,
       allowRange: data['allowRange'] == true,
       defaultRange: data['defaultRange']?.toString() ?? '',
+      askUseFile: data['askUseFile'] == true,
+      defaultUseFile: data['defaultUseFile'] != false,
+      allowAdvanceRow: data['allowAdvanceRow'] == true,
+      defaultAdvanceRow: data['defaultAdvanceRow'] != false,
+      allowFileRepeats: data['allowFileRepeats'] == true,
+      defaultFileRepeats:
+          (data['defaultFileRepeats'] as num?)?.toInt() ?? 1,
     );
   }
 }
