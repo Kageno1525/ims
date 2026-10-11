@@ -1,12 +1,17 @@
 import 'package:flutter/material.dart';
 import '../widgets.dart';
 import '../autofill_bridge.dart';
+import '../firebase/firestore_service.dart';
 import '../pages/upload_script_sheet.dart';
 import 'task_model.dart';
 import 'task_pickers.dart';
 import 'step_config_sheet.dart';
-import 'task_storage.dart';
-import '../config.dart';
+
+// ⭐ فلاج الأدمن
+const bool IS_ADMIN_APP = bool.fromEnvironment(
+  'IS_ADMIN',
+  defaultValue: true,
+);
 
 class TaskEditorPage extends StatefulWidget {
   final bool isDark;
@@ -92,9 +97,7 @@ class _TaskEditorPageState extends State<TaskEditorPage> {
     }
   }
 
-  void _removeStep(int index) {
-    setState(() => _steps.removeAt(index));
-  }
+  void _removeStep(int index) => setState(() => _steps.removeAt(index));
 
   void _toggleSpeed(int index) {
     setState(() {
@@ -125,8 +128,9 @@ class _TaskEditorPageState extends State<TaskEditorPage> {
               error
                   ? Icons.error_outline_rounded
                   : Icons.check_circle_rounded,
-              color:
-                  error ? const Color(0xFFFF6B6B) : const Color(0xFF00D68F),
+              color: error
+                  ? const Color(0xFFFF6B6B)
+                  : const Color(0xFF00D68F),
               size: 22,
             ),
             const SizedBox(width: 8),
@@ -142,15 +146,13 @@ class _TaskEditorPageState extends State<TaskEditorPage> {
           TextButton(
             onPressed: () => Navigator.pop(ctx),
             child: Text('حسناً',
-                style:
-                    _noDeco.copyWith(fontWeight: FontWeight.bold)),
+                style: _noDeco.copyWith(fontWeight: FontWeight.bold)),
           ),
         ],
       ),
     );
   }
 
-  // ⭐ حلّل الـ packages في الخطوات
   Future<List<TaskStep>?> _resolvePackages() async {
     final fixedSteps = <TaskStep>[];
     for (final step in _steps) {
@@ -160,8 +162,8 @@ class _TaskEditorPageState extends State<TaskEditorPage> {
         if (pkg.isEmpty) {
           _showMsg(
             step.type == TaskStepType.openApp
-                ? 'فيه خطوة "فتح تطبيق" مش محدّد فيها أي تطبيق'
-                : 'فيه خطوة "مسح بيانات" مش محدّد فيها أي تطبيق',
+                ? 'فيه خطوة "فتح تطبيق" مش محدّد فيها تطبيق'
+                : 'فيه خطوة "مسح بيانات" مش محدّد فيها تطبيق',
           );
           return null;
         }
@@ -180,15 +182,15 @@ class _TaskEditorPageState extends State<TaskEditorPage> {
     return fixedSteps;
   }
 
-  // ⭐ حفظ محلي فقط
+  // ⭐ حفظ محلي في Firestore
   Future<void> _save() async {
     final name = _nameCtrl.text.trim();
     if (name.isEmpty) {
-      _showMsg('من فضلك اكتب اسم المهمة الأول');
+      _showMsg('اكتب اسم المهمة الأول');
       return;
     }
     if (_steps.isEmpty) {
-      _showMsg('ضيف خطوة على الأقل قبل الحفظ');
+      _showMsg('ضيف خطوة على الأقل');
       return;
     }
 
@@ -205,10 +207,12 @@ class _TaskEditorPageState extends State<TaskEditorPage> {
       repeatCount: _taskRepeat,
       autoIncrement: _autoIncrement,
     );
+
+    await FirestoreService.saveAdminTask(task);
     if (mounted) Navigator.pop(context, task);
   }
 
-  // ⭐ رفع كسكربت للمستخدمين
+  // ⭐⭐ رفع كسكربت — Update / New flow
   Future<void> _uploadAsScript() async {
     final name = _nameCtrl.text.trim();
     if (name.isEmpty) {
@@ -216,7 +220,7 @@ class _TaskEditorPageState extends State<TaskEditorPage> {
       return;
     }
     if (_steps.isEmpty) {
-      _showMsg('ضيف خطوة على الأقل قبل الرفع');
+      _showMsg('ضيف خطوة على الأقل');
       return;
     }
 
@@ -233,28 +237,179 @@ class _TaskEditorPageState extends State<TaskEditorPage> {
       repeatCount: _taskRepeat,
       autoIncrement: _autoIncrement,
     );
+    await FirestoreService.saveAdminTask(task);
 
-    // افتح شاشة اختيار المستخدمين
-    final uploaded = await showUploadScriptSheet(
-      context,
-      isDark: widget.isDark,
-      task: task,
-    );
-
+    // ⭐ ندور على سكربت بنفس الاسم
+    final existing = await FirestoreService.getScriptByName(name);
     if (!mounted) return;
 
-    if (uploaded == true) {
-      // احفظ المهمة محلياً كمان
-      await TaskStorage.upsert(task);
+    final stepsJson = fixedSteps.map((s) => s.toJson()).toList();
+
+    if (existing != null) {
+      final choice = await _askUpdateOrNew(existing);
+      if (choice == null) return;
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('✅ تم رفع السكربت بنجاح'),
-          backgroundColor: Color(0xFF00D68F),
-        ),
+
+      if (choice == 'update') {
+        await FirestoreService.updateScriptContent(
+          scriptId: existing.id,
+          steps: stepsJson,
+        );
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('✅ تم تحديث السكربت — المستخدمين زي ما هم'),
+            backgroundColor: Color(0xFF00D68F),
+            duration: Duration(seconds: 4),
+          ),
+        );
+        Navigator.pop(context, task);
+        return;
+      } else if (choice == 'new') {
+        final newName = await _askNewName(name);
+        if (newName == null || newName.isEmpty) return;
+        if (!mounted) return;
+
+        await FirestoreService.uploadScript(
+          name: newName,
+          steps: stepsJson,
+          assignedTo: const [],
+          createdBy: '',
+        );
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('✅ تم رفع "$newName" كسكربت جديد'),
+            backgroundColor: const Color(0xFF00D68F),
+            duration: const Duration(seconds: 4),
+          ),
+        );
+        Navigator.pop(context, task);
+        return;
+      }
+    } else {
+      final uploaded = await showUploadScriptSheet(
+        context,
+        isDark: widget.isDark,
+        task: task,
       );
-      Navigator.pop(context, task);
+      if (!mounted) return;
+      if (uploaded == true) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('✅ تم رفع السكربت'),
+            backgroundColor: Color(0xFF00D68F),
+          ),
+        );
+        Navigator.pop(context, task);
+      }
     }
+  }
+
+  Future<String?> _askUpdateOrNew(ScriptDoc existing) {
+    return showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Theme.of(ctx).colorScheme.surface,
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFB84D).withOpacity(0.2),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Icon(Icons.info_outline_rounded,
+                  color: Color(0xFFFFB84D), size: 22),
+            ),
+            const SizedBox(width: 10),
+            const Expanded(
+              child: Text('سكربت بنفس الاسم موجود',
+                  style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 15,
+                      decoration: TextDecoration.none)),
+            ),
+          ],
+        ),
+        content: Text(
+          'فيه سكربت اسمه "${existing.name}" موجود بالفعل.\n'
+          'الاسم ده مربوط بـ ${existing.assignedTo.length} مستخدم.\n\n'
+          'عايز تحدّث المحتوى بتاعه، ولا تعمل واحد جديد باسم تاني؟',
+          style: _noDeco.copyWith(fontSize: 13, height: 1.6),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text('إلغاء', style: _noDeco),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, 'new'),
+            child: Text('إنشاء جديد',
+                style: _noDeco.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: const Color(0xFF00D2FF))),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, 'update'),
+            child: Text('تحديث',
+                style: _noDeco.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: const Color(0xFF00D68F))),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<String?> _askNewName(String suggested) async {
+    final ctrl = TextEditingController(text: '$suggested - نسخة');
+    final result = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Theme.of(ctx).colorScheme.surface,
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20)),
+        title: Text('اسم السكربت الجديد',
+            style: _noDeco.copyWith(
+                fontWeight: FontWeight.bold, fontSize: 15)),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          style: _noDeco.copyWith(fontSize: 14),
+          decoration: InputDecoration(
+            hintText: 'اسم جديد',
+            hintStyle: _noDeco.copyWith(
+                color: Theme.of(ctx)
+                    .colorScheme
+                    .onSurface
+                    .withOpacity(0.4)),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text('إلغاء', style: _noDeco),
+          ),
+          TextButton(
+            onPressed: () {
+              final v = ctrl.text.trim();
+              if (v.isEmpty) return;
+              Navigator.pop(ctx, v);
+            },
+            child: Text('إنشاء',
+                style: _noDeco.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: const Color(0xFF00D68F))),
+          ),
+        ],
+      ),
+    );
+    ctrl.dispose();
+    return result;
   }
 
   @override
@@ -305,11 +460,11 @@ class _TaskEditorPageState extends State<TaskEditorPage> {
                   labelText: 'اسم المهمة',
                   hintText: 'مثال: افتح واتساب',
                   labelStyle: _noDeco.copyWith(
-                      color:
-                          theme.colorScheme.onSurface.withOpacity(0.6)),
+                      color: theme.colorScheme.onSurface
+                          .withOpacity(0.6)),
                   hintStyle: _noDeco.copyWith(
-                      color:
-                          theme.colorScheme.onSurface.withOpacity(0.4)),
+                      color: theme.colorScheme.onSurface
+                          .withOpacity(0.4)),
                   prefixIcon: const Icon(
                       Icons.drive_file_rename_outline_rounded),
                 ),
@@ -327,7 +482,6 @@ class _TaskEditorPageState extends State<TaskEditorPage> {
                     style: _noDeco.copyWith(
                       fontSize: 15,
                       fontWeight: FontWeight.bold,
-                      color: theme.colorScheme.onSurface,
                     ),
                   ),
                   const SizedBox(width: 6),
@@ -348,23 +502,12 @@ class _TaskEditorPageState extends State<TaskEditorPage> {
                       ),
                     ),
                   ),
-                  const Spacer(),
-                  if (_steps.length > 1)
-                    Text(
-                      'اسحب • ⚡ للسرعة',
-                      style: _noDeco.copyWith(
-                        fontSize: 10,
-                        color:
-                            theme.colorScheme.onSurface.withOpacity(0.4),
-                      ),
-                    ),
                 ],
               ),
               const SizedBox(height: 8),
               Expanded(
-                child: _steps.isEmpty
-                    ? _emptyView(theme)
-                    : _stepsList(),
+                child:
+                    _steps.isEmpty ? _emptyView(theme) : _stepsList(),
               ),
               const SizedBox(height: 10),
               Row(
@@ -396,11 +539,10 @@ class _TaskEditorPageState extends State<TaskEditorPage> {
                   ),
                 ],
               ),
-              // ⭐ زر رفع السكربت (للأدمن فقط)
               if (IS_ADMIN_APP) ...[
                 const SizedBox(height: 10),
                 ActionBtn(
-                  label: 'رفع كسكربت للمستخدمين',
+                  label: 'رفع كسكربت',
                   icon: Icons.cloud_upload_rounded,
                   gradient: const [
                     Color(0xFF6C5CE7),
@@ -410,6 +552,18 @@ class _TaskEditorPageState extends State<TaskEditorPage> {
                   onTap: _uploadAsScript,
                 ),
               ],
+              const SizedBox(height: 8),
+              Center(
+                child: Text(
+                  'Kageno',
+                  style: TextStyle(
+                    color: theme.colorScheme.onSurface.withOpacity(0.35),
+                    fontSize: 10,
+                    letterSpacing: 3,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
             ],
           ),
         ),
@@ -500,7 +654,8 @@ class _TaskEditorPageState extends State<TaskEditorPage> {
                     border: Border.all(
                       color: _autoIncrement
                           ? const Color(0xFF00D68F)
-                          : theme.colorScheme.primary.withOpacity(0.15),
+                          : theme.colorScheme.primary
+                              .withOpacity(0.15),
                       width: _autoIncrement ? 1.5 : 1,
                     ),
                   ),
@@ -518,28 +673,15 @@ class _TaskEditorPageState extends State<TaskEditorPage> {
                       ),
                       const SizedBox(width: 8),
                       Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'الرقم يتقدم مع كل دورة',
-                              style: _noDeco.copyWith(
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
-                                color: _autoIncrement
-                                    ? const Color(0xFF00D68F)
-                                    : theme.colorScheme.onSurface,
-                              ),
-                            ),
-                            Text(
-                              '{num} هياخد رقم جديد كل دورة',
-                              style: _noDeco.copyWith(
-                                fontSize: 10,
-                                color: theme.colorScheme.onSurface
-                                    .withOpacity(0.5),
-                              ),
-                            ),
-                          ],
+                        child: Text(
+                          'الرقم يتقدم مع كل دورة',
+                          style: _noDeco.copyWith(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                            color: _autoIncrement
+                                ? const Color(0xFF00D68F)
+                                : theme.colorScheme.onSurface,
+                          ),
                         ),
                       ),
                     ],
@@ -616,7 +758,9 @@ class _TaskEditorPageState extends State<TaskEditorPage> {
   }
 }
 
-// ═══════════ Step Card ═══════════
+// ═══════════════════════════════════════════════════════════
+// _StepCard
+// ═══════════════════════════════════════════════════════════
 class _StepCard extends StatelessWidget {
   final int index;
   final int total;
@@ -712,9 +856,8 @@ class _StepCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final accent = step.speedMode
-        ? const Color(0xFFFFD93D)
-        : _accent;
+    final accent =
+        step.speedMode ? const Color(0xFFFFD93D) : _accent;
 
     return Container(
       decoration: BoxDecoration(
@@ -771,10 +914,7 @@ class _StepCard extends StatelessWidget {
           height: 38,
           decoration: BoxDecoration(
             gradient: LinearGradient(
-              colors: [
-                accent,
-                accent.withOpacity(0.7),
-              ],
+              colors: [accent, accent.withOpacity(0.7)],
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
             ),
@@ -994,8 +1134,8 @@ class _StepCard extends StatelessWidget {
             decoration: BoxDecoration(
               color: Colors.black.withOpacity(isDark ? 0.3 : 0.05),
               borderRadius: BorderRadius.circular(8),
-              border: Border.all(
-                  color: _accent.withOpacity(0.25)),
+              border:
+                  Border.all(color: _accent.withOpacity(0.25)),
             ),
             child: Row(
               children: [
@@ -1073,8 +1213,8 @@ class _StepCard extends StatelessWidget {
     return Row(
       children: [
         Container(
-          padding: const EdgeInsets.symmetric(
-              horizontal: 6, vertical: 2),
+          padding:
+              const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
           decoration: BoxDecoration(
             color: chipColor.withOpacity(0.2),
             borderRadius: BorderRadius.circular(6),
@@ -1272,7 +1412,6 @@ class _StepCard extends StatelessWidget {
   }
 
   Widget _swipeBody(ThemeData theme) {
-    // ⭐ نسخة جديدة: نقطة واحدة + اتجاه (لخطوة swipeToFind)
     if (step.type == TaskStepType.swipeToFind) {
       final target = step.params['targetText']?.toString() ?? '';
       final direction = step.params['direction']?.toString() ?? 'down';
@@ -1307,11 +1446,9 @@ class _StepCard extends StatelessWidget {
           ],
           Row(
             children: [
-              Icon(
-                Icons.location_on_rounded,
-                size: 12,
-                color: theme.colorScheme.onSurface.withOpacity(0.7),
-              ),
+              Icon(Icons.location_on_rounded,
+                  size: 12,
+                  color: theme.colorScheme.onSurface.withOpacity(0.7)),
               const SizedBox(width: 4),
               Expanded(
                 child: Text(
@@ -1330,7 +1467,6 @@ class _StepCard extends StatelessWidget {
       );
     }
 
-    // النسخة القديمة: نقطتين (لخطوة Swipe العادية)
     final x1 = step.params['x1']?.toString() ?? '0';
     final y1 = step.params['y1']?.toString() ?? '0';
     final x2 = step.params['x2']?.toString() ?? '0';
@@ -1392,12 +1528,14 @@ class _StepCard extends StatelessWidget {
           _chip(theme, Icons.hourglass_top_rounded,
               'انتظار ${step.waitAfterMs}م', const Color(0xFF95A5A6)),
         if (step.isSearchStep && step.timeoutMs > 0)
-          _chip(theme, Icons.timer_rounded,
+          _chip(
+              theme,
+              Icons.timer_rounded,
               'مهلة ${(step.timeoutMs / 1000).toStringAsFixed(0)}ث',
               const Color(0xFFFFB84D)),
         if (step.speedMode)
-          _chip(theme, Icons.bolt_rounded,
-              'بحث سريع', const Color(0xFFF39C12)),
+          _chip(theme, Icons.bolt_rounded, 'بحث سريع',
+              const Color(0xFFF39C12)),
       ],
     );
   }
@@ -1405,8 +1543,7 @@ class _StepCard extends StatelessWidget {
   Widget _chip(
       ThemeData theme, IconData icon, String label, Color color) {
     return Container(
-      padding:
-          const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
         color: color.withOpacity(0.12),
         borderRadius: BorderRadius.circular(6),
