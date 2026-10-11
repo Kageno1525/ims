@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'firebase/auth_service.dart';
 import 'firebase/firestore_service.dart';
+import 'firebase/security_service.dart';
 import 'models.dart';
 import 'widgets.dart';
 
@@ -12,6 +13,7 @@ class HomePage extends StatelessWidget {
   final VoidCallback onOpenTasks;
   final VoidCallback onOpenControl;
   final VoidCallback onOpenScripts;
+  final VoidCallback onOpenNotifications;
 
   const HomePage({
     super.key,
@@ -22,6 +24,7 @@ class HomePage extends StatelessWidget {
     required this.onOpenTasks,
     required this.onOpenControl,
     required this.onOpenScripts,
+    required this.onOpenNotifications,
   });
 
   Future<void> _logout(BuildContext context) async {
@@ -34,11 +37,13 @@ class HomePage extends StatelessWidget {
         title: const Text(
           'تسجيل الخروج',
           style: TextStyle(
-              fontWeight: FontWeight.bold, decoration: TextDecoration.none),
+              fontWeight: FontWeight.bold,
+              decoration: TextDecoration.none),
         ),
         content: const Text(
           'متأكد إنك عايز تسجّل خروج؟',
-          style: TextStyle(fontSize: 14, decoration: TextDecoration.none),
+          style:
+              TextStyle(fontSize: 14, decoration: TextDecoration.none),
         ),
         actions: [
           TextButton(
@@ -87,9 +92,10 @@ class HomePage extends StatelessWidget {
                       children: [
                         Text(
                           isAdmin ? 'IMS Admin' : 'IMS',
-                          style: theme.textTheme.headlineMedium?.copyWith(
-                              fontWeight: FontWeight.bold,
-                              letterSpacing: 2),
+                          style: theme.textTheme.headlineMedium
+                              ?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                  letterSpacing: 2),
                         ),
                         const SizedBox(height: 2),
                         Text(
@@ -103,6 +109,10 @@ class HomePage extends StatelessWidget {
                       ],
                     ),
                   ),
+                  // ⭐ زرار الإشعارات (للأدمن بس)
+                  if (isAdmin)
+                    _notificationsBtn(theme, isDark),
+                  if (isAdmin) const SizedBox(width: 8),
                   IconBtn(
                     icon: isDark
                         ? Icons.dark_mode_rounded
@@ -118,11 +128,9 @@ class HomePage extends StatelessWidget {
               ),
               const SizedBox(height: 24),
 
-              // كارت معلومات المستخدم
               _profileCard(theme, isAdmin),
               const SizedBox(height: 20),
 
-              // الكروت الرئيسية
               if (isAdmin) ...[
                 Row(
                   children: [
@@ -184,7 +192,6 @@ class HomePage extends StatelessWidget {
                   ],
                 ),
               ] else ...[
-                // المستخدم: الأرقام (اختياري) + السكربتات
                 if (profile.showNumbers) ...[
                   _wideCard(
                     title: 'الأرقام',
@@ -212,7 +219,6 @@ class HomePage extends StatelessWidget {
 
               const Spacer(),
 
-              // Footer
               Center(
                 child: Text(
                   'Kageno',
@@ -228,6 +234,53 @@ class HomePage extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+
+  // ⭐ زر الإشعارات مع Badge
+  Widget _notificationsBtn(ThemeData theme, bool isDark) {
+    return StreamBuilder<int>(
+      stream: SecurityService.unseenCountStream(),
+      builder: (context, snap) {
+        final count = snap.data ?? 0;
+        return Stack(
+          clipBehavior: Clip.none,
+          children: [
+            IconBtn(
+              icon: Icons.notifications_rounded,
+              onTap: onOpenNotifications,
+            ),
+            if (count > 0)
+              Positioned(
+                right: -2,
+                top: -2,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 5, vertical: 2),
+                  constraints: const BoxConstraints(minWidth: 18),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFFFF6B6B), Color(0xFFFF8E53)],
+                    ),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                        color: theme.scaffoldBackgroundColor, width: 2),
+                  ),
+                  child: Text(
+                    count > 99 ? '99+' : '$count',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 9,
+                      fontWeight: FontWeight.bold,
+                      decoration: TextDecoration.none,
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        );
+      },
     );
   }
 
@@ -276,7 +329,6 @@ class HomePage extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // ⭐ الأدمن يشوف الدور، اليوزر يشوف اسمه
                 Text(
                   isAdmin ? 'أدمن' : profile.name,
                   maxLines: 1,
@@ -288,14 +340,14 @@ class HomePage extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 2),
-                // ⭐ الأدمن يشوف الإيميل، اليوزر يشوف الـ username
                 Text(
                   isAdmin ? profile.email : '@${profile.username}',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     fontSize: 11,
-                    color: theme.colorScheme.onSurface.withOpacity(0.6),
+                    color:
+                        theme.colorScheme.onSurface.withOpacity(0.6),
                     decoration: TextDecoration.none,
                   ),
                 ),
