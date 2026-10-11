@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../firebase/firestore_service.dart';
 import '../models.dart';
 import '../widgets.dart';
+import '../autofill_bridge.dart';
 import '../tasks/task_model.dart';
 import '../tasks/task_runner.dart';
 
@@ -23,7 +24,8 @@ class ScriptsPage extends StatefulWidget {
   State<ScriptsPage> createState() => _ScriptsPageState();
 }
 
-class _ScriptsPageState extends State<ScriptsPage> {
+class _ScriptsPageState extends State<ScriptsPage>
+    with WidgetsBindingObserver {
   static const _noDeco = TextStyle(
     decoration: TextDecoration.none,
     decorationColor: Colors.transparent,
@@ -34,10 +36,13 @@ class _ScriptsPageState extends State<ScriptsPage> {
       ValueNotifier<List<LogEntry>>(<LogEntry>[]);
   String? _runningScriptId;
   ScriptDoc? _runningScript;
+  bool _accessibilityOn = false;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _checkAccessibility();
     _runner.addListener(() {
       if (mounted) setState(() {});
     });
@@ -45,9 +50,23 @@ class _ScriptsPageState extends State<ScriptsPage> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _runner.dispose();
     _logs.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _checkAccessibility();
+    }
+  }
+
+  Future<void> _checkAccessibility() async {
+    final a = await AutoFillBridge.isAccessibilityEnabled();
+    if (!mounted) return;
+    setState(() => _accessibilityOn = a);
   }
 
   void _addLog(LogEntry e) {
@@ -70,6 +89,15 @@ class _ScriptsPageState extends State<ScriptsPage> {
 
   Future<void> _runScript(ScriptDoc doc) async {
     if (_runner.running) return;
+    if (!_accessibilityOn) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('فعّل "إعدادات الوصول" الأول'),
+          backgroundColor: Color(0xFFFFB84D),
+        ),
+      );
+      return;
+    }
 
     setState(() {
       _runningScriptId = doc.id;
@@ -95,9 +123,7 @@ class _ScriptsPageState extends State<ScriptsPage> {
     }
   }
 
-  void _stopScript() {
-    _runner.stop();
-  }
+  void _stopScript() => _runner.stop();
 
   @override
   Widget build(BuildContext context) {
@@ -109,7 +135,6 @@ class _ScriptsPageState extends State<ScriptsPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Header
               Row(
                 children: [
                   IconBtn(
@@ -132,9 +157,9 @@ class _ScriptsPageState extends State<ScriptsPage> {
                           stream: FirestoreService.userScriptsStream(
                               widget.profile.uid),
                           builder: (_, snap) {
-                            final count = snap.data?.length ?? 0;
+                            final c = snap.data?.length ?? 0;
                             return Text(
-                              '$count سكربت متاح',
+                              '$c سكربت متاح',
                               style: _noDeco.copyWith(
                                 fontSize: 12,
                                 color: theme.colorScheme.onSurface
@@ -154,14 +179,15 @@ class _ScriptsPageState extends State<ScriptsPage> {
                   ),
                 ],
               ),
-              const SizedBox(height: 14),
-
-              // شريط التشغيل (لو فيه سكربت شغال)
-              if (_runner.running) _runningBar(theme),
-
               const SizedBox(height: 10),
 
-              // القائمة
+              // ⭐ زر إعدادات الوصول
+              _accessibilityCard(theme),
+              const SizedBox(height: 10),
+
+              if (_runner.running) _runningBar(theme),
+              const SizedBox(height: 4),
+
               Expanded(
                 child: StreamBuilder<List<ScriptDoc>>(
                   stream: FirestoreService.userScriptsStream(
@@ -172,7 +198,9 @@ class _ScriptsPageState extends State<ScriptsPage> {
                           child: CircularProgressIndicator());
                     }
                     if (snap.hasError) {
-                      return _errorView(theme, '${snap.error}');
+                      return Center(
+                          child: Text('${snap.error}',
+                              style: _noDeco.copyWith(fontSize: 12)));
                     }
                     final scripts = snap.data ?? [];
                     if (scripts.isEmpty) {
@@ -190,7 +218,6 @@ class _ScriptsPageState extends State<ScriptsPage> {
                 ),
               ),
 
-              // السجل
               if (_runner.running || _logs.value.isNotEmpty) ...[
                 const SizedBox(height: 10),
                 SizedBox(
@@ -202,6 +229,99 @@ class _ScriptsPageState extends State<ScriptsPage> {
                   ),
                 ),
               ],
+
+              const SizedBox(height: 6),
+              Center(
+                child: Text(
+                  'Kageno',
+                  style: TextStyle(
+                    color: theme.colorScheme.onSurface.withOpacity(0.4),
+                    fontSize: 11,
+                    letterSpacing: 3,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ⭐ كارت إعدادات الوصول (زي اللي في المهام)
+  Widget _accessibilityCard(ThemeData theme) {
+    final on = _accessibilityOn;
+    final color = on ? const Color(0xFF00D68F) : const Color(0xFFFF6B6B);
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: () async {
+          await AutoFillBridge.openAccessibilitySettings();
+          await Future.delayed(const Duration(seconds: 1));
+          _checkAccessibility();
+        },
+        child: Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [
+                color.withOpacity(0.2),
+                color.withOpacity(0.08),
+              ],
+            ),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: color.withOpacity(0.4), width: 1.5),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: color.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(
+                  on
+                      ? Icons.verified_user_rounded
+                      : Icons.gpp_bad_rounded,
+                  color: color,
+                  size: 22,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      on
+                          ? 'إعدادات الوصول شغالة'
+                          : 'اضغط لتفعيل إعدادات الوصول',
+                      style: _noDeco.copyWith(
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.bold,
+                        color: color,
+                      ),
+                    ),
+                    Text(
+                      on
+                          ? 'IMS AutoFill مفعّل'
+                          : 'لازم تفعّلها عشان السكربت يشتغل',
+                      style: _noDeco.copyWith(
+                        fontSize: 10.5,
+                        color: theme.colorScheme.onSurface
+                            .withOpacity(0.6),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(Icons.arrow_forward_ios_rounded,
+                  size: 14, color: color),
             ],
           ),
         ),
@@ -211,46 +331,34 @@ class _ScriptsPageState extends State<ScriptsPage> {
 
   Widget _runningBar(ThemeData theme) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
           colors: [Color(0xFF00B894), Color(0xFF00D68F)],
         ),
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(14),
       ),
       child: Row(
         children: [
           const SizedBox(
-            width: 18,
-            height: 18,
+            width: 16,
+            height: 16,
             child: CircularProgressIndicator(
               strokeWidth: 2,
               color: Colors.white,
             ),
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: 10),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'جاري تشغيل: ${_runningScript?.name ?? ""}',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: _noDeco.copyWith(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                if (_runner.totalTaskRounds > 1)
-                  Text(
-                    'دورة ${_runner.currentTaskRound + 1}/${_runner.totalTaskRounds}',
-                    style: _noDeco.copyWith(
-                      color: Colors.white.withOpacity(0.85),
-                      fontSize: 11,
-                    ),
-                  ),
-              ],
+            child: Text(
+              'جاري تشغيل: ${_runningScript?.name ?? ""}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: _noDeco.copyWith(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+                fontSize: 12,
+              ),
             ),
           ),
           Material(
@@ -261,21 +369,18 @@ class _ScriptsPageState extends State<ScriptsPage> {
               onTap: _stopScript,
               child: Padding(
                 padding: const EdgeInsets.symmetric(
-                    horizontal: 12, vertical: 8),
+                    horizontal: 10, vertical: 6),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     const Icon(Icons.stop_rounded,
-                        color: Colors.white, size: 16),
+                        color: Colors.white, size: 14),
                     const SizedBox(width: 4),
-                    Text(
-                      'إيقاف',
-                      style: _noDeco.copyWith(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 12,
-                      ),
-                    ),
+                    Text('إيقاف',
+                        style: _noDeco.copyWith(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 11)),
                   ],
                 ),
               ),
@@ -302,112 +407,79 @@ class _ScriptsPageState extends State<ScriptsPage> {
               : theme.colorScheme.primary.withOpacity(0.2),
           width: isRunning ? 2 : 1.2,
         ),
-        boxShadow: isRunning
-            ? [
-                BoxShadow(
-                  color: const Color(0xFF00D68F).withOpacity(0.3),
-                  blurRadius: 16,
-                  offset: const Offset(0, 6),
-                ),
-              ]
-            : null,
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+      child: Row(
         children: [
-          Row(
-            children: [
-              Container(
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [Color(0xFF6C5CE7), Color(0xFF00D2FF)],
+              ),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Icon(Icons.auto_awesome_rounded,
+                color: Colors.white, size: 22),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  doc.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: _noDeco.copyWith(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  '${doc.steps.length} خطوة',
+                  style: _noDeco.copyWith(
+                    fontSize: 11,
+                    color: theme.colorScheme.onSurface.withOpacity(0.5),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Material(
+            color: Colors.transparent,
+            child: InkWell(
+              borderRadius: BorderRadius.circular(50),
+              onTap: isAnyRunning ? null : () => _runScript(doc),
+              child: Container(
                 width: 44,
                 height: 44,
                 decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFF6C5CE7), Color(0xFF00D2FF)],
-                  ),
-                  borderRadius: BorderRadius.circular(12),
+                  shape: BoxShape.circle,
+                  gradient: isAnyRunning
+                      ? null
+                      : const LinearGradient(
+                          colors: [
+                            Color(0xFF00D68F),
+                            Color(0xFF00B894),
+                          ],
+                        ),
+                  color: isAnyRunning
+                      ? theme.colorScheme.onSurface.withOpacity(0.15)
+                      : null,
                 ),
-                child: const Icon(
-                  Icons.auto_awesome_rounded,
-                  color: Colors.white,
+                child: Icon(
+                  isRunning
+                      ? Icons.hourglass_top_rounded
+                      : Icons.play_arrow_rounded,
+                  color: isAnyRunning
+                      ? theme.colorScheme.onSurface.withOpacity(0.4)
+                      : Colors.white,
                   size: 22,
                 ),
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      doc.name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: _noDeco.copyWith(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 15,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      '${doc.steps.length} خطوة',
-                      style: _noDeco.copyWith(
-                        fontSize: 11,
-                        color: theme.colorScheme.onSurface
-                            .withOpacity(0.5),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              // زر التشغيل
-              Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(50),
-                  onTap: isAnyRunning
-                      ? null
-                      : () => _runScript(doc),
-                  child: Container(
-                    width: 48,
-                    height: 48,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      gradient: isAnyRunning
-                          ? null
-                          : const LinearGradient(
-                              colors: [
-                                Color(0xFF00D68F),
-                                Color(0xFF00B894),
-                              ],
-                            ),
-                      color: isAnyRunning
-                          ? theme.colorScheme.onSurface
-                              .withOpacity(0.15)
-                          : null,
-                      boxShadow: isAnyRunning
-                          ? null
-                          : [
-                              BoxShadow(
-                                color: const Color(0xFF00D68F)
-                                    .withOpacity(0.4),
-                                blurRadius: 12,
-                                offset: const Offset(0, 6),
-                              ),
-                            ],
-                    ),
-                    child: Icon(
-                      isRunning
-                          ? Icons.hourglass_top_rounded
-                          : Icons.play_arrow_rounded,
-                      color: isAnyRunning
-                          ? theme.colorScheme.onSurface
-                              .withOpacity(0.4)
-                          : Colors.white,
-                      size: 26,
-                    ),
-                  ),
-                ),
-              ),
-            ],
+            ),
           ),
         ],
       ),
@@ -442,27 +514,6 @@ class _ScriptsPageState extends State<ScriptsPage> {
             ),
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _errorView(ThemeData theme, String error) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.error_outline_rounded,
-                size: 60, color: theme.colorScheme.error),
-            const SizedBox(height: 16),
-            Text(
-              error,
-              textAlign: TextAlign.center,
-              style: _noDeco.copyWith(fontSize: 13),
-            ),
-          ],
-        ),
       ),
     );
   }
