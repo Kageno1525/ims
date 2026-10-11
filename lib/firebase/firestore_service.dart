@@ -143,12 +143,14 @@ class FirestoreService {
     required List<Map<String, dynamic>> steps,
     required List<String> assignedTo,
     required String createdBy,
+    ScriptRules? rules,
   }) async {
     final ref = await _db.collection('scripts').add({
       'name': name,
       'steps': steps,
       'assignedTo': assignedTo,
       'createdBy': createdBy,
+      'rules': (rules ?? ScriptRules()).toMap(),
       'createdAt': FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp(),
     });
@@ -171,6 +173,16 @@ class FirestoreService {
   ) async {
     data['updatedAt'] = FieldValue.serverTimestamp();
     await _db.collection('scripts').doc(id).set(data, SetOptions(merge: true));
+  }
+
+  static Future<void> updateScriptRules(
+    String scriptId,
+    ScriptRules rules,
+  ) async {
+    await _db.collection('scripts').doc(scriptId).update({
+      'rules': rules.toMap(),
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
   }
 
   static Future<void> deleteScript(String id) async {
