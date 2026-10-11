@@ -35,15 +35,15 @@ class _AuthGateState extends State<AuthGate> {
   bool _sessionConflict = false;
   bool _hwidBanned = false;
   bool _deviceMismatch = false;
+  bool _wrongDevice = false;
+  String? _boundDeviceHwid;
   StreamSubscription<User?>? _authSub;
   Timer? _safetyTimer;
 
   @override
   void initState() {
     super.initState();
-
-    // ⭐ Safety timeout — لو في مشكلة، نعرض شاشة خطأ بدل التعليق
-    _safetyTimer = Timer(const Duration(seconds: 10), () {
+    _safetyTimer = Timer(const Duration(seconds: 15), () {
       if (mounted && _loading) {
         setState(() {
           _loading = false;
@@ -51,8 +51,6 @@ class _AuthGateState extends State<AuthGate> {
         });
       }
     });
-
-    // ⭐ نبدأ التحقق من HWID في الخلفية
     _checkHwidThenAuth();
   }
 
@@ -63,7 +61,6 @@ class _AuthGateState extends State<AuthGate> {
     super.dispose();
   }
 
-  // ⭐ فحص HWID أولاً — مع timeout
   Future<void> _checkHwidThenAuth() async {
     bool hwidBanned = false;
     try {
@@ -88,7 +85,6 @@ class _AuthGateState extends State<AuthGate> {
       return;
     }
 
-    // ⭐ ابدأ الاستماع للـ auth state
     _authSub = AuthService.authStateChanges().listen(
       _onAuthChanged,
       onError: (e) {
@@ -105,7 +101,6 @@ class _AuthGateState extends State<AuthGate> {
   Future<void> _onAuthChanged(User? user) async {
     if (!mounted) return;
 
-    // ⭐ مستخدم مش مسجّل → اروح للـ login
     if (user == null) {
       _safetyTimer?.cancel();
       setState(() {
@@ -115,11 +110,13 @@ class _AuthGateState extends State<AuthGate> {
         _error = null;
         _sessionConflict = false;
         _deviceMismatch = false;
+        _wrongDevice = false;
+        _boundDeviceHwid = null;
       });
       return;
     }
 
-    // ⭐ محاولة استخدام الكاش أولاً للسرعة
+    // الكاش أولاً
     try {
       final cached = await ProfileCache.load();
       if (cached != null && cached.uid == user.uid && !cached.isBanned) {
@@ -129,17 +126,14 @@ class _AuthGateState extends State<AuthGate> {
           _profile = cached;
           _loading = false;
         });
-        // تحقق من الخادم في الخلفية
         _verifyInBackground(user);
         return;
       }
     } catch (_) {}
 
-    // ⭐ مفيش كاش — جيب من Firestore مباشرة
     try {
       final profile = await FirestoreService.getUserProfile(user.uid)
-          .timeout(const Duration(seconds: 5),
-              onTimeout: () => null);
+          .timeout(const Duration(seconds: 5), onTimeout: () => null);
 
       if (!mounted) return;
 
@@ -169,7 +163,26 @@ class _AuthGateState extends State<AuthGate> {
         return;
       }
 
-      // ⭐ احفظ الكاش وابدأ
+      // ⭐⭐⭐ فحص HWID — بعد ما نعرف إنه مش أدمن
+      final currentHwid = await DeviceService.getHwid()
+          .timeout(const Duration(seconds: 3), onTimeout: () => '');
+
+      if (!mounted) return;
+
+      // ⭐ اليوزر العادي: لو مربوط بجهاز تاني → رفض
+      if (!profile.isAdmin &&
+          profile.hwid.isNotEmpty &&
+          profile.hwid != currentHwid) {
+        await AuthService.signOut();
+        _safetyTimer?.cancel();
+        setState(() {
+          _loading = false;
+          _wrongDevice = true;
+          _boundDeviceHwid = profile.hwid;
+        });
+        return;
+      }
+
       await ProfileCache.save(profile);
 
       if (!mounted) return;
@@ -180,7 +193,7 @@ class _AuthGateState extends State<AuthGate> {
         _loading = false;
       });
 
-      _sessionAndWatchers(user, profile);
+      _sessionAndWatchers(user, profile, currentHwid);
     } catch (e) {
       if (!mounted) return;
       _safetyTimer?.cancel();
@@ -191,12 +204,10 @@ class _AuthGateState extends State<AuthGate> {
     }
   }
 
-  // ⭐ التحقق من الخادم في الخلفية (لما نستخدم الكاش)
   Future<void> _verifyInBackground(User user) async {
     try {
       final profile = await FirestoreService.getUserProfile(user.uid)
-          .timeout(const Duration(seconds: 5),
-              onTimeout: () => null);
+          .timeout(const Duration(seconds: 5), onTimeout: () => null);
 
       if (!mounted) return;
 
@@ -215,13 +226,30 @@ class _AuthGateState extends State<AuthGate> {
         return;
       }
 
+      // ⭐ فحص HWID في الخلفية
+      final currentHwid = await DeviceService.getHwid()
+          .timeout(const Duration(seconds: 3), onTimeout: () => '');
+
+      if (!mounted) return;
+
+      if (!profile.isAdmin &&
+          profile.hwid.isNotEmpty &&
+          profile.hwid != currentHwid) {
+        await AuthService.signOut();
+        setState(() {
+          _wrongDevice = true;
+          _boundDeviceHwid = profile.hwid;
+          _profile = null;
+          _firebaseUser = null;
+        });
+        return;
+      }
+
       await ProfileCache.save(profile);
       if (!mounted) return;
       setState(() => _profile = profile);
-      _sessionAndWatchers(user, profile);
-    } catch (_) {
-      // مشكلة نت — نسيب الكاش شغال
-    }
+      _sessionAndWatchers(user, profile, currentHwid);
+    } catch (_) {}
   }
 
   Future<void> _logAndLogout(User user, UserProfile profile) async {
@@ -252,14 +280,35 @@ class _AuthGateState extends State<AuthGate> {
     });
   }
 
-  // ⭐ الجلسة والمتابعة
-  Future<void> _sessionAndWatchers(User user, UserProfile profile) async {
+  Future<void> _sessionAndWatchers(
+    User user,
+    UserProfile profile,
+    String currentHwid,
+  ) async {
     try {
-      final ok = await SessionManager.bindSession(user.uid)
-          .timeout(const Duration(seconds: 5),
-              onTimeout: () => true);
+      final check = await SessionManager.bindSession(
+        user.uid,
+        currentHwid: currentHwid,
+        isAdmin: profile.isAdmin,
+      ).timeout(const Duration(seconds: 5),
+          onTimeout: () => SessionCheck.ok);
 
-      if (!ok) {
+      // ⭐ جهاز مختلف
+      if (check.status == SessionCheckStatus.wrongDevice) {
+        await AuthService.signOut();
+        await ProfileCache.clear();
+        if (!mounted) return;
+        setState(() {
+          _wrongDevice = true;
+          _boundDeviceHwid = check.boundHwid;
+          _profile = null;
+          _firebaseUser = null;
+        });
+        return;
+      }
+
+      // ⭐ جلسة متضاربة
+      if (check.status == SessionCheckStatus.sessionConflict) {
         if (!mounted) return;
         setState(() {
           _sessionConflict = true;
@@ -273,7 +322,6 @@ class _AuthGateState extends State<AuthGate> {
     } catch (_) {}
   }
 
-  // ⭐ متابعة البروفايل
   void _watchProfile(String uid) {
     FirestoreService.userProfileStream(uid).listen((profile) {
       if (!mounted || profile == null) return;
@@ -317,6 +365,8 @@ class _AuthGateState extends State<AuthGate> {
       _profile = null;
       _firebaseUser = null;
       _deviceMismatch = false;
+      _wrongDevice = false;
+      _boundDeviceHwid = null;
     });
   }
 
@@ -333,6 +383,8 @@ class _AuthGateState extends State<AuthGate> {
         _sessionConflict = false;
         _error = null;
         _deviceMismatch = false;
+        _wrongDevice = false;
+        _boundDeviceHwid = null;
       });
     }
   }
@@ -372,6 +424,7 @@ class _AuthGateState extends State<AuthGate> {
     }
 
     if (_firebaseUser == null) {
+      if (_wrongDevice) return _wrongDeviceScreen(theme);
       if (_error != null) return _errorScreen(theme, _error!);
       return FirebaseLoginPage(
         isDark: widget.isDark,
@@ -380,6 +433,7 @@ class _AuthGateState extends State<AuthGate> {
     }
 
     if (_deviceMismatch) return _mismatchScreen(theme);
+    if (_wrongDevice) return _wrongDeviceScreen(theme);
 
     if (_error != null && _profile == null) {
       return _errorScreen(theme, _error!);
@@ -442,6 +496,89 @@ class _AuthGateState extends State<AuthGate> {
                   color: theme.colorScheme.onSurface.withOpacity(0.7),
                   height: 1.6,
                 ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ⭐ شاشة الجهاز التاني
+  Widget _wrongDeviceScreen(ThemeData theme) {
+    return AnimatedBackground(
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFF6B6B).withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(24),
+                  border: Border.all(
+                    color: const Color(0xFFFF6B6B).withOpacity(0.4),
+                    width: 2,
+                  ),
+                ),
+                child: const Icon(Icons.phonelink_lock_rounded,
+                    size: 70, color: Color(0xFFFF6B6B)),
+              ),
+              const SizedBox(height: 24),
+              Text(
+                '🔒 الجهاز غير مصرّح',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                  color: theme.colorScheme.onSurface,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'الحساب ده مربوط بجهاز تاني.\n'
+                'مش مسموح يدخل من أكتر من جهاز.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 14,
+                  color: theme.colorScheme.onSurface.withOpacity(0.7),
+                  height: 1.6,
+                ),
+              ),
+              if (_boundDeviceHwid != null) ...[
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.surface.withOpacity(0.5),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    'HWID: ${_boundDeviceHwid!.substring(0, _boundDeviceHwid!.length > 20 ? 20 : _boundDeviceHwid!.length)}...',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontFamily: 'monospace',
+                      color:
+                          theme.colorScheme.onSurface.withOpacity(0.6),
+                    ),
+                  ),
+                ),
+              ],
+              const SizedBox(height: 32),
+              ActionBtn(
+                label: 'رجوع',
+                icon: Icons.arrow_back_rounded,
+                gradient: const [Color(0xFFFF6B6B), Color(0xFFFF8E53)],
+                busy: false,
+                onTap: () async {
+                  await _forceLogoutManual();
+                  if (mounted) {
+                    setState(() => _wrongDevice = false);
+                  }
+                },
               ),
             ],
           ),
