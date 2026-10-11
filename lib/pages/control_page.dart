@@ -1,9 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import '../firebase/auth_service.dart';
 import '../firebase/firestore_service.dart';
-import '../firebase/security_service.dart';
-import '../firebase/device_service.dart';
 import '../models.dart';
 import '../widgets.dart';
 
@@ -41,6 +38,7 @@ class _ControlPageState extends State<ControlPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              // Header
               Row(
                 children: [
                   IconBtn(
@@ -91,6 +89,7 @@ class _ControlPageState extends State<ControlPage> {
               ),
               const SizedBox(height: 14),
 
+              // Stream للأدمن: يُحدّث تلقائياً
               Expanded(
                 child: StreamBuilder<List<UserProfile>>(
                   stream: FirestoreService.allUsersStream(),
@@ -111,22 +110,10 @@ class _ControlPageState extends State<ControlPage> {
                       itemCount: users.length,
                       separatorBuilder: (_, __) =>
                           const SizedBox(height: 10),
-                      itemBuilder: (_, i) => _userCard(theme, users[i]),
+                      itemBuilder: (_, i) =>
+                          _userCard(theme, users[i]),
                     );
                   },
-                ),
-              ),
-
-              const SizedBox(height: 6),
-              Center(
-                child: Text(
-                  'Kageno',
-                  style: TextStyle(
-                    color: theme.colorScheme.onSurface.withOpacity(0.4),
-                    fontSize: 11,
-                    letterSpacing: 3,
-                    fontWeight: FontWeight.bold,
-                  ),
                 ),
               ),
             ],
@@ -139,7 +126,6 @@ class _ControlPageState extends State<ControlPage> {
   Widget _userCard(ThemeData theme, UserProfile user) {
     final isAdmin = user.isAdmin;
     final isBanned = user.isBanned;
-    final hasHwid = user.hwid.isNotEmpty;
 
     Color borderColor;
     if (isBanned) {
@@ -153,15 +139,15 @@ class _ControlPageState extends State<ControlPage> {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: theme.colorScheme.surface
-            .withOpacity(widget.isDark ? 0.55 : 0.85),
+        color: theme.colorScheme.surface.withOpacity(
+            widget.isDark ? 0.55 : 0.85),
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: borderColor.withOpacity(0.4), width: 1.5),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Header
+          // الصف الأول: الأيقونة + الاسم + الإيميل
           Row(
             children: [
               Container(
@@ -210,18 +196,20 @@ class _ControlPageState extends State<ControlPage> {
                         if (isBanned)
                           Padding(
                             padding: const EdgeInsets.only(right: 4),
-                            child: _badge(theme, 'محظور',
-                                const Color(0xFFFF6B6B)),
+                            child: _badge(
+                                theme, 'محظور', const Color(0xFFFF6B6B)),
                           ),
                       ],
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      '@${user.username}',
+                      user.email,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: _noDeco.copyWith(
                         fontSize: 11.5,
-                        color: theme.colorScheme.onSurface
-                            .withOpacity(0.6),
+                        color:
+                            theme.colorScheme.onSurface.withOpacity(0.6),
                       ),
                     ),
                   ],
@@ -231,7 +219,7 @@ class _ControlPageState extends State<ControlPage> {
           ),
           const SizedBox(height: 10),
 
-          // Chips
+          // الشارات الإضافية
           Wrap(
             spacing: 6,
             runSpacing: 6,
@@ -250,23 +238,11 @@ class _ControlPageState extends State<ControlPage> {
                 '${user.allowedScripts.length} سكربت',
                 const Color(0xFF00D2FF),
               ),
-              // ⭐ HWID chip
-              _infoChip(
-                theme,
-                hasHwid
-                    ? Icons.phonelink_lock_rounded
-                    : Icons.phonelink_erase_rounded,
-                hasHwid ? 'جهاز مربوط' : 'مفيش جهاز',
-                hasHwid
-                    ? const Color(0xFF9B59B6)
-                    : const Color(0xFF95A5A6),
-                onTap: () => _showHwidDialog(user),
-              ),
             ],
           ),
           const SizedBox(height: 12),
 
-          // Actions
+          // أزرار التحكم
           Row(
             children: [
               Expanded(
@@ -328,13 +304,8 @@ class _ControlPageState extends State<ControlPage> {
   }
 
   Widget _infoChip(
-    ThemeData theme,
-    IconData icon,
-    String text,
-    Color color, {
-    VoidCallback? onTap,
-  }) {
-    final chip = Container(
+      ThemeData theme, IconData icon, String text, Color color) {
+    return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
         color: color.withOpacity(0.12),
@@ -355,16 +326,6 @@ class _ControlPageState extends State<ControlPage> {
             ),
           ),
         ],
-      ),
-    );
-
-    if (onTap == null) return chip;
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(8),
-        onTap: onTap,
-        child: chip,
       ),
     );
   }
@@ -427,14 +388,6 @@ class _ControlPageState extends State<ControlPage> {
               color: theme.colorScheme.onSurface.withOpacity(0.5),
             ),
           ),
-          const SizedBox(height: 8),
-          Text(
-            'اضغط "+" فوق لإضافة أول مستخدم',
-            style: _noDeco.copyWith(
-              fontSize: 12,
-              color: theme.colorScheme.onSurface.withOpacity(0.4),
-            ),
-          ),
         ],
       ),
     );
@@ -463,244 +416,6 @@ class _ControlPageState extends State<ControlPage> {
 
   // ═══════ DIALOGS ═══════
 
-  // ⭐ نافذة HWID — عرض + نسخ + إعادة تعيين + حظر
-  Future<void> _showHwidDialog(UserProfile user) async {
-    final hasHwid = user.hwid.isNotEmpty;
-
-    await showDialog(
-      context: context,
-      builder: (ctx) {
-        return StatefulBuilder(builder: (ctx, setModal) {
-          return AlertDialog(
-            backgroundColor: Theme.of(ctx).colorScheme.surface,
-            shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(20)),
-            title: Row(
-              children: [
-                Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF9B59B6).withOpacity(0.2),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: const Icon(Icons.phonelink_lock_rounded,
-                      color: Color(0xFF9B59B6), size: 22),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('HWID الجهاز',
-                          style: _noDeco.copyWith(
-                              fontWeight: FontWeight.bold, fontSize: 15)),
-                      Text(
-                        user.name.isEmpty ? user.username : user.name,
-                        style: _noDeco.copyWith(
-                          fontSize: 11,
-                          color: Theme.of(ctx)
-                              .colorScheme
-                              .onSurface
-                              .withOpacity(0.5),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                if (hasHwid) ...[
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color:
-                          const Color(0xFF9B59B6).withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                          color: const Color(0xFF9B59B6)
-                              .withOpacity(0.3)),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'البصمة الحالية:',
-                          style: _noDeco.copyWith(
-                            fontSize: 11,
-                            color: const Color(0xFF9B59B6),
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        SelectableText(
-                          user.hwid,
-                          style: _noDeco.copyWith(
-                            fontSize: 11,
-                            fontFamily: 'monospace',
-                            color: Theme.of(ctx).colorScheme.onSurface,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  // زر النسخ
-                  Material(
-                    color: Colors.transparent,
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(10),
-                      onTap: () async {
-                        await Clipboard.setData(
-                            ClipboardData(text: user.hwid));
-                        if (ctx.mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                                content: Text('📋 تم نسخ HWID')),
-                          );
-                        }
-                      },
-                      child: Container(
-                        padding:
-                            const EdgeInsets.symmetric(vertical: 10),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF00D2FF)
-                              .withOpacity(0.12),
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(
-                              color: const Color(0xFF00D2FF)
-                                  .withOpacity(0.3)),
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            const Icon(Icons.content_copy_rounded,
-                                size: 14, color: Color(0xFF00D2FF)),
-                            const SizedBox(width: 6),
-                            Text(
-                              'نسخ HWID',
-                              style: _noDeco.copyWith(
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
-                                color: const Color(0xFF00D2FF),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                ] else ...[
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF95A5A6).withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                          color: const Color(0xFF95A5A6)
-                              .withOpacity(0.3)),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.info_outline_rounded,
-                            size: 16, color: Color(0xFF95A5A6)),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            'المستخدم لسه مفتحش التطبيق من أي جهاز',
-                            style: _noDeco.copyWith(
-                              fontSize: 11.5,
-                              color: const Color(0xFF95A5A6),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx),
-                child: Text('إغلاق', style: _noDeco),
-              ),
-              if (hasHwid)
-                TextButton(
-                  onPressed: () async {
-                    final confirm = await _confirmResetHwid(user);
-                    if (confirm == true && ctx.mounted) {
-                      Navigator.pop(ctx);
-                    }
-                  },
-                  child: Text('إعادة تعيين',
-                      style: _noDeco.copyWith(
-                          fontWeight: FontWeight.bold,
-                          color: const Color(0xFFFFB84D))),
-                ),
-            ],
-          );
-        });
-      },
-    );
-  }
-
-  Future<bool?> _confirmResetHwid(UserProfile user) async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: Theme.of(ctx).colorScheme.surface,
-        shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20)),
-        title: Row(
-          children: [
-            const Icon(Icons.restart_alt_rounded,
-                color: Color(0xFFFFB84D), size: 22),
-            const SizedBox(width: 8),
-            Text('إعادة تعيين HWID',
-                style: _noDeco.copyWith(
-                    fontWeight: FontWeight.bold, fontSize: 15)),
-          ],
-        ),
-        content: Text(
-          'هيتم فك ربط الجهاز الحالي من "${user.name.isEmpty ? user.username : user.name}".\n\n'
-          'أول جهاز يفتح الحساب ده بعد كده هيتحدد كالجهاز الرسمي.',
-          style: _noDeco.copyWith(fontSize: 13, height: 1.5),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: Text('إلغاء', style: _noDeco),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: Text('إعادة التعيين',
-                style: _noDeco.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: const Color(0xFFFFB84D))),
-          ),
-        ],
-      ),
-    );
-
-    if (ok == true) {
-      await FirestoreService.resetUserHwid(user.uid);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('✅ تم إعادة تعيين HWID'),
-            backgroundColor: Color(0xFF00D68F),
-          ),
-        );
-      }
-    }
-    return ok;
-  }
-
   Future<void> _toggleBan(UserProfile user) async {
     await FirestoreService.setUserBanned(user.uid, !user.isBanned);
     if (!mounted) return;
@@ -726,7 +441,8 @@ class _ControlPageState extends State<ControlPage> {
           style: _noDeco.copyWith(fontWeight: FontWeight.bold),
         ),
         content: Text(
-          'متأكد إنك عايز تحذف "${user.name}"؟',
+          'متأكد إنك عايز تحذف "${user.name}"؟\n'
+          'ده هيمسح البروفايل من Firestore (الحساب نفسه في Firebase Auth مش هيتأثر).',
           style: _noDeco.copyWith(fontSize: 13),
         ),
         actions: [
@@ -753,6 +469,7 @@ class _ControlPageState extends State<ControlPage> {
     final nameCtrl = TextEditingController(text: user.name);
     bool showNumbers = user.showNumbers;
 
+    // اجيب كل السكربتات لتحديد المسموح
     final allScriptsSnap =
         await FirestoreService.allScriptsStream().first;
     final allowed = Set<String>.from(user.allowedScripts);
@@ -767,7 +484,7 @@ class _ControlPageState extends State<ControlPage> {
             backgroundColor: Theme.of(ctx).colorScheme.surface,
             shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(20)),
-            title: Text('تعديل @${user.username}',
+            title: Text('تعديل ${user.email}',
                 style: _noDeco.copyWith(
                     fontWeight: FontWeight.bold, fontSize: 16)),
             content: SizedBox(
@@ -863,230 +580,118 @@ class _ControlPageState extends State<ControlPage> {
   }
 
   Future<void> _showAddUserDialog(BuildContext context) async {
-    final userCtrl = TextEditingController();
+    final emailCtrl = TextEditingController();
     final nameCtrl = TextEditingController();
     final passCtrl = TextEditingController();
     bool showNumbers = true;
-    bool busy = false;
-    String? error;
 
     await showDialog(
       context: context,
-      barrierDismissible: false,
-      builder: (ctx) {
-        return StatefulBuilder(builder: (ctx, setModal) {
-          return AlertDialog(
-            backgroundColor: Theme.of(ctx).colorScheme.surface,
-            shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(20)),
-            title: Row(
-              children: [
-                Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFF6C5CE7), Color(0xFF00D2FF)],
-                    ),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: const Icon(Icons.person_add_rounded,
-                      color: Colors.white, size: 22),
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Theme.of(ctx).colorScheme.surface,
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20)),
+        title: Text('إضافة مستخدم',
+            style: _noDeco.copyWith(
+                fontWeight: FontWeight.bold, fontSize: 16)),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFB84D).withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                      color: const Color(0xFFFFB84D).withOpacity(0.4)),
                 ),
-                const SizedBox(width: 10),
-                Text('إضافة مستخدم',
-                    style: _noDeco.copyWith(
-                        fontWeight: FontWeight.bold, fontSize: 16)),
-              ],
-            ),
-            content: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  TextField(
-                    controller: userCtrl,
-                    enabled: !busy,
-                    textInputAction: TextInputAction.next,
-                    style: _noDeco.copyWith(fontSize: 14),
-                    decoration: const InputDecoration(
-                      labelText: 'اسم المستخدم',
-                      hintText: 'مثال: ahmed',
-                      prefixIcon: Icon(Icons.person_outline_rounded),
-                      isDense: true,
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  TextField(
-                    controller: nameCtrl,
-                    enabled: !busy,
-                    textInputAction: TextInputAction.next,
-                    style: _noDeco.copyWith(fontSize: 14),
-                    decoration: const InputDecoration(
-                      labelText: 'الاسم (للعرض)',
-                      hintText: 'مثال: أحمد محمد',
-                      prefixIcon: Icon(Icons.badge_outlined),
-                      isDense: true,
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  TextField(
-                    controller: passCtrl,
-                    enabled: !busy,
-                    obscureText: true,
-                    style: _noDeco.copyWith(fontSize: 14),
-                    decoration: const InputDecoration(
-                      labelText: 'كلمة المرور (6+ حروف)',
-                      prefixIcon: Icon(Icons.lock_outline_rounded),
-                      isDense: true,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  SwitchListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: Text('إظهار صفحة الأرقام',
-                        style: _noDeco.copyWith(fontSize: 13)),
-                    value: showNumbers,
-                    onChanged: busy
-                        ? null
-                        : (v) => setModal(() => showNumbers = v),
-                  ),
-                  if (error != null) ...[
-                    const SizedBox(height: 10),
-                    Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: Theme.of(ctx)
-                            .colorScheme
-                            .error
-                            .withOpacity(0.12),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(
-                          color: Theme.of(ctx)
-                              .colorScheme
-                              .error
-                              .withOpacity(0.35),
+                child: Row(
+                  children: [
+                    const Icon(Icons.info_outline_rounded,
+                        color: Color(0xFFFFB84D), size: 16),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        'لازم تنشئ الحساب يدوياً في Firebase Console → Authentication → Users',
+                        style: _noDeco.copyWith(
+                          fontSize: 10.5,
+                          color: const Color(0xFFFFB84D),
                         ),
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(Icons.error_outline_rounded,
-                              color: Theme.of(ctx).colorScheme.error,
-                              size: 18),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(error!,
-                                style: _noDeco.copyWith(
-                                  fontSize: 12,
-                                  color:
-                                      Theme.of(ctx).colorScheme.error,
-                                )),
-                          ),
-                        ],
                       ),
                     ),
                   ],
-                ],
+                ),
               ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: busy ? null : () => Navigator.pop(ctx),
-                child: Text('إلغاء', style: _noDeco),
+              const SizedBox(height: 14),
+              TextField(
+                controller: emailCtrl,
+                style: _noDeco.copyWith(fontSize: 14),
+                decoration: const InputDecoration(
+                  labelText: 'الإيميل',
+                  isDense: true,
+                ),
               ),
-              TextButton(
-                onPressed: busy
-                    ? null
-                    : () async {
-                        final username = userCtrl.text.trim();
-                        final name = nameCtrl.text.trim();
-                        final pass = passCtrl.text;
-
-                        if (username.isEmpty || username.length < 3) {
-                          setModal(() => error =
-                              'اسم المستخدم 3 حروف على الأقل');
-                          return;
-                        }
-                        if (!RegExp(r'^[a-z0-9_]+$')
-                            .hasMatch(username.toLowerCase())) {
-                          setModal(() => error =
-                              'اسم المستخدم: حروف إنجليزية وأرقام و _ بس');
-                          return;
-                        }
-                        if (name.isEmpty) {
-                          setModal(() => error = 'اكتب الاسم');
-                          return;
-                        }
-                        if (pass.length < 6) {
-                          setModal(() => error =
-                              'كلمة المرور 6 حروف على الأقل');
-                          return;
-                        }
-
-                        setModal(() {
-                          busy = true;
-                          error = null;
-                        });
-
-                        try {
-                          final newUid = await AuthService.createUser(
-                            username: username,
-                            password: pass,
-                          );
-
-                          if (newUid.isEmpty) {
-                            setModal(() {
-                              busy = false;
-                              error = 'فشل إنشاء الحساب';
-                            });
-                            return;
-                          }
-
-                          await FirestoreService.upsertUserProfile(
-                            uid: newUid,
-                            email:
-                                AuthService.usernameToEmail(username),
-                            name: name,
-                            showNumbers: showNumbers,
-                          );
-
-                          if (ctx.mounted) {
-                            Navigator.pop(ctx);
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text(
-                                    '✅ تم إنشاء "$username" — باس: $pass'),
-                                backgroundColor:
-                                    const Color(0xFF00D68F),
-                                duration: const Duration(seconds: 5),
-                              ),
-                            );
-                          }
-                        } catch (e) {
-                          setModal(() {
-                            busy = false;
-                            error = AuthService.arError(e);
-                          });
-                        }
-                      },
-                child: busy
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(
-                            strokeWidth: 2),
-                      )
-                    : Text('إنشاء',
-                        style: _noDeco.copyWith(
-                            fontWeight: FontWeight.bold,
-                            color: const Color(0xFF00D68F))),
+              const SizedBox(height: 10),
+              TextField(
+                controller: nameCtrl,
+                style: _noDeco.copyWith(fontSize: 14),
+                decoration: const InputDecoration(
+                  labelText: 'الاسم',
+                  isDense: true,
+                ),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: passCtrl,
+                style: _noDeco.copyWith(fontSize: 14),
+                decoration: const InputDecoration(
+                  labelText: 'Firebase UID',
+                  helperText: 'من Firebase Console → Users',
+                  helperStyle: TextStyle(fontSize: 10),
+                  isDense: true,
+                ),
+              ),
+              const SizedBox(height: 10),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: Text('إظهار صفحة الأرقام',
+                    style: _noDeco.copyWith(fontSize: 13)),
+                value: showNumbers,
+                onChanged: (v) => setState(() => showNumbers = v),
               ),
             ],
-          );
-        });
-      },
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text('إلغاء', style: _noDeco),
+          ),
+          TextButton(
+            onPressed: () async {
+              final uid = passCtrl.text.trim();
+              final email = emailCtrl.text.trim();
+              final name = nameCtrl.text.trim();
+              if (uid.isEmpty || email.isEmpty) return;
+              await FirestoreService.upsertUserProfile(
+                uid: uid,
+                email: email,
+                name: name.isEmpty ? email.split('@').first : name,
+                showNumbers: showNumbers,
+              );
+              if (ctx.mounted) Navigator.pop(ctx);
+            },
+            child: Text('إضافة',
+                style: _noDeco.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: const Color(0xFF00D68F))),
+          ),
+        ],
+      ),
     );
 
-    userCtrl.dispose();
+    emailCtrl.dispose();
     nameCtrl.dispose();
     passCtrl.dispose();
   }
