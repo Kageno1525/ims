@@ -20,15 +20,15 @@ class InstalledApp {
   InstalledApp({required this.package, required this.name});
 }
 
-// ⭐ بروفايل المستخدم
 class UserProfile {
   final String uid;
-  final String email;      // داخلي — مش بيتعرض للمستخدم
-  final String name;       // الاسم للعرض
-  final String role;       // "admin" | "user"
+  final String email;
+  final String name;
+  final String role;
   final List<String> allowedScripts;
   final bool showNumbers;
   final bool isBanned;
+  final String hwid;           // ⭐ جديد — بصمة الجهاز المربوط
   final DateTime? createdAt;
   final DateTime? lastLoginAt;
 
@@ -40,13 +40,16 @@ class UserProfile {
     this.allowedScripts = const [],
     this.showNumbers = true,
     this.isBanned = false,
+    this.hwid = '',            // ⭐ جديد
     this.createdAt,
     this.lastLoginAt,
   });
 
   bool get isAdmin => role == 'admin';
 
-  // ⭐ استخراج الـ username من الإيميل (بدون @ims.app)
+  // ⭐ هل الجهاز مربوط؟
+  bool get hasBoundDevice => hwid.isNotEmpty;
+
   String get username {
     if (email.isEmpty) return '';
     final idx = email.indexOf('@');
@@ -76,6 +79,7 @@ class UserProfile {
           .toList(),
       showNumbers: data['showNumbers'] != false,
       isBanned: data['isBanned'] == true,
+      hwid: data['hwid']?.toString() ?? '',
       createdAt: parseTs(data['createdAt']),
       lastLoginAt: parseTs(data['lastLoginAt']),
     );
@@ -88,6 +92,7 @@ class UserProfile {
         'allowedScripts': allowedScripts,
         'showNumbers': showNumbers,
         'isBanned': isBanned,
+        'hwid': hwid,
       };
 }
 
