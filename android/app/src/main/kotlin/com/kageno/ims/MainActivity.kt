@@ -142,14 +142,12 @@ class MainActivity : FlutterActivity() {
                         ImsAccessibilityService.swipeStatic(x1, y1, x2, y2, d)
                     }
                 }
-                // ⭐ جديد: scroll بديل
                 "scrollForward" -> runAsync(result) {
                     ImsAccessibilityService.scrollForwardStatic()
                 }
                 "scrollBackward" -> runAsync(result) {
                     ImsAccessibilityService.scrollBackwardStatic()
                 }
-                // ⭐ تشخيص
                 "testGesture" -> {
                     Thread {
                         val r = ImsAccessibilityService.testGestureStatic()
