@@ -40,7 +40,6 @@ class _ScriptsPageState extends State<ScriptsPage>
   ScriptDoc? _runningScript;
   bool _accessibilityOn = false;
 
-  // ⭐ خزن الـ prefs لكل سكربت
   final Map<String, ScriptUserPrefs> _prefs = {};
 
   @override
@@ -88,13 +87,17 @@ class _ScriptsPageState extends State<ScriptsPage>
     return p;
   }
 
-  // ⭐ حوار القواعد — يظهر للحاجات المسموح بيها بس
+  // ⭐⭐⭐ حوار القواعد — فيه كل الخيارات الجديدة
   Future<void> _showRulesDialog(ScriptDoc doc) async {
     final prefs = await _loadPrefs(doc.id);
     final rules = doc.rules;
 
     // لو مفيش حاجة مسموح بيها
-    if (!rules.allowRunCount && !rules.allowRange) {
+    if (!rules.allowRunCount &&
+        !rules.allowRange &&
+        !rules.askUseFile &&
+        !rules.allowAdvanceRow &&
+        !rules.allowFileRepeats) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -105,22 +108,25 @@ class _ScriptsPageState extends State<ScriptsPage>
       return;
     }
 
-    final runCountCtrl = TextEditingController(
-      text: (prefs.runCount > 0
-              ? prefs.runCount
-              : rules.defaultRunCount)
-          .toString(),
-    );
-
+    // قيم اليوزر
     int currentRunCount = prefs.runCount > 0
         ? prefs.runCount
         : rules.defaultRunCount;
-
+    bool currentUseFile = prefs.useFile;
+    bool currentAdvanceRow = prefs.advanceRow;
+    int currentFileRepeats = prefs.fileRepeats > 0
+        ? prefs.fileRepeats
+        : rules.defaultFileRepeats;
     String currentRange = prefs.rangeName.isNotEmpty
         ? prefs.rangeName
         : rules.defaultRange;
 
-    // ⭐ جيب الرنجات
+    final runCountCtrl =
+        TextEditingController(text: currentRunCount.toString());
+    final fileRepeatsCtrl =
+        TextEditingController(text: currentFileRepeats.toString());
+
+    // جيب الرنجات
     List<CsvFile> ranges = [];
     if (rules.allowRange) {
       try {
@@ -163,7 +169,7 @@ class _ScriptsPageState extends State<ScriptsPage>
               ],
             ),
             content: SizedBox(
-              width: 400,
+              width: 420,
               child: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
@@ -183,7 +189,7 @@ class _ScriptsPageState extends State<ScriptsPage>
                     ),
                     const SizedBox(height: 16),
 
-                    // عدد المرات
+                    // ═══ عدد المرات ═══
                     if (rules.allowRunCount) ...[
                       Container(
                         padding: const EdgeInsets.all(12),
@@ -213,18 +219,18 @@ class _ScriptsPageState extends State<ScriptsPage>
                                     color: const Color(0xFF6C5CE7),
                                   ),
                                 ),
+                                const Spacer(),
+                                Text(
+                                  'حتى ${rules.maxRunCount}',
+                                  style: _noDeco.copyWith(
+                                    fontSize: 10,
+                                    color: Theme.of(ctx)
+                                        .colorScheme
+                                        .onSurface
+                                        .withOpacity(0.5),
+                                  ),
+                                ),
                               ],
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              'الحد الأقصى: ${rules.maxRunCount}',
-                              style: _noDeco.copyWith(
-                                fontSize: 10,
-                                color: Theme.of(ctx)
-                                    .colorScheme
-                                    .onSurface
-                                    .withOpacity(0.5),
-                              ),
                             ),
                             const SizedBox(height: 10),
                             TextField(
@@ -253,8 +259,76 @@ class _ScriptsPageState extends State<ScriptsPage>
                       const SizedBox(height: 12),
                     ],
 
-                    // الرنج
-                    if (rules.allowRange) ...[
+                    // ═══ استخدام ملف ═══
+                    if (rules.askUseFile) ...[
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: currentUseFile
+                              ? const Color(0xFF00D68F)
+                                  .withOpacity(0.08)
+                              : Theme.of(ctx)
+                                  .colorScheme
+                                  .surface
+                                  .withOpacity(0.3),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: currentUseFile
+                                ? const Color(0xFF00D68F)
+                                    .withOpacity(0.3)
+                                : Theme.of(ctx)
+                                    .colorScheme
+                                    .primary
+                                    .withOpacity(0.15),
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.file_present_rounded,
+                                size: 16, color: Color(0xFF00D68F)),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment:
+                                    CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'يستخدم ملف؟',
+                                    style: _noDeco.copyWith(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                  Text(
+                                    currentUseFile
+                                        ? 'هيشتغل بملف CSV'
+                                        : 'هيشتغل بدون ملف',
+                                    style: _noDeco.copyWith(
+                                      fontSize: 10,
+                                      color: Theme.of(ctx)
+                                          .colorScheme
+                                          .onSurface
+                                          .withOpacity(0.55),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Switch(
+                              value: currentUseFile,
+                              onChanged: (v) =>
+                                  setModal(() => currentUseFile = v),
+                              activeColor: const Color(0xFF00D68F),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                    ],
+
+                    // ═══ الرنج ═══
+                    if (rules.allowRange && currentUseFile) ...[
                       Container(
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
@@ -296,8 +370,9 @@ class _ScriptsPageState extends State<ScriptsPage>
                               )
                             else
                               Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 12),
+                                padding:
+                                    const EdgeInsets.symmetric(
+                                        horizontal: 12),
                                 decoration: BoxDecoration(
                                   color: Theme.of(ctx)
                                       .colorScheme
@@ -332,14 +407,30 @@ class _ScriptsPageState extends State<ScriptsPage>
                                         .map((f) =>
                                             DropdownMenuItem<String>(
                                               value: f.name,
-                                              child: Text(f.name,
-                                                  overflow:
-                                                      TextOverflow
-                                                          .ellipsis,
-                                                  style: _noDeco
-                                                      .copyWith(
-                                                          fontSize:
-                                                              13)),
+                                              child: Row(
+                                                children: [
+                                                  const Icon(
+                                                      Icons
+                                                          .folder_rounded,
+                                                      size: 14,
+                                                      color: Color(
+                                                          0xFF00D68F)),
+                                                  const SizedBox(
+                                                      width: 8),
+                                                  Expanded(
+                                                    child: Text(
+                                                      f.name,
+                                                      overflow:
+                                                          TextOverflow
+                                                              .ellipsis,
+                                                      style: _noDeco
+                                                          .copyWith(
+                                                              fontSize:
+                                                                  13),
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
                                             ))
                                         .toList(),
                                     onChanged: (v) {
@@ -351,6 +442,146 @@ class _ScriptsPageState extends State<ScriptsPage>
                                   ),
                                 ),
                               ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                    ],
+
+                    // ═══ صف جديد كل دورة ═══
+                    if (rules.allowAdvanceRow && currentUseFile) ...[
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: currentAdvanceRow
+                              ? const Color(0xFF00D2FF)
+                                  .withOpacity(0.08)
+                              : Theme.of(ctx)
+                                  .colorScheme
+                                  .surface
+                                  .withOpacity(0.3),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: currentAdvanceRow
+                                ? const Color(0xFF00D2FF)
+                                    .withOpacity(0.3)
+                                : Theme.of(ctx)
+                                    .colorScheme
+                                    .primary
+                                    .withOpacity(0.15),
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.trending_down_rounded,
+                                size: 16, color: Color(0xFF00D2FF)),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment:
+                                    CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'صف جديد كل دورة؟',
+                                    style: _noDeco.copyWith(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                  Text(
+                                    currentAdvanceRow
+                                        ? 'كل دورة تاخد صف جديد'
+                                        : 'نفس الصف كل مرة',
+                                    style: _noDeco.copyWith(
+                                      fontSize: 10,
+                                      color: Theme.of(ctx)
+                                          .colorScheme
+                                          .onSurface
+                                          .withOpacity(0.55),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Switch(
+                              value: currentAdvanceRow,
+                              onChanged: (v) => setModal(
+                                  () => currentAdvanceRow = v),
+                              activeColor: const Color(0xFF00D2FF),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                    ],
+
+                    // ═══ عدد مرات إعادة الملف ═══
+                    if (rules.allowFileRepeats && currentUseFile) ...[
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFFB84D)
+                              .withOpacity(0.08),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                              color: const Color(0xFFFFB84D)
+                                  .withOpacity(0.3)),
+                        ),
+                        child: Column(
+                          crossAxisAlignment:
+                              CrossAxisAlignment.stretch,
+                          children: [
+                            Row(
+                              children: [
+                                const Icon(Icons.replay_rounded,
+                                    size: 16,
+                                    color: Color(0xFFFFB84D)),
+                                const SizedBox(width: 6),
+                                Text(
+                                  'عدد مرات إعادة الملف',
+                                  style: _noDeco.copyWith(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.bold,
+                                    color: const Color(0xFFFFB84D),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'لو خلص، نرجع للأول كام مرة',
+                              style: _noDeco.copyWith(
+                                fontSize: 10,
+                                color: Theme.of(ctx)
+                                    .colorScheme
+                                    .onSurface
+                                    .withOpacity(0.55),
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+                            TextField(
+                              controller: fileRepeatsCtrl,
+                              keyboardType: TextInputType.number,
+                              textAlign: TextAlign.center,
+                              style: _noDeco.copyWith(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                color: const Color(0xFFFFB84D),
+                              ),
+                              decoration: const InputDecoration(
+                                isDense: true,
+                                contentPadding: EdgeInsets.symmetric(
+                                    vertical: 12),
+                              ),
+                              onChanged: (v) {
+                                final n = int.tryParse(v) ?? 1;
+                                if (n >= 1) {
+                                  setModal(
+                                      () => currentFileRepeats = n);
+                                }
+                              },
+                            ),
                           ],
                         ),
                       ),
@@ -381,19 +612,23 @@ class _ScriptsPageState extends State<ScriptsPage>
     );
 
     runCountCtrl.dispose();
+    fileRepeatsCtrl.dispose();
 
     if (result == true && mounted) {
       final newPrefs = ScriptUserPrefs(
         runCount: rules.allowRunCount
-            ? (prefs.runCount > 0
-                    ? prefs.runCount
-                    : rules.defaultRunCount) ==
-                    currentRunCount
+            ? (currentRunCount == rules.defaultRunCount
                 ? 0
-                : currentRunCount
+                : currentRunCount)
             : 0,
-        rangeName:
-            rules.allowRange ? currentRange : '',
+        rangeName: rules.allowRange ? currentRange : '',
+        useFile: currentUseFile,
+        advanceRow: currentAdvanceRow,
+        fileRepeats: rules.allowFileRepeats
+            ? (currentFileRepeats == rules.defaultFileRepeats
+                ? 0
+                : currentFileRepeats)
+            : 0,
       );
 
       await UserPrefsService.save(doc.id, newPrefs);
@@ -437,7 +672,7 @@ class _ScriptsPageState extends State<ScriptsPage>
     final prefs = await _loadPrefs(doc.id);
     final rules = doc.rules;
 
-    // ⭐ عدد المرات
+    // عدد المرات
     int effectiveRunCount = 1;
     if (rules.allowRunCount) {
       effectiveRunCount = prefs.runCount > 0
@@ -445,7 +680,12 @@ class _ScriptsPageState extends State<ScriptsPage>
           : rules.defaultRunCount;
     }
 
-    // ⭐ الرنج
+    // يستخدم ملف؟
+    bool effectiveUseFile = rules.askUseFile
+        ? prefs.useFile
+        : rules.defaultUseFile;
+
+    // الرنج
     String effectiveRange = '';
     if (rules.allowRange) {
       effectiveRange = prefs.rangeName.isNotEmpty
@@ -455,6 +695,21 @@ class _ScriptsPageState extends State<ScriptsPage>
       effectiveRange = rules.defaultRange;
     }
 
+    // صف جديد كل دورة؟
+    bool effectiveAdvance = rules.allowAdvanceRow
+        ? prefs.advanceRow
+        : rules.defaultAdvanceRow;
+
+    // عدد مرات إعادة الملف
+    int effectiveRepeats = 1;
+    if (rules.allowFileRepeats) {
+      effectiveRepeats = prefs.fileRepeats > 0
+          ? prefs.fileRepeats
+          : rules.defaultFileRepeats;
+    } else {
+      effectiveRepeats = rules.defaultFileRepeats;
+    }
+
     setState(() {
       _runningScriptId = doc.id;
       _runningScript = doc;
@@ -462,9 +717,9 @@ class _ScriptsPageState extends State<ScriptsPage>
     _logs.value = <LogEntry>[];
 
     try {
-      // ⭐ لو فيه رنج مختار → نقرأ الأرقام منه
+      // ⭐ نجهز الأرقام لو محتاجين
       List<String> numbers = [];
-      if (effectiveRange.isNotEmpty) {
+      if (effectiveUseFile && effectiveRange.isNotEmpty) {
         try {
           final ranges = await CsvReader.listFiles();
           final file = ranges.firstWhere(
@@ -482,16 +737,85 @@ class _ScriptsPageState extends State<ScriptsPage>
         } catch (_) {}
       }
 
-      final task = _scriptToTask(doc).copyWith(
-        repeatCount: effectiveRunCount,
-      );
+      // ⭐⭐⭐ لو صف جديد كل دورة → نعمل task لكل صف
+      if (effectiveAdvance && numbers.isNotEmpty) {
+        // الدورات = عدد الأرقام × مرات الإعادة
+        final totalRounds = numbers.length * effectiveRepeats;
+        _addLog(LogEntry(
+          '🔁 هيتم تشغيل السكربت $totalRounds مرة (صف جديد كل مرة)',
+          DateTime.now(),
+          LogLevel.info,
+        ));
 
-      await _runner.run(
-        task,
-        onLog: _addLog,
-        numbers: numbers,
-        currentIndex: 0,
-      );
+        int runCount = 0;
+        bool allOk = true;
+        for (int repeat = 0; repeat < effectiveRepeats; repeat++) {
+          if (!_runner.running && runCount > 0) break;
+          if (repeat > 0) {
+            _addLog(LogEntry(
+              '🔁 إعادة الملف رقم ${repeat + 1}/$effectiveRepeats',
+              DateTime.now(),
+              LogLevel.info,
+            ));
+          }
+          for (int rowIdx = 0; rowIdx < numbers.length; rowIdx++) {
+            if (_runningScriptId == null) {
+              allOk = false;
+              break;
+            }
+            final task = _scriptToTask(doc).copyWith(
+              repeatCount: 1,
+            );
+            _addLog(LogEntry(
+              '▶️ صف ${rowIdx + 1}/${numbers.length} — رقم: ${numbers[rowIdx]}',
+              DateTime.now(),
+              LogLevel.info,
+            ));
+            final ok = await _runner.run(
+              task,
+              onLog: _addLog,
+              numbers: [numbers[rowIdx]],
+              currentIndex: 0,
+            );
+            if (!ok) {
+              allOk = false;
+              break;
+            }
+            runCount++;
+            if (runCount >= effectiveRunCount * numbers.length * effectiveRepeats) {
+              break;
+            }
+          }
+          if (!allOk) break;
+        }
+      } else if (effectiveAdvance) {
+        // مفيش ملف بس advanceRow مفعّل
+        _addLog(LogEntry(
+          '⚠️ مفيش ملف — مش هينفع صف جديد',
+          DateTime.now(),
+          LogLevel.wait,
+        ));
+        final task = _scriptToTask(doc).copyWith(
+          repeatCount: effectiveRunCount,
+        );
+        await _runner.run(
+          task,
+          onLog: _addLog,
+          numbers: numbers,
+          currentIndex: 0,
+        );
+      } else {
+        // ⭐ كل الدورات في مرة واحدة (نفس الصف)
+        final task = _scriptToTask(doc).copyWith(
+          repeatCount: effectiveRunCount,
+        );
+        await _runner.run(
+          task,
+          onLog: _addLog,
+          numbers: numbers,
+          currentIndex: 0,
+        );
+      }
     } finally {
       if (mounted) {
         setState(() {
@@ -502,7 +826,15 @@ class _ScriptsPageState extends State<ScriptsPage>
     }
   }
 
-  void _stopScript() => _runner.stop();
+  void _stopScript() {
+    _runner.stop();
+    if (mounted) {
+      setState(() {
+        _runningScriptId = null;
+        _runningScript = null;
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -773,7 +1105,11 @@ class _ScriptsPageState extends State<ScriptsPage>
     final isRunning = _runningScriptId == doc.id;
     final isAnyRunning = _runner.running;
     final rules = doc.rules;
-    final hasRules = rules.allowRunCount || rules.allowRange;
+    final hasRules = rules.allowRunCount ||
+        rules.allowRange ||
+        rules.askUseFile ||
+        rules.allowAdvanceRow ||
+        rules.allowFileRepeats;
 
     return Container(
       padding: const EdgeInsets.all(14),
@@ -933,8 +1269,7 @@ class _ScriptsPageState extends State<ScriptsPage>
 
     if (rules.allowRunCount) {
       final c = prefs?.runCount ?? 0;
-      final effective =
-          c > 0 ? c : rules.defaultRunCount;
+      final effective = c > 0 ? c : rules.defaultRunCount;
       parts.add('$effective×');
     }
 
@@ -945,6 +1280,11 @@ class _ScriptsPageState extends State<ScriptsPage>
       if (effective.isNotEmpty) {
         parts.add(effective);
       }
+    }
+
+    if (rules.askUseFile) {
+      final u = prefs?.useFile ?? rules.defaultUseFile;
+      parts.add(u ? '📄 ملف' : 'بدون ملف');
     }
 
     return parts.join(' • ');
@@ -981,4 +1321,4 @@ class _ScriptsPageState extends State<ScriptsPage>
       ),
     );
   }
-}
+}ك
