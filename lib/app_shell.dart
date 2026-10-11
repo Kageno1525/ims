@@ -17,11 +17,21 @@ import 'tasks/tasks_page.dart';
 import 'pages/control_page.dart';
 import 'pages/scripts_page.dart';
 import 'pages/admin_scripts_page.dart';
+import 'pages/notifications_page.dart';
 
 const String _kLoginUrl = 'https://imssms.org/login';
 const String _kNumbersUrl = 'https://imssms.org/numbers';
 
-enum Stage { home, login, numbers, tasks, control, scripts, adminScripts }
+enum Stage {
+  home,
+  login,
+  numbers,
+  tasks,
+  control,
+  scripts,
+  adminScripts,
+  notifications
+}
 
 class AppShell extends StatefulWidget {
   final bool isDark;
@@ -111,6 +121,29 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
         _refresh(silent: true);
       }
     });
+  }
+
+  // ⭐ مراقبة تغيير showNumbers — يطرد اليوزر من صفحة الأرقام
+  @override
+  void didUpdateWidget(AppShell oldWidget) {
+    super.didUpdateWidget(oldWidget);
+
+    if (widget.userProfile.showNumbers !=
+        oldWidget.userProfile.showNumbers) {
+      if (!widget.userProfile.showNumbers && _stage == Stage.numbers) {
+        _backToHome();
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('تم إلغاء صلاحية صفحة الأرقام'),
+                backgroundColor: Color(0xFFFFB84D),
+              ),
+            );
+          }
+        });
+      }
+    }
   }
 
   Future<void> _bootstrap() async {
@@ -548,7 +581,10 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     try {
       Directory? base;
       if (Platform.isAndroid) {
-        for (final p in ['/storage/emulated/0/Download', '/sdcard/Download']) {
+        for (final p in [
+          '/storage/emulated/0/Download',
+          '/sdcard/Download'
+        ]) {
           try {
             final d = Directory(p);
             if (await d.exists()) {
@@ -629,7 +665,9 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
 
   String get _currentDisplay {
     if (_currentNumbers.isEmpty) return '—';
-    if (_currentIndex < 0 || _currentIndex >= _currentNumbers.length) return '—';
+    if (_currentIndex < 0 || _currentIndex >= _currentNumbers.length) {
+      return '—';
+    }
     return _currentNumbers[_currentIndex];
   }
 
@@ -786,7 +824,6 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   void _openControl() => setState(() => _stage = Stage.control);
   void _closeToHome() => setState(() => _stage = Stage.home);
 
-  // ⭐ توجيه ذكي: الأدمن → إدارة السكربتات، اليوزر → السكربتات
   void _openScripts() {
     setState(() {
       _stage = widget.userProfile.isAdmin
@@ -794,6 +831,9 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
           : Stage.scripts;
     });
   }
+
+  void _openNotifications() =>
+      setState(() => _stage = Stage.notifications);
 
   @override
   Widget build(BuildContext context) {
@@ -816,6 +856,14 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
 
   Widget _buildStage() {
     switch (_stage) {
+      case Stage.notifications:
+        return NotificationsPage(
+          key: const ValueKey('notifications'),
+          isDark: widget.isDark,
+          onToggleTheme: widget.onToggleTheme,
+          onBack: _closeToHome,
+        );
+
       case Stage.adminScripts:
         return AdminScriptsPage(
           key: const ValueKey('admin-scripts'),
@@ -931,6 +979,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
           onOpenTasks: _openTasks,
           onOpenControl: _openControl,
           onOpenScripts: _openScripts,
+          onOpenNotifications: _openNotifications,
         );
     }
   }
