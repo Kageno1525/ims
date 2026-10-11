@@ -4,24 +4,22 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models.dart';
 
 /// ⭐ Cache محلي للبروفايل — **مشفّر**
-/// التشفير: XOR بمسار متعدد الطبقات مع SHA-256 key مشتق
 class ProfileCache {
   static const _kProfileKey = 'ims_secure_profile_v2';
   static const _kCacheTimeKey = 'ims_secure_profile_time_v2';
 
-  // ⭐ Salt سري — لو حد شاف الملف، مش هيعرف يفك التشفير بدون الـ salt ده
-  static const String _secretSalt = 'Kageno@IMS#2026$Secure_Key!xK9pZ';
+  // ⭐ Salt سري — بدون أي $ عشان Dart
+  static const String _secretSalt =
+      r'Kageno@IMS#2026_Secure_Key!xK9pZ_mNoP3qR7';
 
   static const Duration _validity = Duration(days: 30);
 
-  // ⭐ توليد مفتاح تشفير من الـ salt
   static List<int> _deriveKey(String salt) {
     final bytes = utf8.encode(salt);
     final hash = sha256.convert(bytes);
     return hash.bytes;
   }
 
-  // ⭐ تشفير XOR متعدد الطبقات
   static String _encrypt(String plain) {
     try {
       final dataBytes = utf8.encode(plain);
@@ -40,7 +38,6 @@ class ProfileCache {
     }
   }
 
-  // ⭐ فك التشفير
   static String? _decrypt(String enc) {
     try {
       final bytes = base64Url.decode(enc);
