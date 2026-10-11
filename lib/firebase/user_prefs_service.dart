@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../models.dart';
 
 class UserPrefsService {
   static const _kPrefix = 'ims_script_pref_';
@@ -45,21 +44,33 @@ class UserPrefsService {
 class ScriptUserPrefs {
   final int runCount;
   final String rangeName;
+  final bool useFile;          // ⭐ جديد
+  final bool advanceRow;       // ⭐ جديد
+  final int fileRepeats;       // ⭐ جديد
 
   ScriptUserPrefs({
     this.runCount = 0,
     this.rangeName = '',
+    this.useFile = true,
+    this.advanceRow = true,
+    this.fileRepeats = 0,
   });
 
   Map<String, dynamic> toMap() => {
         'runCount': runCount,
         'rangeName': rangeName,
+        'useFile': useFile,
+        'advanceRow': advanceRow,
+        'fileRepeats': fileRepeats,
       };
 
   factory ScriptUserPrefs.fromMap(Map<String, dynamic> data) {
     return ScriptUserPrefs(
       runCount: (data['runCount'] as num?)?.toInt() ?? 0,
       rangeName: data['rangeName']?.toString() ?? '',
+      useFile: data['useFile'] != false,
+      advanceRow: data['advanceRow'] != false,
+      fileRepeats: (data['fileRepeats'] as num?)?.toInt() ?? 0,
     );
   }
 }
