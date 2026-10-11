@@ -43,6 +43,9 @@ class _TasksPageState extends State<TasksPage> with WidgetsBindingObserver {
   final ValueNotifier<List<LogEntry>> _logs =
       ValueNotifier<List<LogEntry>>(<LogEntry>[]);
 
+  // ⭐ قواعد مؤقتة لكل مهمة
+  final Map<String, ScriptRules> _taskLocalRules = {};
+
   @override
   void initState() {
     super.initState();
@@ -82,7 +85,6 @@ class _TasksPageState extends State<TasksPage> with WidgetsBindingObserver {
     widget.onLog(e);
   }
 
-  // ⭐ مهم: TaskEditorPage بتحفظ لوحدها — مفيش save هنا
   Future<void> _createTask() async {
     await Navigator.push<Task>(
       context,
@@ -151,6 +153,7 @@ class _TasksPageState extends State<TasksPage> with WidgetsBindingObserver {
       context,
       isDark: widget.isDark,
       task: task,
+      initialRules: _taskLocalRules[task.id],
     );
 
     if (uploaded == true && mounted) {
@@ -655,10 +658,21 @@ class _TasksPageState extends State<TasksPage> with WidgetsBindingObserver {
             ),
           ],
           const SizedBox(height: 8),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.end,
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            alignment: WrapAlignment.end,
             children: [
               if (IS_ADMIN_APP) ...[
+                _miniBtn(
+                  theme,
+                  icon: Icons.rule_rounded,
+                  label: 'قواعد',
+                  color: const Color(0xFFFFB84D),
+                  onTap: _runner.running
+                      ? null
+                      : () => _showTaskRulesDialog(task),
+                ),
                 _miniBtn(
                   theme,
                   icon: Icons.cloud_upload_rounded,
@@ -668,7 +682,6 @@ class _TasksPageState extends State<TasksPage> with WidgetsBindingObserver {
                       ? null
                       : () => _uploadTask(task),
                 ),
-                const SizedBox(width: 8),
               ],
               _miniBtn(
                 theme,
@@ -677,7 +690,6 @@ class _TasksPageState extends State<TasksPage> with WidgetsBindingObserver {
                 color: const Color(0xFF00D2FF),
                 onTap: _runner.running ? null : () => _editTask(task),
               ),
-              const SizedBox(width: 8),
               _miniBtn(
                 theme,
                 icon: Icons.delete_outline_rounded,
@@ -688,6 +700,253 @@ class _TasksPageState extends State<TasksPage> with WidgetsBindingObserver {
                     : () => _deleteTask(task),
               ),
             ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ⭐ حوار قواعد المهمة
+  Future<void> _showTaskRulesDialog(Task task) async {
+    final existing = _taskLocalRules[task.id] ?? ScriptRules();
+
+    bool allowRunCount = existing.allowRunCount;
+    bool allowRange = existing.allowRange;
+    int defaultRunCount = existing.defaultRunCount;
+    int maxRunCount = existing.maxRunCount;
+    String defaultRange = existing.defaultRange;
+
+    final defaultRunCtrl =
+        TextEditingController(text: defaultRunCount.toString());
+    final maxRunCtrl =
+        TextEditingController(text: maxRunCount.toString());
+    final defaultRangeCtrl = TextEditingController(text: defaultRange);
+
+    if (!mounted) return;
+
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (ctx) {
+        return StatefulBuilder(builder: (ctx, setModal) {
+          return AlertDialog(
+            backgroundColor: Theme.of(ctx).colorScheme.surface,
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20)),
+            title: Row(
+              children: [
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFFFFB84D), Color(0xFFFF8E53)],
+                    ),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(Icons.rule_rounded,
+                      color: Colors.white, size: 22),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text('قواعد السكربت',
+                      style: _noDeco.copyWith(
+                          fontWeight: FontWeight.bold, fontSize: 15)),
+                ),
+              ],
+            ),
+            content: SizedBox(
+              width: 400,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(task.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: _noDeco.copyWith(
+                            fontSize: 12,
+                            color: Theme.of(ctx)
+                                .colorScheme
+                                .onSurface
+                                .withOpacity(0.6))),
+                    const SizedBox(height: 14),
+
+                    _ruleSwitch(
+                      theme: Theme.of(ctx),
+                      icon: Icons.repeat_rounded,
+                      title: 'السماح بتغيير عدد المرات',
+                      subtitle: 'اليوزر يقدر يختار عدد مرات التشغيل',
+                      color: const Color(0xFF6C5CE7),
+                      value: allowRunCount,
+                      onChanged: (v) =>
+                          setModal(() => allowRunCount = v),
+                    ),
+
+                    if (allowRunCount) ...[
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextField(
+                              controller: defaultRunCtrl,
+                              keyboardType: TextInputType.number,
+                              style: _noDeco.copyWith(fontSize: 13),
+                              decoration: const InputDecoration(
+                                labelText: 'الافتراضي',
+                                isDense: true,
+                              ),
+                              onChanged: (v) {
+                                final n = int.tryParse(v) ?? 1;
+                                if (n >= 1) defaultRunCount = n;
+                              },
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: TextField(
+                              controller: maxRunCtrl,
+                              keyboardType: TextInputType.number,
+                              style: _noDeco.copyWith(fontSize: 13),
+                              decoration: const InputDecoration(
+                                labelText: 'الحد الأقصى',
+                                isDense: true,
+                              ),
+                              onChanged: (v) {
+                                final n = int.tryParse(v) ?? 100;
+                                if (n >= 1) maxRunCount = n;
+                              },
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+
+                    const SizedBox(height: 14),
+
+                    _ruleSwitch(
+                      theme: Theme.of(ctx),
+                      icon: Icons.folder_rounded,
+                      title: 'السماح بتغيير الرنج',
+                      subtitle:
+                          'اليوزر يقدر يختار ملف أرقام مختلف',
+                      color: const Color(0xFF00D68F),
+                      value: allowRange,
+                      onChanged: (v) =>
+                          setModal(() => allowRange = v),
+                    ),
+
+                    const SizedBox(height: 10),
+
+                    TextField(
+                      controller: defaultRangeCtrl,
+                      style: _noDeco.copyWith(fontSize: 13),
+                      onChanged: (v) => defaultRange = v,
+                      decoration: const InputDecoration(
+                        labelText: 'اسم الرنج الافتراضي',
+                        hintText: 'مثال: r1',
+                        isDense: true,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: Text('إلغاء', style: _noDeco),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: Text('حفظ',
+                    style: _noDeco.copyWith(
+                        fontWeight: FontWeight.bold,
+                        color: const Color(0xFF00D68F))),
+              ),
+            ],
+          );
+        });
+      },
+    );
+
+    defaultRunCtrl.dispose();
+    maxRunCtrl.dispose();
+    defaultRangeCtrl.dispose();
+
+    if (result == true && mounted) {
+      _taskLocalRules[task.id] = ScriptRules(
+        allowRunCount: allowRunCount,
+        defaultRunCount: defaultRunCount,
+        maxRunCount: maxRunCount,
+        allowRange: allowRange,
+        defaultRange: defaultRange.trim(),
+      );
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('✅ تم حفظ القواعد — هتتحفظ مع السكربت عند الرفع'),
+          backgroundColor: Color(0xFF00D68F),
+          duration: Duration(seconds: 3),
+        ),
+      );
+    }
+  }
+
+  Widget _ruleSwitch({
+    required ThemeData theme,
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required Color color,
+    required bool value,
+    required ValueChanged<bool> onChanged,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: value
+            ? color.withOpacity(0.12)
+            : theme.colorScheme.surface.withOpacity(0.4),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: value
+              ? color
+              : theme.colorScheme.primary.withOpacity(0.15),
+          width: value ? 1.5 : 1,
+        ),
+      ),
+      child: Row(
+        children: [
+          Icon(icon,
+              size: 18,
+              color: value
+                  ? color
+                  : theme.colorScheme.onSurface.withOpacity(0.5)),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title,
+                    style: _noDeco.copyWith(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.bold,
+                        color: value
+                            ? color
+                            : theme.colorScheme.onSurface)),
+                const SizedBox(height: 2),
+                Text(subtitle,
+                    style: _noDeco.copyWith(
+                        fontSize: 10,
+                        color: theme.colorScheme.onSurface
+                            .withOpacity(0.55))),
+              ],
+            ),
+          ),
+          Switch(
+            value: value,
+            onChanged: onChanged,
+            activeColor: color,
           ),
         ],
       ),
