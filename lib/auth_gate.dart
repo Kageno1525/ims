@@ -4,6 +4,9 @@ import 'config.dart';
 import 'firebase/auth_service.dart';
 import 'firebase/firestore_service.dart';
 import 'firebase/session_manager.dart';
+import 'firebase/security_service.dart';
+import 'firebase/device_service.dart';
+import 'firebase/profile_cache.dart';
 import 'models.dart';
 import 'pages/firebase_login_page.dart';
 import 'app_shell.dart';
@@ -29,25 +32,156 @@ class _AuthGateState extends State<AuthGate> {
   bool _loading = true;
   String? _error;
   bool _sessionConflict = false;
-  bool _roleMismatch = false;
+  bool _hwidBanned = false;
+  bool _deviceMismatch = false;
+  bool _verifiedOnce = false;
 
   @override
   void initState() {
     super.initState();
+    _fastStart();
+  }
+
+  // ⭐⭐ تشغيل سريع — الكاش الأول
+  Future<void> _fastStart() async {
+    // 1) اقرأ الكاش والـ HWID بالتوازي
+    final results = await Future.wait([
+      ProfileCache.load(),
+      DeviceService.getHwid(),
+      SecurityService.isHwidBanned(await DeviceService.getHwid()),
+    ]);
+
+    final cached = results[0] as UserProfile?;
+    final hwidBanned = results[2] as bool;
+
+    // الجهاز محظور → وقف فوراً
+    if (hwidBanned) {
+      if (mounted) {
+        setState(() {
+          _hwidBanned = true;
+          _loading = false;
+        });
+      }
+      return;
+    }
+
+    // لو فيه كاش ومستخدم مسجّل
+    final currentUser = AuthService.currentUser;
+    if (cached != null &&
+        currentUser != null &&
+        cached.uid == currentUser.uid &&
+        !cached.isBanned) {
+      // ⭐⭐⭐ نعرض التطبيق فوراً — بدون انتظار
+      if (mounted) {
+        setState(() {
+          _firebaseUser = currentUser;
+          _profile = cached;
+          _loading = false;
+        });
+      }
+      // نكمل التحقق في الخلفية
+      _verifyInBackground(currentUser);
+      return;
+    }
+
+    // مفيش كاش — استنى Firebase auth state
     AuthService.authStateChanges().listen(_onAuthChanged);
   }
 
+  // ⭐ التحقق من الخادم في الخلفية — بدون حجب الواجهة
+  Future<void> _verifyInBackground(User user) async {
+    if (_verifiedOnce) return;
+    _verifiedOnce = true;
+
+    try {
+      final profile = await FirestoreService.getUserProfile(user.uid);
+      if (!mounted) return;
+
+      // ⚠️ المستخدم اتحظر على الخادم — اطرده
+      if (profile == null || profile.isBanned) {
+        await ProfileCache.clear();
+        _forceLogout(
+          message: profile == null
+              ? 'الحساب ده مش مصرّح له'
+              : 'الحساب ده اتحظر',
+        );
+        return;
+      }
+
+      // ⚠️ حساب أدمن في تطبيق يوزر
+      if (!IS_ADMIN_APP && profile.isAdmin) {
+        final info = await DeviceService.getDeviceInfo();
+        final ip = await DeviceService.fetchIP();
+        await SecurityService.logSecurityEvent(
+          type: 'admin_login_attempt',
+          hwid: info['hwid'] ?? 'unknown',
+          ip: ip,
+          deviceModel: info['model'] ?? 'Unknown',
+          deviceName: info['device'] ?? 'unknown',
+          attemptedUsername: user.email ?? '',
+          targetAccountUid: user.uid,
+          targetAccountName: profile.name,
+        );
+        await ProfileCache.clear();
+        await AuthService.signOut();
+        await SessionManager.clearLocalSession();
+        if (!mounted) return;
+        setState(() {
+          _loading = false;
+          _deviceMismatch = true;
+          _profile = null;
+          _firebaseUser = null;
+        });
+        return;
+      }
+
+      // ⭐ حدّث الكاش والواجهة
+      await ProfileCache.save(profile);
+      if (!mounted) return;
+      setState(() => _profile = profile);
+
+      // ⭐ الجلسة والاتصال بالخادم — في الخلفية
+      _sessionAndWatchers(user, profile);
+    } catch (e) {
+      // لو فشل النت — نسيب الكاش يعمل
+    }
+  }
+
+  // ⭐ الجلسة والمتابعة
+  Future<void> _sessionAndWatchers(User user, UserProfile profile) async {
+    try {
+      // ربط الجلسة
+      final ok = await SessionManager.bindSession(user.uid);
+      if (!ok) {
+        if (!mounted) return;
+        setState(() {
+          _sessionConflict = true;
+          _profile = profile;
+        });
+        return;
+      }
+
+      // آخر دخول (fire & forget)
+      FirestoreService.updateLastLogin(user.uid);
+
+      // راقب البروفايل
+      _watchProfile(user.uid);
+    } catch (_) {}
+  }
+
+  // ⭐ لليوزر اللي عنده كاش — نشوف الـ auth state برضه
   Future<void> _onAuthChanged(User? user) async {
     if (!mounted) return;
 
     if (user == null) {
+      await ProfileCache.clear();
       setState(() {
         _firebaseUser = null;
         _profile = null;
         _loading = false;
         _error = null;
         _sessionConflict = false;
-        _roleMismatch = false;
+        _deviceMismatch = false;
       });
       return;
     }
@@ -56,106 +190,34 @@ class _AuthGateState extends State<AuthGate> {
       _firebaseUser = user;
       _loading = true;
       _error = null;
-      _roleMismatch = false;
+      _deviceMismatch = false;
     });
 
-    try {
-      final profile = await FirestoreService.getUserProfile(user.uid);
-
-      if (profile == null) {
-        await AuthService.signOut();
-        if (!mounted) return;
-        setState(() {
-          _loading = false;
-          _error = 'الحساب ده مش مصرّح له';
-        });
-        return;
-      }
-
-      if (profile.isBanned) {
-        await AuthService.signOut();
-        if (!mounted) return;
-        setState(() {
-          _loading = false;
-          _error = 'الحساب ده اتحظر';
-        });
-        return;
-      }
-
-      // ⭐⭐⭐ منع تطبيق اليوزر من فتح حساب أدمن
-      if (!IS_ADMIN_APP && profile.isAdmin) {
-        // 🔴 حظر فوري + خروج
-        try {
-          await FirestoreService.setUserBanned(user.uid, true);
-          await FirestoreService.updateUser(user.uid, {
-            'securityViolation': true,
-            'violationAt': DateTime.now().toIso8601String(),
-          });
-        } catch (_) {}
-        await AuthService.signOut();
-        await SessionManager.clearLocalSession();
-        if (!mounted) return;
-        setState(() {
-          _loading = false;
-          _roleMismatch = true;
-        });
-        return;
-      }
-
-      // فحص الجلسة
-      final ok = await SessionManager.bindSession(user.uid);
-      if (!ok) {
-        if (!mounted) return;
-        setState(() {
-          _loading = false;
-          _sessionConflict = true;
-          _profile = profile;
-        });
-        return;
-      }
-
-      FirestoreService.updateLastLogin(user.uid);
-
-      if (!mounted) return;
-      setState(() {
-        _profile = profile;
-        _loading = false;
-        _sessionConflict = false;
-      });
-
-      // ⭐⭐⭐ نراقب أي تغيير في البروفايل (حظر / دور / حذف)
-      _watchProfile(user.uid);
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _loading = false;
-        _error = 'خطأ: $e';
-      });
-    }
+    _verifyInBackground(user);
   }
 
-  // ⭐ Stream للبروفايل — يتابع الحظر والدور والتغييرات
+  // ⭐ متابعة البروفايل — للطرد الفوري عند الحظر
   void _watchProfile(String uid) {
     FirestoreService.userProfileStream(uid).listen((profile) {
       if (!mounted || profile == null) return;
 
-      // لو اتحظر
       if (profile.isBanned) {
+        ProfileCache.clear();
         _forceLogout(message: 'الحساب ده اتحظر');
         return;
       }
 
-      // لو الدور اتغير لتضارب مع نسخة التطبيق
       if (!IS_ADMIN_APP && profile.isAdmin) {
+        ProfileCache.clear();
         _forceLogout(message: 'ده حساب أدمن — مينفعش يدخل من هنا');
         return;
       }
 
-      // حدّث البروفايل الجديد
+      // ⭐ حدّث الكاش والواجهة
+      ProfileCache.save(profile);
       setState(() => _profile = profile);
     });
 
-    // ⭐ Stream للجلسة — يتابع الجهاز الواحد
     SessionManager.watchSessionConflict(uid).listen((conflict) {
       if (!mounted) return;
       if (conflict && !_sessionConflict) {
@@ -169,15 +231,16 @@ class _AuthGateState extends State<AuthGate> {
     if (uid != null) {
       await FirestoreService.clearSession(uid);
     }
+    await ProfileCache.clear();
     await AuthService.signOut();
     await SessionManager.clearLocalSession();
     if (!mounted) return;
     setState(() {
       _sessionConflict = false;
-      _roleMismatch = false;
       _error = message;
       _profile = null;
       _firebaseUser = null;
+      _deviceMismatch = false;
     });
   }
 
@@ -186,13 +249,14 @@ class _AuthGateState extends State<AuthGate> {
     if (uid != null) {
       await FirestoreService.clearSession(uid);
     }
+    await ProfileCache.clear();
     await AuthService.signOut();
     await SessionManager.clearLocalSession();
     if (mounted) {
       setState(() {
         _sessionConflict = false;
         _error = null;
-        _roleMismatch = false;
+        _deviceMismatch = false;
       });
     }
   }
@@ -200,6 +264,8 @@ class _AuthGateState extends State<AuthGate> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+
+    if (_hwidBanned) return _blockedScreen(theme);
 
     if (_loading) {
       return AnimatedBackground(
@@ -230,32 +296,20 @@ class _AuthGateState extends State<AuthGate> {
     }
 
     if (_firebaseUser == null) {
-      if (_error != null) {
-        return _errorScreen(theme, _error!);
-      }
+      if (_error != null) return _errorScreen(theme, _error!);
       return FirebaseLoginPage(
         isDark: widget.isDark,
         onToggleTheme: widget.onToggleTheme,
       );
     }
 
-    if (_roleMismatch) {
-      return _errorScreen(
-        theme,
-        '⚠️ ده تطبيق مخصص للمستخدمين فقط\n\n'
-            'حاولت تسجل دخول بحساب أدمن.\n'
-            'الحساب اتحظر للأمان.\n\n'
-            'كلّم المسؤول لو ده حصل بالغلط.',
-      );
-    }
+    if (_deviceMismatch) return _mismatchScreen(theme);
 
     if (_error != null && _profile == null) {
       return _errorScreen(theme, _error!);
     }
 
-    if (_sessionConflict) {
-      return _conflictScreen(theme);
-    }
+    if (_sessionConflict) return _conflictScreen(theme);
 
     if (_profile != null) {
       return AppShell(
@@ -268,6 +322,127 @@ class _AuthGateState extends State<AuthGate> {
     return FirebaseLoginPage(
       isDark: widget.isDark,
       onToggleTheme: widget.onToggleTheme,
+    );
+  }
+
+  Widget _blockedScreen(ThemeData theme) {
+    return AnimatedBackground(
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFF6B6B).withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(24),
+                  border: Border.all(
+                    color: const Color(0xFFFF6B6B).withOpacity(0.4),
+                    width: 2,
+                  ),
+                ),
+                child: const Icon(Icons.gpp_bad_rounded,
+                    size: 70, color: Color(0xFFFF6B6B)),
+              ),
+              const SizedBox(height: 24),
+              Text(
+                '🚫 جهازك محظور',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                  color: theme.colorScheme.onSurface,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'الجهاز ده اتحظر من استخدام التطبيق.\n'
+                'لو ده حصل بالغلط، كلم المسؤول.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 14,
+                  color: theme.colorScheme.onSurface.withOpacity(0.7),
+                  height: 1.6,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _mismatchScreen(ThemeData theme) {
+    return AnimatedBackground(
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFB84D).withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(24),
+                  border: Border.all(
+                    color: const Color(0xFFFFB84D).withOpacity(0.4),
+                    width: 2,
+                  ),
+                ),
+                child: const Icon(Icons.security_rounded,
+                    size: 70, color: Color(0xFFFFB84D)),
+              ),
+              const SizedBox(height: 24),
+              Text(
+                '⚠️ مش مسموح',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                  color: theme.colorScheme.onSurface,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'التطبيق ده للمستخدمين بس.\n'
+                'مينفعش تسجّل دخول بحساب أدمن من هنا.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 14,
+                  color: theme.colorScheme.onSurface.withOpacity(0.7),
+                  height: 1.6,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'تم إرسال إشعار للمسؤول',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: const Color(0xFFFFB84D),
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 32),
+              ActionBtn(
+                label: 'رجوع',
+                icon: Icons.arrow_back_rounded,
+                gradient: const [Color(0xFFFFB84D), Color(0xFFFF8E53)],
+                busy: false,
+                onTap: () async {
+                  await _forceLogoutManual();
+                  if (mounted) {
+                    setState(() => _deviceMismatch = false);
+                  }
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
@@ -285,14 +460,10 @@ class _AuthGateState extends State<AuthGate> {
                   color: theme.colorScheme.error.withOpacity(0.12),
                   borderRadius: BorderRadius.circular(24),
                   border: Border.all(
-                    color: theme.colorScheme.error.withOpacity(0.4),
-                  ),
+                      color: theme.colorScheme.error.withOpacity(0.4)),
                 ),
-                child: Icon(
-                  Icons.block_rounded,
-                  size: 60,
-                  color: theme.colorScheme.error,
-                ),
+                child: Icon(Icons.block_rounded,
+                    size: 60, color: theme.colorScheme.error),
               ),
               const SizedBox(height: 24),
               Text(
@@ -333,14 +504,10 @@ class _AuthGateState extends State<AuthGate> {
                   color: const Color(0xFFFFB84D).withOpacity(0.12),
                   borderRadius: BorderRadius.circular(24),
                   border: Border.all(
-                    color: const Color(0xFFFFB84D).withOpacity(0.4),
-                  ),
+                      color: const Color(0xFFFFB84D).withOpacity(0.4)),
                 ),
-                child: const Icon(
-                  Icons.devices_rounded,
-                  size: 60,
-                  color: Color(0xFFFFB84D),
-                ),
+                child: const Icon(Icons.devices_rounded,
+                    size: 60, color: Color(0xFFFFB84D)),
               ),
               const SizedBox(height: 24),
               Text(
