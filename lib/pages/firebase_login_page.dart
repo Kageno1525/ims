@@ -20,7 +20,7 @@ class FirebaseLoginPage extends StatefulWidget {
 
 class _FirebaseLoginPageState extends State<FirebaseLoginPage> {
   final _formKey = GlobalKey<FormState>();
-  final _userCtrl = TextEditingController();
+  final _emailCtrl = TextEditingController();
   final _passCtrl = TextEditingController();
   bool _busy = false;
   bool _obscure = true;
@@ -28,7 +28,7 @@ class _FirebaseLoginPageState extends State<FirebaseLoginPage> {
 
   @override
   void dispose() {
-    _userCtrl.dispose();
+    _emailCtrl.dispose();
     _passCtrl.dispose();
     super.dispose();
   }
@@ -44,7 +44,8 @@ class _FirebaseLoginPageState extends State<FirebaseLoginPage> {
     });
 
     try {
-      await AuthService.signIn(_userCtrl.text.trim(), _passCtrl.text);
+      await AuthService.signIn(_emailCtrl.text.trim(), _passCtrl.text);
+      // النجاح — app_shell هيلاحظ الـ auth state وهينقل
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -53,6 +54,7 @@ class _FirebaseLoginPageState extends State<FirebaseLoginPage> {
       });
       return;
     }
+    // سيبه busy لحد ما app_shell ياخد باله
   }
 
   @override
@@ -89,8 +91,8 @@ class _FirebaseLoginPageState extends State<FirebaseLoginPage> {
                   Container(
                     padding: const EdgeInsets.all(24),
                     decoration: BoxDecoration(
-                      color: theme.colorScheme.surface
-                          .withOpacity(widget.isDark ? 0.55 : 0.85),
+                      color: theme.colorScheme.surface.withOpacity(
+                          widget.isDark ? 0.55 : 0.85),
                       borderRadius: BorderRadius.circular(28),
                       border: Border.all(
                           color: theme.colorScheme.primary
@@ -110,32 +112,29 @@ class _FirebaseLoginPageState extends State<FirebaseLoginPage> {
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
                           Text('تسجيل الدخول',
-                              style: theme.textTheme.headlineSmall
-                                  ?.copyWith(
-                                      fontWeight: FontWeight.bold)),
+                              style: theme.textTheme.headlineSmall?.copyWith(
+                                  fontWeight: FontWeight.bold)),
                           const SizedBox(height: 6),
-                          Text('ادخل باسم المستخدم وكلمة المرور',
+                          Text('ادخل بالإيميل وكلمة المرور',
                               style: theme.textTheme.bodySmall?.copyWith(
                                   color: theme.colorScheme.onSurface
                                       .withOpacity(0.6))),
                           const SizedBox(height: 22),
                           TextFormField(
-                            controller: _userCtrl,
+                            controller: _emailCtrl,
+                            keyboardType: TextInputType.emailAddress,
                             textInputAction: TextInputAction.next,
-                            autofillHints: const [
-                              AutofillHints.username
-                            ],
+                            autofillHints: const [AutofillHints.email],
                             decoration: const InputDecoration(
-                              labelText: 'اسم المستخدم',
-                              prefixIcon:
-                                  Icon(Icons.person_outline_rounded),
+                              labelText: 'الإيميل',
+                              prefixIcon: Icon(Icons.email_outlined),
                             ),
                             validator: (v) {
                               if (v == null || v.trim().isEmpty) {
-                                return 'من فضلك اكتب اسم المستخدم';
+                                return 'من فضلك اكتب الإيميل';
                               }
-                              if (v.trim().length < 3) {
-                                return 'اسم المستخدم قصير (3 حروف)';
+                              if (!v.contains('@')) {
+                                return 'الإيميل غير صحيح';
                               }
                               return null;
                             },
@@ -144,19 +143,17 @@ class _FirebaseLoginPageState extends State<FirebaseLoginPage> {
                           TextFormField(
                             controller: _passCtrl,
                             obscureText: _obscure,
-                            autofillHints: const [
-                              AutofillHints.password
-                            ],
+                            autofillHints: const [AutofillHints.password],
                             decoration: InputDecoration(
                               labelText: 'كلمة المرور',
-                              prefixIcon: const Icon(
-                                  Icons.lock_outline_rounded),
+                              prefixIcon:
+                                  const Icon(Icons.lock_outline_rounded),
                               suffixIcon: IconButton(
                                 icon: Icon(_obscure
                                     ? Icons.visibility_rounded
                                     : Icons.visibility_off_rounded),
-                                onPressed: () => setState(
-                                    () => _obscure = !_obscure),
+                                onPressed: () =>
+                                    setState(() => _obscure = !_obscure),
                               ),
                             ),
                             validator: (v) {
@@ -175,42 +172,33 @@ class _FirebaseLoginPageState extends State<FirebaseLoginPage> {
                             child: _error == null
                                 ? const SizedBox.shrink()
                                 : Padding(
-                                    padding: const EdgeInsets.only(
-                                        top: 14),
+                                    padding: const EdgeInsets.only(top: 14),
                                     child: Container(
                                       padding:
                                           const EdgeInsets.symmetric(
-                                              horizontal: 14,
-                                              vertical: 12),
+                                              horizontal: 14, vertical: 12),
                                       decoration: BoxDecoration(
                                         color: theme.colorScheme.error
                                             .withOpacity(0.12),
                                         borderRadius:
                                             BorderRadius.circular(14),
                                         border: Border.all(
-                                            color: theme
-                                                .colorScheme.error
+                                            color: theme.colorScheme.error
                                                 .withOpacity(0.35)),
                                       ),
                                       child: Row(
                                         children: [
-                                          Icon(
-                                              Icons
-                                                  .error_outline_rounded,
-                                              color: theme
-                                                  .colorScheme.error,
+                                          Icon(Icons.error_outline_rounded,
+                                              color:
+                                                  theme.colorScheme.error,
                                               size: 20),
                                           const SizedBox(width: 10),
                                           Expanded(
                                             child: Text(_error!,
                                                 style: TextStyle(
                                                     color: theme
-                                                        .colorScheme
-                                                        .error,
-                                                    fontSize: 13,
-                                                    decoration:
-                                                        TextDecoration
-                                                            .none)),
+                                                        .colorScheme.error,
+                                                    fontSize: 13)),
                                           ),
                                         ],
                                       ),
@@ -226,11 +214,10 @@ class _FirebaseLoginPageState extends State<FirebaseLoginPage> {
                   const SizedBox(height: 16),
                   Text('IMS',
                       style: TextStyle(
-                          color: theme.colorScheme.onSurface
-                              .withOpacity(0.4),
+                          color:
+                              theme.colorScheme.onSurface.withOpacity(0.4),
                           fontSize: 12,
-                          letterSpacing: 2,
-                          decoration: TextDecoration.none)),
+                          letterSpacing: 2)),
                 ],
               ),
             ),
@@ -259,11 +246,11 @@ class _FirebaseLoginPageState extends State<FirebaseLoginPage> {
                   offset: const Offset(0, 14)),
             ],
           ),
-          child: const Icon(Icons.sms_rounded,
+          child: const Icon(Icons.lock_person_rounded,
               color: Colors.white, size: 44),
         ),
         const SizedBox(height: 14),
-        Text('لوحة التحكم',
+        Text('IMS Control',
             style: theme.textTheme.titleLarge
                 ?.copyWith(fontWeight: FontWeight.bold)),
       ],
@@ -312,8 +299,7 @@ class _FirebaseLoginPageState extends State<FirebaseLoginPage> {
                             style: TextStyle(
                                 color: Colors.white,
                                 fontWeight: FontWeight.bold,
-                                fontSize: 16,
-                                decoration: TextDecoration.none)),
+                                fontSize: 16)),
                       ],
                     ),
             ),
