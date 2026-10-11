@@ -7,12 +7,8 @@ import 'task_model.dart';
 import 'task_pickers.dart';
 import 'step_config_sheet.dart';
 import '../models.dart';
+import '../config.dart';
 
-// ⭐ فلاج الأدمن
-const bool IS_ADMIN_APP = bool.fromEnvironment(
-  'IS_ADMIN',
-  defaultValue: true,
-);
 
 class TaskEditorPage extends StatefulWidget {
   final bool isDark;
