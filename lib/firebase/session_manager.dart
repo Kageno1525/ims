@@ -4,11 +4,11 @@ import 'package:http/http.dart' as http;
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'firestore_service.dart';
-import 'device_service.dart';
 
 class SessionManager {
   static const _kSessionKey = 'ims_session_id';
 
+  /// يرجّع sessionId مخزّن، أو ينشئ واحد جديد
   static Future<String> getOrCreateSessionId() async {
     final prefs = await SharedPreferences.getInstance();
     var id = prefs.getString(_kSessionKey);
@@ -25,6 +25,7 @@ class SessionManager {
     return base64Url.encode(bytes);
   }
 
+  /// يجيب IP العام من api.ipify.org
   static Future<String> fetchIP() async {
     try {
       final res = await http
@@ -38,6 +39,7 @@ class SessionManager {
     return 'unknown';
   }
 
+  /// يجيب معلومات الجهاز
   static Future<Map<String, String>> fetchDeviceInfo() async {
     try {
       final plugin = DeviceInfoPlugin();
@@ -56,52 +58,24 @@ class SessionManager {
     }
   }
 
-  // ⭐⭐⭐ ربط الجلسة + التحقق من HWID
-  // بياخد اليوزر والـ hwid الجديد، ويرجّع:
-  //   ok → تمام
-  //   wrongDevice → اليوزر مربوط بجهاز تاني
-  //   sessionConflict → نفس اليوزر فاتح على جهاز تاني بنفس الوقت
-  static Future<SessionCheck> bindSession(
-    String uid, {
-    required String currentHwid,
-    required bool isAdmin,
-  }) async {
-    // 1) اجلب بيانات اليوزر
-    final profile = await FirestoreService.getUserProfile(uid);
-    if (profile == null) {
-      return SessionCheck.ok;
-    }
-
-    // 2) ⭐ فحص HWID — لو اليوزر مربوط بجهاز تاني
-    //    ⚠️ الحماية دي بتتطبق على اليوزر العادي بس (الأدمن بيتخطاها)
-    if (!isAdmin) {
-      if (profile.hwid.isNotEmpty && profile.hwid != currentHwid) {
-        return SessionCheck.wrongDevice(
-          boundHwid: profile.hwid,
-        );
-      }
-
-      // 3) لو مفيش hwid محفوظ → اربط الجهاز ده
-      if (profile.hwid.isEmpty) {
-        try {
-          await FirestoreService.setUserHwid(uid, currentHwid);
-        } catch (_) {}
-      }
-    }
-
-    // 4) فحص الجلسة (نفس الجهاز مفتوح مرتين)
+  /// تثبيت الجلسة الحالية للمستخدم في Firestore
+  /// يرجّع true لو الجهاز ده هو الجلسة الفعّالة
+  static Future<bool> bindSession(String uid) async {
     final sessionId = await getOrCreateSessionId();
     final ip = await fetchIP();
     final info = await fetchDeviceInfo();
 
     final existing = await FirestoreService.getSession(uid);
+
+    // لو فيه جلسة على جهاز تاني، ارفض
     if (existing != null) {
       final existingSession = existing['sessionId']?.toString() ?? '';
       if (existingSession.isNotEmpty && existingSession != sessionId) {
-        return SessionCheck.sessionConflict;
+        return false;
       }
     }
 
+    // سجّل الجلسة الحالية
     await FirestoreService.setSession(
       uid: uid,
       sessionId: sessionId,
@@ -109,15 +83,16 @@ class SessionManager {
       deviceName: info['device'] ?? 'unknown',
       ip: ip,
     );
-
-    return SessionCheck.ok;
+    return true;
   }
 
+  /// يمسح الجلسة المحلية (بس مش من Firestore — ده للأدمن)
   static Future<void> clearLocalSession() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_kSessionKey);
   }
 
+  /// Stream يخبرك لو حد دخل من جهاز تاني (عشان نطرد الجهاز الحالي)
   static Stream<bool> watchSessionConflict(String uid) {
     return FirestoreService.sessionStream(uid).asyncMap((data) async {
       if (data == null) return false;
@@ -127,30 +102,4 @@ class SessionManager {
       return remoteSession != localSession;
     });
   }
-}
-
-// ⭐ نتيجة فحص الجلسة
-enum SessionCheckStatus { ok, wrongDevice, sessionConflict }
-
-class SessionCheck {
-  final SessionCheckStatus status;
-  final String? boundHwid;
-  final String? boundDeviceModel;
-
-  SessionCheck._(this.status, {this.boundHwid, this.boundDeviceModel});
-
-  static final ok = SessionCheck._(SessionCheckStatus.ok);
-
-  factory SessionCheck.wrongDevice({
-    required String boundHwid,
-    String? boundDeviceModel,
-  }) =>
-      SessionCheck._(
-        SessionCheckStatus.wrongDevice,
-        boundHwid: boundHwid,
-        boundDeviceModel: boundDeviceModel,
-      );
-
-  static final sessionConflict =
-      SessionCheck._(SessionCheckStatus.sessionConflict);
 }
