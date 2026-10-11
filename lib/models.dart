@@ -20,6 +20,41 @@ class InstalledApp {
   InstalledApp({required this.package, required this.name});
 }
 
+class ScriptRules {
+  final bool allowRunCount;
+  final int defaultRunCount;
+  final int maxRunCount;
+  final bool allowRange;
+  final String defaultRange;
+
+  ScriptRules({
+    this.allowRunCount = false,
+    this.defaultRunCount = 1,
+    this.maxRunCount = 100,
+    this.allowRange = false,
+    this.defaultRange = '',
+  });
+
+  Map<String, dynamic> toMap() => {
+        'allowRunCount': allowRunCount,
+        'defaultRunCount': defaultRunCount,
+        'maxRunCount': maxRunCount,
+        'allowRange': allowRange,
+        'defaultRange': defaultRange,
+      };
+
+  factory ScriptRules.fromMap(Map<String, dynamic>? data) {
+    if (data == null) return ScriptRules();
+    return ScriptRules(
+      allowRunCount: data['allowRunCount'] == true,
+      defaultRunCount: (data['defaultRunCount'] as num?)?.toInt() ?? 1,
+      maxRunCount: (data['maxRunCount'] as num?)?.toInt() ?? 100,
+      allowRange: data['allowRange'] == true,
+      defaultRange: data['defaultRange']?.toString() ?? '',
+    );
+  }
+}
+
 class UserProfile {
   final String uid;
   final String email;
@@ -48,7 +83,6 @@ class UserProfile {
   });
 
   bool get isAdmin => role == 'admin';
-
   bool get hasBoundDevice => hwid.isNotEmpty;
 
   String get username {
@@ -104,6 +138,7 @@ class ScriptDoc {
   final List<Map<String, dynamic>> steps;
   final List<String> assignedTo;
   final String createdBy;
+  final ScriptRules rules;
   final DateTime? createdAt;
   final DateTime? updatedAt;
 
@@ -113,9 +148,10 @@ class ScriptDoc {
     required this.steps,
     required this.assignedTo,
     required this.createdBy,
+    ScriptRules? rules,
     this.createdAt,
     this.updatedAt,
-  });
+  }) : rules = rules ?? ScriptRules();
 
   factory ScriptDoc.fromDoc(String id, Map<String, dynamic> data) {
     return ScriptDoc(
@@ -128,6 +164,11 @@ class ScriptDoc {
           .map((e) => e.toString())
           .toList(),
       createdBy: data['createdBy']?.toString() ?? '',
+      rules: ScriptRules.fromMap(
+        data['rules'] != null
+            ? Map<String, dynamic>.from(data['rules'])
+            : null,
+      ),
       createdAt: _parseTs(data['createdAt']),
       updatedAt: _parseTs(data['updatedAt']),
     );
@@ -138,6 +179,7 @@ class ScriptDoc {
         'steps': steps,
         'assignedTo': assignedTo,
         'createdBy': createdBy,
+        'rules': rules.toMap(),
       };
 
   static DateTime? _parseTs(dynamic v) {
