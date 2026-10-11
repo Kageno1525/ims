@@ -1,18 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'config.dart';
 import 'auth_gate.dart';
+import 'config.dart';
+
+
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-
-  // ⭐ تهيئة Firebase — بدون options غريبة
-  try {
-    await Firebase.initializeApp();
-  } catch (e) {
-    debugPrint('Firebase init error: $e');
-  }
-
+  await Firebase.initializeApp();
   runApp(const ImsApp());
 }
 
@@ -25,8 +20,8 @@ class ImsApp extends StatefulWidget {
 class _ImsAppState extends State<ImsApp> {
   ThemeMode _mode = ThemeMode.dark;
 
-  void _toggle() => setState(() =>
-      _mode = _mode == ThemeMode.dark ? ThemeMode.light : ThemeMode.dark);
+  void _toggle() => setState(
+      () => _mode = _mode == ThemeMode.dark ? ThemeMode.light : ThemeMode.dark);
 
   @override
   Widget build(BuildContext context) {
@@ -77,15 +72,13 @@ ThemeData _theme(Brightness b) {
       fillColor: b == Brightness.dark
           ? Colors.white.withOpacity(0.04)
           : Colors.black.withOpacity(0.02),
-      contentPadding:
-          const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
       border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
           borderSide: BorderSide.none),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(16),
-        borderSide:
-            BorderSide(color: scheme.primary.withOpacity(0.15)),
+        borderSide: BorderSide(color: scheme.primary.withOpacity(0.15)),
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(16),
