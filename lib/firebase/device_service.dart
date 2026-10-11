@@ -17,9 +17,11 @@ class DeviceService {
       final plugin = DeviceInfoPlugin();
       final android = await plugin.androidInfo;
 
-      // نبني HWID من بيانات ثابتة + عشوائي محفوظ
-      final raw =
-          '${android.androidId}|${android.device}|${android.model}|${android.brand}';
+      // ⭐ نبني HWID من بصمة الجهاز الفريدة
+      final raw = '${android.fingerprint}|${android.device}|'
+          '${android.model}|${android.brand}|${android.manufacturer}|'
+          '${android.hardware}|${android.board}';
+
       final hash = _shortHash(raw);
 
       await prefs.setString(_kHwidKey, hash);
@@ -30,7 +32,6 @@ class DeviceService {
   }
 
   static String _shortHash(String input) {
-    // hash بسيط — مش محتاجين SHA-256 هنا
     int h = 0;
     for (int i = 0; i < input.length; i++) {
       h = ((h << 5) - h + input.codeUnitAt(i)) & 0x7fffffff;
