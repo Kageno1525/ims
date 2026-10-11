@@ -27,12 +27,18 @@ class FirestoreService {
   static Stream<List<UserProfile>> allUsersStream() {
     return _db
         .collection('users')
-        .orderBy('createdAt', descending: true)
         .snapshots()
         .map((snap) {
-      return snap.docs
+      final list = snap.docs
           .map((d) => UserProfile.fromDoc(d.id, d.data()))
           .toList();
+      // ⭐ ترتيب يدوي — آمن لو مفيش createdAt
+      list.sort((a, b) {
+        final at = a.createdAt?.millisecondsSinceEpoch ?? 0;
+        final bt = b.createdAt?.millisecondsSinceEpoch ?? 0;
+        return bt.compareTo(at);
+      });
+      return list;
     });
   }
 
@@ -72,8 +78,22 @@ class FirestoreService {
   }
 
   static Future<void> updateLastLogin(String uid) async {
+    try {
+      await _db.collection('users').doc(uid).update({
+        'lastLoginAt': FieldValue.serverTimestamp(),
+      });
+    } catch (_) {}
+  }
+
+  // ⭐⭐ HWID — ربط الجهاز باليوزر
+  static Future<void> setUserHwid(String uid, String hwid) async {
+    await _db.collection('users').doc(uid).update({'hwid': hwid});
+  }
+
+  static Future<void> resetUserHwid(String uid) async {
     await _db.collection('users').doc(uid).update({
-      'lastLoginAt': FieldValue.serverTimestamp(),
+      'hwid': '',
+      'hwidResetAt': FieldValue.serverTimestamp(),
     });
   }
 
@@ -82,12 +102,17 @@ class FirestoreService {
   static Stream<List<ScriptDoc>> allScriptsStream() {
     return _db
         .collection('scripts')
-        .orderBy('createdAt', descending: true)
         .snapshots()
         .map((snap) {
-      return snap.docs
+      final list = snap.docs
           .map((d) => ScriptDoc.fromDoc(d.id, d.data()))
           .toList();
+      list.sort((a, b) {
+        final at = a.createdAt?.millisecondsSinceEpoch ?? 0;
+        final bt = b.createdAt?.millisecondsSinceEpoch ?? 0;
+        return bt.compareTo(at);
+      });
+      return list;
     });
   }
 
@@ -103,7 +128,6 @@ class FirestoreService {
     });
   }
 
-  // ⭐ البحث عن سكربت بالاسم — عشان نعرف لو موجود
   static Future<ScriptDoc?> getScriptByName(String name) async {
     try {
       final snap = await _db
@@ -136,7 +160,6 @@ class FirestoreService {
     return ref.id;
   }
 
-  // ⭐ تحديث محتوى السكربت فقط — مع الاحتفاظ بـ assignedTo والاسم
   static Future<void> updateScriptContent({
     required String scriptId,
     required List<Map<String, dynamic>> steps,
@@ -160,15 +183,14 @@ class FirestoreService {
   }
 
   // ═══════════════ ADMIN TASKS ═══════════════
-  // ⭐ المهام بتاعت الأدمن — محفوظة على Firestore عشان تفضل موجودة
+  // ⭐ المهام بتاعت الأدمن — محفوظة على Firestore
 
   static Stream<List<Task>> adminTasksStream() {
     return _db
         .collection('admin_tasks')
-        .orderBy('updatedAt', descending: true)
         .snapshots()
         .map((snap) {
-      return snap.docs.map((d) {
+      final list = snap.docs.map((d) {
         final data = d.data();
         return Task(
           id: data['id']?.toString() ?? d.id,
@@ -183,6 +205,9 @@ class FirestoreService {
           autoIncrement: data['autoIncrement'] == true,
         );
       }).toList();
+      // ⭐ ترتيب يدوي
+      list.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      return list;
     });
   }
 
@@ -244,7 +269,6 @@ class FirestoreService {
     } catch (_) {}
   }
 
-  // Helper
   static DateTime? _parseTs(dynamic v) {
     if (v == null) return null;
     try {
